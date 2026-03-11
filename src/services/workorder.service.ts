@@ -399,7 +399,124 @@ export async function updateWorkOrder(
   return getWorkOrderById(businessId, workOrderId)
 }
 
-/** Delete work order (cascade: line items, payments, expenses, attachments). */
+export class LineItemNotFoundError extends Error {
+  constructor() {
+    super('LINE_ITEM_NOT_FOUND')
+  }
+}
+
+/** Item when adding from master price list: copy from PriceListItem. */
+export interface AddLineItemFromPriceList {
+  priceListItemId: string
+  quantity: number
+}
+
+/** Custom line item (not in master list). */
+export interface AddLineItemCustom {
+  name: string
+  quantity: number
+  price: number
+  itemType?: 'SERVICE' | 'PRODUCT'
+  description?: string | null
+  cost?: number | null
+}
+
+export type AddLineItemInput = AddLineItemFromPriceList | AddLineItemCustom
+
+function isFromPriceList(item: AddLineItemInput): item is AddLineItemFromPriceList {
+  return 'priceListItemId' in item && item.priceListItemId != null
+}
+
+/** Add line items to an existing work order: from price list (copy snapshot) or custom. */
+export async function addLineItemsToWorkOrder(
+  businessId: string,
+  workOrderId: string,
+  items: AddLineItemInput[]
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) throw new WorkOrderNotFoundError()
+
+  for (const item of items) {
+    if (isFromPriceList(item)) {
+      const pl = await prisma.priceListItem.findFirst({
+        where: { id: item.priceListItemId, businessId },
+      })
+      if (!pl) throw new Error('PRICE_LIST_ITEM_NOT_FOUND')
+      await prisma.lineItem.create({
+        data: {
+          workOrderId,
+          name: pl.name,
+          itemType: pl.itemType,
+          description: pl.description,
+          quantity: item.quantity,
+          price: pl.price,
+          cost: pl.cost,
+          priceListItemId: pl.id,
+        },
+      })
+    } else {
+      await prisma.lineItem.create({
+        data: {
+          workOrderId,
+          name: item.name,
+          itemType: item.itemType ?? 'SERVICE',
+          description: item.description ?? null,
+          quantity: item.quantity,
+          price: item.price,
+          cost: item.cost ?? null,
+          priceListItemId: null,
+        },
+      })
+    }
+  }
+
+  await recalculateFinancials(workOrderId)
+  return getWorkOrderById(businessId, workOrderId)
+}
+
+/** Create a PriceListItem from a work order line item (e.g. "Save to Master Price List"). Optionally link the line item. */
+export async function addLineItemToPriceList(
+  businessId: string,
+  workOrderId: string,
+  lineItemId: string,
+  options?: { linkLineItem?: boolean }
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) throw new WorkOrderNotFoundError()
+  const lineItem = await prisma.lineItem.findFirst({
+    where: { id: lineItemId, workOrderId },
+  })
+  if (!lineItem) throw new LineItemNotFoundError()
+
+  const priceListItem = await prisma.priceListItem.create({
+    data: {
+      businessId,
+      itemType: lineItem.itemType,
+      name: lineItem.name,
+      description: lineItem.description,
+      cost: lineItem.cost,
+      markupPercent: lineItem.markupPercent,
+      price: lineItem.price,
+    },
+  })
+
+  if (options?.linkLineItem !== false) {
+    await prisma.lineItem.update({
+      where: { id: lineItemId },
+      data: { priceListItemId: priceListItem.id },
+    })
+  }
+
+  return { priceListItem, workOrder: await getWorkOrderById(businessId, workOrderId) }
+}
 export async function deleteWorkOrder(businessId: string, workOrderId: string): Promise<void> {
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
