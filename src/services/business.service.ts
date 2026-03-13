@@ -19,6 +19,36 @@ export async function getBusinessIdByOwnerId(userId: string): Promise<string | n
   return business?.id ?? null
 }
 
+/**
+ * ✅ NEW — Resolve businessId for ANY authenticated user.
+ *
+ * - Business owner (isOwner=true) → finds business where ownerId = userId
+ * - Team member    (isOwner=false) → finds business via active Member record
+ *
+ * USE THIS everywhere instead of getBusinessIdByOwnerId.
+ * Handlers to update:
+ *   • src/routes/workorders/workorder.handler.ts  ← causes your current 404 bug
+ *   • src/routes/roles/role.handler.ts
+ *   • src/routes/team/member.handler.ts
+ *   • src/routes/clients/client.handler.ts
+ *   • any other handler that calls getBusinessIdByOwnerId
+ */
+export async function getBusinessIdByUserId(userId: string): Promise<string | null> {
+  // 1. Check if they own a business
+  const ownedBusiness = await prisma.business.findFirst({
+    where: { ownerId: userId },
+    select: { id: true },
+  })
+  if (ownedBusiness) return ownedBusiness.id
+
+  // 2. Otherwise check if they are an active team member
+  const membership = await prisma.member.findFirst({
+    where: { userId, isActive: true },
+    select: { businessId: true },
+  })
+  return membership?.businessId ?? null
+}
+
 export class EmailAlreadyUsedError extends Error {
   constructor() {
     super('EMAIL_ALREADY_USED')
@@ -396,6 +426,7 @@ export async function createBusiness(data: CreateBusinessInput): Promise<{
         phone_no: data.phone,
         banned: data.status === false,
         role: 'BUSINESS_OWNER',
+        isOwner: true, // ✅ marks this user as the actual business owner
       },
     })
 

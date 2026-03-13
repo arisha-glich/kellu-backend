@@ -91,6 +91,7 @@ export const PRICE_LIST_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PriceListResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -105,6 +106,7 @@ export const PRICE_LIST_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PriceListItemSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Price list item not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -120,6 +122,7 @@ export const PRICE_LIST_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(PriceListItemSchema), 'Created'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -137,6 +140,7 @@ export const PRICE_LIST_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PriceListItemSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Price list item not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -154,6 +158,7 @@ export const PRICE_LIST_ROUTES = {
         'OK'
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Price list item not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -169,6 +174,7 @@ export const PRICE_LIST_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(ImportPriceListResponseSchema), 'Import result'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },

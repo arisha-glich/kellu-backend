@@ -274,6 +274,36 @@ const AddToPriceListResponseSchema = z.object({
   workOrder: WorkOrderDetailResponseSchema,
 })
 
+/** Job-level: add expense to a work order (workOrderId from path). */
+const AddWorkOrderExpenseBodySchema = z
+  .object({
+    date: z.coerce.date(),
+    itemName: z.string().min(1, 'Item name is required'),
+    details: z.string().optional().nullable(),
+    total: z.number().min(0),
+    invoiceNumber: z.string().optional().nullable(),
+    attachmentUrl: z.string().optional().nullable().or(z.literal('')),
+  })
+  .transform(d => ({
+    ...d,
+    attachmentUrl: d.attachmentUrl === '' ? null : d.attachmentUrl ?? null,
+  }))
+  .openapi({ description: 'Expense fields for job-level expense (linked to this work order)' })
+
+const WorkOrderExpenseItemSchema = z.object({
+  id: z.string(),
+  date: z.coerce.date(),
+  itemName: z.string(),
+  details: z.string().nullable(),
+  total: z.union([z.number(), z.string()]),
+  invoiceNumber: z.string().nullable(),
+  attachmentUrl: z.string().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  businessId: z.string(),
+  workOrderId: z.string().nullable(),
+})
+
 /** Query for listing price list items (for work order "add from price list" UI). */
 export const WorkOrderPriceListQuerySchema = z.object({
   search: z
@@ -308,6 +338,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderListResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -322,6 +353,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderOverviewResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -336,6 +368,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderPriceListResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -350,6 +383,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -365,6 +399,7 @@ export const WORK_ORDER_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Created'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -382,6 +417,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -396,6 +432,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ deleted: z.boolean() })), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -413,6 +450,7 @@ export const WORK_ORDER_ROUTES = {
     responses: {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Payment registered'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -431,6 +469,7 @@ export const WORK_ORDER_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Line items added'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or price list item not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -451,6 +490,43 @@ export const WORK_ORDER_ROUTES = {
         'Price list item created from line item'
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or line item not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  listExpenses: createRoute({
+    method: 'get',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/expenses',
+    summary: 'List expenses for this work order (job-level)',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: z.array(WorkOrderExpenseItemSchema) })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  createExpense: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/expenses',
+    summary: 'Add expense to this work order (job-level)',
+    request: {
+      params: WorkOrderParamsSchema,
+      body: jsonContentRequired(AddWorkOrderExpenseBodySchema, 'Expense payload'),
+    },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderExpenseItemSchema), 'Expense created'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },

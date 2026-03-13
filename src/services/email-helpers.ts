@@ -62,6 +62,43 @@ export async function sendBusinessInvitationEmail(
   })
 }
 
+/**
+ * Send team member invitation with login credentials and optional description (Kellu → Team member).
+ */
+export interface SendTeamMemberInvitationParams {
+  to: string
+  memberName: string
+  businessName: string
+  roleName: string
+  email: string
+  password: string
+  /** Optional text describing the member's role or what they can do (included in email body). */
+  description?: string
+}
+
+export async function sendTeamMemberInvitationEmail(
+  params: SendTeamMemberInvitationParams
+): Promise<void> {
+  const { to, memberName, businessName, roleName, email, password, description } = params
+  const loginUrl = `${FRONTEND_URL}/login`
+
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'add-team-member' as EmailTemplate,
+    payload: {
+      memberName,
+      businessName,
+      roleName,
+      email,
+      password,
+      loginUrl,
+      description: description ?? undefined,
+    },
+    from: KELLU_TO_CLIENT_FROM,
+    replyTo: KELLU_REPLY_TO,
+  })
+}
+
 export interface SendClientProfileUpdateParams {
   to: string
   clientName: string

@@ -129,6 +129,7 @@ model User {
   phone_no          String?
   rut               String?   // National Identity Document (RUT) - for team members
   onboarding_stage  String?
+   isOwner           Boolean   @default(false) // true = business owner, false = team member
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   roleId            String?
@@ -185,6 +186,7 @@ model Business {
 model Member {
   id        String   @id @default(cuid())
   isActive  Boolean  @default(true)
+  includeInNotificationsWhenAssigned Boolean @default(true) // Picture/name in email & WhatsApp when assigned to job
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId     String
@@ -254,6 +256,7 @@ model Permission {
 }
 
 model RolePermission {
+
   createdAt DateTime @default(now())
   roleId       String
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -294,7 +297,7 @@ model Client {
 
 model WorkOrder {
   id               String   @id @default(cuid())
-  workOrderNumber  String?  @unique // Human-readable correlative for display
+  workOrderNumber  String?   // Human-readable correlative for display
   title            String
   address          String
   instructions     String?  @db.Text

@@ -6,6 +6,10 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { WORK_ORDER_ROUTES } from '~/routes/workorders/workorder.routes'
 import { listPriceListItems } from '~/services/price-list.service'
 import {
+  listExpensesByWorkOrder,
+  createExpenseForWorkOrder,
+} from '~/services/expense.service'
+import {
   addLineItemsToWorkOrder,
   addLineItemToPriceList,
   createWorkOrder,
@@ -19,7 +23,8 @@ import {
   LineItemNotFoundError,
   WorkOrderNotFoundError,
 } from '~/services/workorder.service'
-import { BusinessNotFoundError, getBusinessIdByOwnerId } from '~/services/business.service'
+import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> = {
@@ -29,9 +34,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to list work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const query = c.req.valid('query')
       const page = query.page ? Number.parseInt(query.page, 10) : 1
@@ -68,9 +79,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view work order overview' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const overview = await getWorkOrderOverview(businessId)
       return c.json(
@@ -95,9 +112,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view price list items for work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const query = c.req.valid('query')
       const page = query.page ? Number.parseInt(query.page, 10) : 1
@@ -132,9 +155,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view this work order' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId } = c.req.valid('param')
       const workOrder = await getWorkOrderById(businessId, workOrderId)
@@ -159,15 +188,19 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
 
   create: async c => {
     const user = c.get('user')
-    console.log('user', user)
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
-      console.log('businessId', businessId)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'create'))) {
+        return c.json(
+          { message: 'You do not have permission to create work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const body = await c.req.valid('json')
       const workOrder = await createWorkOrder(businessId, {
@@ -214,9 +247,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to update work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -264,9 +303,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'delete'))) {
+        return c.json(
+          { message: 'You do not have permission to delete work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId } = c.req.valid('param')
       await deleteWorkOrder(businessId, workOrderId)
@@ -295,9 +340,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to register payments on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -333,9 +384,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to add line items to work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -368,9 +425,15 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to add line items to the price list' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { workOrderId, lineItemId } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -398,6 +461,88 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       console.error('Error adding line item to price list:', error)
       return c.json(
         { message: 'Failed to add line item to price list' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  listExpenses: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to list work order expenses' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId } = c.req.valid('param')
+      const expenses = await listExpensesByWorkOrder(businessId, workOrderId)
+      return c.json(
+        { message: 'Expenses retrieved successfully', success: true, data: { data: expenses } },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND') {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error listing work order expenses:', error)
+      return c.json(
+        { message: 'Failed to retrieve expenses' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  createExpense: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to create expenses on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+      const expense = await createExpenseForWorkOrder(businessId, workOrderId, {
+        date: body.date,
+        itemName: body.itemName,
+        details: body.details,
+        total: body.total,
+        invoiceNumber: body.invoiceNumber,
+        attachmentUrl: body.attachmentUrl,
+      })
+      return c.json(
+        { message: 'Expense created successfully', success: true, data: expense },
+        HttpStatusCodes.CREATED
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND') {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error creating work order expense:', error)
+      return c.json(
+        { message: 'Failed to create expense' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

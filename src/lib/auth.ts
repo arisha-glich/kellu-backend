@@ -1,7 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { customSession, openAPI } from 'better-auth/plugins'
-import { fa } from 'zod/v4/locales'
 import { UserRole } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 

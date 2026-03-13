@@ -10,7 +10,8 @@ import {
   updateClientByClientId,
   ClientNotFoundError,
 } from '~/services/client.service'
-import { BusinessNotFoundError, getBusinessIdByOwnerId } from '~/services/business.service'
+import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 import { UserRole } from '~/generated/prisma'
 
@@ -18,12 +19,15 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
   list: async c => {
     const user = c.get('user')
     if (!user) {
-      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json({ message: 'only business owners can list clients' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json({ message: 'You do not have permission to list clients' }, HttpStatusCodes.FORBIDDEN)
       }
       const query = c.req.valid('query')
       const page = query.page ? Number.parseInt(query.page, 10) : 1
@@ -55,12 +59,15 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
   getStatistics: async c => {
     const user = c.get('user')
     if (!user) {
-      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json({ message: 'only business owners can view client statistics' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json({ message: 'You do not have permission to view client statistics' }, HttpStatusCodes.FORBIDDEN)
       }
       const stats = await getClientStatistics(businessId)
       return c.json(
@@ -82,9 +89,16 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
   getLeadSources: async c => {
     const user = c.get('user')
     if (!user) {
-      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json({ message: 'only business owners can view lead sources' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json({ message: 'You do not have permission to view lead sources' }, HttpStatusCodes.FORBIDDEN)
+      }
       const sources = getLeadSources()
       return c.json(
         { message: 'Lead sources retrieved successfully', success: true, data: sources },
@@ -105,11 +119,14 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       return c.json({ message: 'only business owners can create clients' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByOwnerId(user.id)
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
-      const body = await c.req.valid('json')
+      if (!(await hasPermission(user.id, businessId, 'clients', 'create'))) {
+        return c.json({ message: 'You do not have permission to create clients' }, HttpStatusCodes.FORBIDDEN)
+      }
+      const body = await c.req.valid('json')  
       const client = await createClient(businessId, {
         name: body.name,
         phone: body.phone,
@@ -137,9 +154,16 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
   getById: async c => {
     const user = c.get('user')
     if (!user) {
-      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json({ message: 'only business owners can create clients' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json({ message: 'You do not have permission to view this client' }, HttpStatusCodes.FORBIDDEN)
+      }
       const { clientId } = c.req.valid('param')
       const client = await getClientByClientId(clientId)
       return c.json(
@@ -160,11 +184,18 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
 
   update: async c => {
     const user = c.get('user')
-    if (!user || user.role !== UserRole.BUSINESS_OWNER) {
+    if (!user) {
       return c.json({ message: 'only business owners can update clients' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const { clientId } = c.req.valid('param')
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'update'))) {
+        return c.json({ message: 'You do not have permission to update clients' }, HttpStatusCodes.FORBIDDEN)
+      }
+      const { clientId } = c.req.valid('param') 
       const body = await c.req.valid('json')
       const client = await updateClientByClientId(clientId, {
         name: body.name,
@@ -193,10 +224,17 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
 
   delete: async c => {
     const user = c.get('user')
-    if (!user || user.role !== UserRole.BUSINESS_OWNER) {
+    if (!user) {
       return c.json({ message: 'only business owners can delete clients' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'delete'))) {
+        return c.json({ message: 'You do not have permission to delete clients' }, HttpStatusCodes.FORBIDDEN)
+      }
       const { clientId } = c.req.valid('param')
       await deleteClientByClientId(clientId)
       return c.json(
