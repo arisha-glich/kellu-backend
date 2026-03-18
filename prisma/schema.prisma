@@ -112,6 +112,12 @@ enum LeadSource {
   Other
 }
 
+enum TaskStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+}
+
 // ─────────────────────────────────────────────
 // USER
 // ─────────────────────────────────────────────
@@ -158,8 +164,13 @@ model Business {
   email     String
   phone     String?
   address   String?
+  street1   String?
+  street2   String?
+  city      String?
   webpage   String?
   logoUrl   String?
+  primaryColor   String?
+  secondaryColor String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -526,8 +537,11 @@ model Task {
   instructions String?  @db.Text
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  isAnyTime    Boolean  @default(false)
+  taskStatus   TaskStatus @default(SCHEDULED)
   isCompleted Boolean   @default(false)
   completedAt DateTime?
+  startedAt   DateTime?
   scheduledAt DateTime?
   startTime   String?
   endTime     String?
@@ -594,6 +608,7 @@ model BusinessSettings {
   invoiceDueDays         Int  @default(3)
   quoteExpirationDays    Int  @default(7)
   arrivalWindowMinutes   Int?
+  arrivalWindowHours     Int?  // 1–4 hours for UI; used for booking confirmation
   defaultDurationMinutes Int?
 
   // Bank & Payment

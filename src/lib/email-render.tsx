@@ -8,6 +8,8 @@ import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
 import { WelcomeEmail } from '../emails/welcome'
 import { WorkOrderCreatedEmail } from '../emails/work-order-created'
+import { TaskCreatedEmail } from '../emails/task-created'
+import { SettingsUpdatedEmail } from '../emails/settings-updated'
 
 const APP_NAME =
   (typeof globalThis !== 'undefined' &&
@@ -23,6 +25,8 @@ export type EmailTemplate =
   | 'client-profile-update'
   | 'booking-confirmation'
   | 'work-order-created'
+  | 'task-created'
+  | 'settings-updated'
 
 export const emailSubjects: Record<EmailTemplate, string> = {
   'add-business': `${APP_NAME} - Your Business Portal Login`,
@@ -32,6 +36,8 @@ export const emailSubjects: Record<EmailTemplate, string> = {
   'client-profile-update': `${APP_NAME} - Update to your client profile`,
   'booking-confirmation': 'Booking Confirmation',
   'work-order-created': 'New work order created',
+  'task-created': 'New task assigned',
+  'settings-updated': 'Your company settings have been updated',
 } as const
 
 export async function renderEmailTemplate(
@@ -76,17 +82,18 @@ export async function renderEmailTemplate(
       return render(<EmailVerification verificationLink={verificationLink} userName={userName} />)
     }
     case 'client-profile-update': {
-      const { clientName, businessName, isUpdate } = data
+      const { clientName, businessName, isUpdate, logoUrl } = data
       return render(
         <ClientProfileUpdateEmail
           clientName={clientName}
           businessName={businessName}
           isUpdate={isUpdate}
+          logoUrl={logoUrl}
         />
       )
     }
     case 'booking-confirmation': {
-      const { clientName, serviceTitle, date, timeRange, assignedTeamMemberName, businessName } = data
+      const { clientName, serviceTitle, date, timeRange, assignedTeamMemberName, businessName, logoUrl } = data
       return render(
         <BookingConfirmationEmail
           clientName={clientName}
@@ -95,6 +102,7 @@ export async function renderEmailTemplate(
           timeRange={timeRange}
           assignedTeamMemberName={assignedTeamMemberName}
           businessName={businessName}
+          logoUrl={logoUrl}
         />
       )
     }
@@ -110,6 +118,7 @@ export async function renderEmailTemplate(
         assignedTeamMemberName,
         lineItemsSummary,
         total,
+        logoUrl,
       } = data
       return render(
         <WorkOrderCreatedEmail
@@ -123,6 +132,43 @@ export async function renderEmailTemplate(
           assignedTeamMemberName={assignedTeamMemberName}
           lineItemsSummary={lineItemsSummary ?? ''}
           total={total}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'task-created': {
+      const {
+        clientName,
+        businessName,
+        title,
+        address,
+        date,
+        timeRange,
+        assignedTeamMemberName,
+        instructions,
+        logoUrl,
+      } = data
+      return render(
+        <TaskCreatedEmail
+          clientName={clientName}
+          businessName={businessName}
+          title={title}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          assignedTeamMemberName={assignedTeamMemberName}
+          instructions={instructions}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'settings-updated': {
+      const { ownerName, businessName, appName } = data
+      return render(
+        <SettingsUpdatedEmail
+          ownerName={ownerName}
+          businessName={businessName}
+          appName={appName ?? APP_NAME}
         />
       )
     }

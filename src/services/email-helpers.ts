@@ -48,6 +48,7 @@ export interface SendBusinessInvitationParams {
  * From: Kellu <noresponder@...>, Reply-To: equipo@kellu.co
  */
 export async function sendBusinessInvitationEmail(
+
   params: SendBusinessInvitationParams
 ): Promise<void> {
   const { to, businessName, ownerName, email, tempPassword } = params
@@ -68,6 +69,28 @@ export async function sendBusinessInvitationEmail(
   })
 }
 
+export interface SendSettingsUpdatedEmailParams {
+  to: string
+  ownerName: string
+  businessName: string
+  appName?: string
+}
+
+/**
+ * Send settings updated notification (Kellu → Client).
+ * From: Kellu <noresponder@...>, Reply-To: equipo@kellu.co
+ */
+export function sendSettingsUpdatedEmail(params: SendSettingsUpdatedEmailParams): void {
+  const { to, ownerName, businessName, appName } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'settings-updated' as EmailTemplate,
+    payload: { ownerName, businessName, appName },
+    from: KELLU_TO_CLIENT_FROM,
+    replyTo: KELLU_REPLY_TO,
+  })
+}
+
 export interface SendWorkOrderCreatedEmailParams {
   to: string
   clientName: string
@@ -82,6 +105,8 @@ export interface SendWorkOrderCreatedEmailParams {
   lineItemsSummary: string
   total?: string
   subject?: string
+  /** Company logo URL (Company Settings). Shown in email header. */
+  companyLogoUrl?: string | null
 }
 
 /**
@@ -104,6 +129,7 @@ export function sendWorkOrderCreatedEmail(params: SendWorkOrderCreatedEmailParam
     lineItemsSummary,
     total,
     subject,
+    companyLogoUrl,
   } = params
   appEventEmitter.emit('mail:send-template', {
     to,
@@ -119,6 +145,63 @@ export function sendWorkOrderCreatedEmail(params: SendWorkOrderCreatedEmailParam
       assignedTeamMemberName,
       lineItemsSummary,
       total,
+      logoUrl: companyLogoUrl ?? undefined,
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
+export interface SendTaskCreatedEmailParams {
+  to: string
+  clientName: string
+  businessName: string
+  companyReplyTo: string
+  title: string
+  address: string
+  date: string
+  timeRange: string
+  assignedTeamMemberName: string
+  instructions?: string
+  subject?: string
+  /** Company logo URL (Company Settings). Shown in email header. */
+  companyLogoUrl?: string | null
+}
+
+/**
+ * Send task created email to client (Client → Their Customers).
+ * From: {businessName} <noresponder@...>, Reply-To: companyReplyTo.
+ * Used when a task is created and the task has an associated client with email.
+ */
+export function sendTaskCreatedEmail(params: SendTaskCreatedEmailParams): void {
+  const {
+    to,
+    clientName,
+    businessName,
+    companyReplyTo,
+    title,
+    address,
+    date,
+    timeRange,
+    assignedTeamMemberName,
+    instructions,
+    subject,
+    companyLogoUrl,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'task-created' as EmailTemplate,
+    payload: {
+      clientName,
+      businessName,
+      title,
+      address,
+      date,
+      timeRange,
+      assignedTeamMemberName,
+      instructions: instructions ?? '',
+      logoUrl: companyLogoUrl ?? undefined,
     },
     from: clientToCustomerFrom(businessName),
     replyTo: companyReplyTo,
@@ -179,6 +262,8 @@ export interface SendClientProfileUpdateParams {
   /** Company email for Reply-To (Client → Their Customers). */
   companyReplyTo: string
   isUpdate: boolean
+  /** Company logo URL (Company Settings). Shown in email header. */
+  companyLogoUrl?: string | null
 }
 
 /**
@@ -186,11 +271,16 @@ export interface SendClientProfileUpdateParams {
  * From: {businessName} <noresponder@...>, Reply-To: companyReplyTo.
  */
 export function sendClientProfileUpdateEmail(params: SendClientProfileUpdateParams): void {
-  const { to, clientName, businessName, companyReplyTo, isUpdate } = params
+  const { to, clientName, businessName, companyReplyTo, isUpdate, companyLogoUrl } = params
   appEventEmitter.emit('mail:send-template', {
     to,
     template: 'client-profile-update' as EmailTemplate,
-    payload: { clientName, businessName, isUpdate },
+    payload: {
+      clientName,
+      businessName,
+      isUpdate,
+      logoUrl: companyLogoUrl ?? undefined,
+    },
     from: clientToCustomerFrom(businessName),
     replyTo: companyReplyTo,
   })
@@ -207,6 +297,8 @@ export interface SendBookingConfirmationParams {
   companyReplyTo: string
   /** Override default subject (e.g. "Booking Confirmation - Plumbing Repair - Jan 15, 2024") */
   subject?: string
+  /** Company logo URL (Company Settings). Shown in email header. */
+  companyLogoUrl?: string | null
 }
 
 /**
@@ -225,6 +317,7 @@ export function sendBookingConfirmationEmail(params: SendBookingConfirmationPara
     businessName,
     companyReplyTo,
     subject,
+    companyLogoUrl,
   } = params
   appEventEmitter.emit('mail:send-template', {
     to,
@@ -236,6 +329,7 @@ export function sendBookingConfirmationEmail(params: SendBookingConfirmationPara
       timeRange,
       assignedTeamMemberName,
       businessName,
+      logoUrl: companyLogoUrl ?? undefined,
     },
     from: clientToCustomerFrom(businessName),
     replyTo: companyReplyTo,

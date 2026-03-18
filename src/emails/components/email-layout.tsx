@@ -36,7 +36,7 @@ const logo = {
   margin: '0 auto',
 }
 
-const headerTitle = {
+const headerTextStyle = {
   color: '#ffffff',
   fontSize: '24px',
   fontWeight: 'bold',
@@ -73,10 +73,13 @@ const copyright = {
 interface EmailLayoutProps {
   children: React.ReactNode
   preview?: string
-  logoUrl?: string
+  /** Company logo URL (from Company Settings). When set, used in header instead of platform logo. */
+  logoUrl?: string | null
+  /** When no logo: show this as header text (e.g. business name for client→customer emails). */
+  headerTitle?: string
 }
 
-export function EmailLayout({ children, preview, logoUrl }: EmailLayoutProps) {
+export function EmailLayout({ children, preview, logoUrl, headerTitle }: EmailLayoutProps) {
   const appName = process.env.APP_NAME ?? 'Kelly'
   const defaultLogoUrl = process.env.EMAIL_LOGO_URL ?? ''
   const baseUrl =
@@ -85,24 +88,28 @@ export function EmailLayout({ children, preview, logoUrl }: EmailLayoutProps) {
     process.env.FRONTEND_URL ||
     'http://kellu.co'
 
+  const effectiveLogoUrl = logoUrl?.trim() || defaultLogoUrl
+  const showLogo = !!effectiveLogoUrl
+  const headerLabel = headerTitle?.trim() || appName
+
   return (
     <Html>
       <Head />
       {preview && <Preview>{preview}</Preview>}
       <Body style={main}>
         <Container style={container}>
-          {/* Header */}
+          {/* Header: company logo when provided, else platform logo, else header text (e.g. business name) */}
           <Section style={header}>
-            {defaultLogoUrl ? (
+            {showLogo ? (
               <Img
-                src={logoUrl || defaultLogoUrl}
-                alt={appName}
+                src={effectiveLogoUrl}
+                alt={headerLabel}
                 width="150"
                 height="40"
                 style={logo}
               />
             ) : (
-              <Text style={headerTitle}>{appName}</Text>
+              <Text style={headerTextStyle}>{headerLabel}</Text>
             )}
           </Section>
 

@@ -367,10 +367,14 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       })
       if (woForEmail?.client?.email && woForEmail.business) {
         const companyReplyTo =
-          woForEmail.business.settings?.replyToEmail ?? woForEmail.business.email
+          (woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email)
         const assignedName = woForEmail.assignedTo?.user?.name ?? 'Our team'
         const dateStr = formatBookingDate(woForEmail.scheduledAt)
-        const timeRangeStr = formatTimeRange(woForEmail.startTime, woForEmail.endTime)
+        const timeRangeStr = formatTimeRange(
+          woForEmail.startTime,
+          woForEmail.endTime,
+          woForEmail.scheduledAt
+        )
         const lineItemsSummary = woForEmail.lineItems
           .map(
             (li) =>
@@ -384,6 +388,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
           clientName: woForEmail.client.name,
           businessName: woForEmail.business.name,
           companyReplyTo,
+          companyLogoUrl: woForEmail.business.logoUrl ?? undefined,
           workOrderNumber: woForEmail.workOrderNumber ?? `#${woForEmail.id}`,
           title: woForEmail.title,
           address: woForEmail.address ?? '',
@@ -482,11 +487,39 @@ function formatBookingDate(d: Date | null): string {
   })
 }
 
-/** Format time range (e.g. "09:00 - 11:00"). */
-function formatTimeRange(start: string | null, end: string | null): string {
-  if (!start && !end) return 'To be confirmed'
-  if (start && end) return `${start} - ${end}`
-  return start ?? end ?? 'To be confirmed'
+/**
+ * Normalize a time value for display as "HH:mm". Handles ISO datetime strings and plain "09:00" strings.
+ */
+function normalizeTimeDisplay(value: string | null | undefined): string | null {
+  if (value == null || String(value).trim() === '') return null
+  const s = String(value).trim()
+  const date = new Date(s)
+  if (!Number.isNaN(date.getTime()) && s.includes('T')) {
+    return date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(s)) return s.length === 5 ? s : s.slice(0, 5)
+  return s
+}
+
+/** Format time range (e.g. "09:00 - 11:00"). Uses scheduledAt when start/end are missing. */
+function formatTimeRange(
+  start: string | null,
+  end: string | null,
+  scheduledAt?: Date | null
+): string {
+  const startNorm = normalizeTimeDisplay(start)
+  const endNorm = normalizeTimeDisplay(end)
+  if (startNorm && endNorm) return `${startNorm} - ${endNorm}`
+  if (startNorm || endNorm) return startNorm ?? endNorm ?? 'To be confirmed'
+  if (scheduledAt) {
+    const t = scheduledAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+    return t
+  }
+  return 'To be confirmed'
 }
 
 /**
@@ -515,10 +548,11 @@ export async function sendBookingConfirmation(
     throw new Error('Client has no email address. Add an email to the client to send booking confirmation.')
   }
 
-  const companyReplyTo = wo.business.settings?.replyToEmail ?? wo.business.email
+  const companyReplyTo =
+    (wo.business.settings?.replyToEmail?.trim() || wo.business.email)
   const assignedTeamMemberName = wo.assignedTo?.user?.name ?? 'Our team'
   const dateStr = formatBookingDate(wo.scheduledAt)
-  const timeRangeStr = formatTimeRange(wo.startTime, wo.endTime)
+  const timeRangeStr = formatTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
 
   const subject =
     options?.subject ??
@@ -533,6 +567,7 @@ export async function sendBookingConfirmation(
     assignedTeamMemberName,
     businessName: wo.business.name,
     companyReplyTo,
+    companyLogoUrl: wo.business.logoUrl ?? undefined,
     subject,
   })
 

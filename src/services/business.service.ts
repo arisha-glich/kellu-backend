@@ -452,6 +452,15 @@ export async function createBusiness(data: CreateBusinessInput): Promise<{
     },
   })
 
+  await prisma.businessSettings.upsert({
+    where: { businessId: business.id },
+    create: {
+      businessId: business.id,
+      replyToEmail: business.email,
+    },
+    update: { replyToEmail: business.email },
+  })
+
   if (user && data.tempPassword) {
     const ownerName = data.companyName || data.email.split('@')[0]
     await sendBusinessInvitationEmail({

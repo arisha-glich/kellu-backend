@@ -7,12 +7,15 @@ interface ClientProfileUpdateEmailProps {
   clientName: string
   businessName: string
   isUpdate: boolean
+  /** Company logo URL (Company Settings). Shown in header instead of platform logo. */
+  logoUrl?: string | null
 }
 
 export const ClientProfileUpdateEmail = ({
   clientName,
   businessName,
   isUpdate,
+  logoUrl,
 }: ClientProfileUpdateEmailProps) => {
   const appName = process.env.APP_NAME ?? 'Kelly'
 
@@ -27,6 +30,8 @@ export const ClientProfileUpdateEmail = ({
   return (
     <EmailLayout
       preview={isUpdate ? 'Your client profile was updated' : 'You were added as a client'}
+      logoUrl={logoUrl}
+      headerTitle={businessName}
     >
       <Section style={emailStyles.content}>
         <Heading style={emailStyles.h1}>{title}</Heading>

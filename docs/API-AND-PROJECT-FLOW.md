@@ -78,6 +78,7 @@ HTTP Request
 | `/api/expenses`     | `~/routes/expenses`        | Expenses: list, get, create, update, delete |
 | `/api/roles`        | `~/routes/roles`           | Roles CRUD, permission matrix, actions list |
 | `/api/team`         | `~/routes/team`            | Team members: list, add, update, remove |
+| `/api/settings`     | `~/routes/settings`        | Current business profile + company settings (GET/PATCH) |
 
 **Me (current user):** The app may expose a “me” or “context” route (e.g. under `/api/me` or similar) that returns current user context (businessId, role, permissions). The me router lives in `src/routes/me` but is not mounted in `src/app.ts`; add `.route('/api/me', meRouter)` to enable `GET /api/me/context`.
 
@@ -285,7 +286,22 @@ Each route module follows this pattern:
 
 ---
 
-### 3.11 `routes/me`
+### 3.11 `routes/settings`
+
+| File                 | Role |
+|----------------------|------|
+| `settings.routes.ts` | GET `/`, PATCH `/` – current business profile + company settings (§13.1). |
+| `settings.handler.ts`| getBusinessIdByUserId, hasPermission(settings, read/update), settings.service. |
+| `index.ts`           | Registers settings routes. |
+
+**Endpoints (under `/api/settings`):**
+
+- `GET /` – Get current business settings (personalProfile, company, settings: reply list, due dates, bank, terms, arrival window, whatsapp, tax).
+- `PATCH /` – Update any subset of profile and company settings.
+
+---
+
+### 3.12 `routes/me`
 
 | File           | Role |
 |----------------|------|

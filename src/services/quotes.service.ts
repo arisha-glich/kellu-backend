@@ -6,7 +6,7 @@
  */
 
 import { Prisma } from '~/generated/prisma'
-import type { QuoteStatus } from '~/generated/prisma'
+import type { JobStatus, QuoteStatus } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import {
@@ -60,6 +60,32 @@ export interface CreateQuoteInput {
   }>
 }
 
+/** Update quote (work order) fields. quoteStatus is never editable here — use send/approve/reject/setAwaitingResponse. */
+export interface UpdateQuoteInput {
+  title?: string
+  clientId?: string
+  address?: string
+  isScheduleLater?: boolean
+  scheduledAt?: Date | null
+  startTime?: string | null
+  endTime?: string | null
+  assignedToId?: string | null
+  instructions?: string | null
+  notes?: string | null
+  quoteTermsConditions?: string | null
+  discount?: number
+  discountType?: 'PERCENTAGE' | 'AMOUNT' | null
+  lineItems?: Array<{
+    name: string
+    itemType?: 'SERVICE' | 'PRODUCT'
+    description?: string | null
+    quantity: number
+    price: number
+    cost?: number | null
+    priceListItemId?: string | null
+  }>
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
@@ -80,6 +106,18 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
   if (!last?.workOrderNumber) return '1'
   const num = Number.parseInt(last.workOrderNumber.replace(/^#/, ''), 10)
   return String(Number.isNaN(num) ? 1 : num + 1)
+}
+
+/** Derive job status from schedule/assignee (same logic as workorder.service; used for quote update). */
+function deriveJobStatus(data: {
+  scheduledAt?: Date | null
+  startTime?: string | null
+  assignedToId?: string | null
+}): JobStatus {
+  const hasSchedule = !!(data.scheduledAt ?? data.startTime)
+  if (!hasSchedule) return 'UNSCHEDULED'
+  if (!data.assignedToId) return 'UNASSIGNED'
+  return 'SCHEDULED'
 }
 
 /** Get the full quote (WorkOrder) with client, line items, payments, assignee. */
@@ -300,6 +338,136 @@ export async function getQuote(businessId: string, workOrderId: string) {
 }
 
 /**
+ * Update quote (work order) fields. quoteStatus is never editable via this — use actions (send, approve, reject, setAwaitingResponse).
+ */
+export async function updateQuote(
+  businessId: string,
+  workOrderId: string,
+  input: UpdateQuoteInput
+) {
+  await ensureBusinessExists(businessId)
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId, quoteRequired: true },
+    select: {
+      id: true,
+      scheduledAt: true,
+      startTime: true,
+      assignedToId: true,
+    },
+  })
+  if (!existing) throw new WorkOrderNotFoundError()
+
+  const jobStatus =
+    input.scheduledAt !== undefined ||
+    input.startTime !== undefined ||
+    input.assignedToId !== undefined
+      ? deriveJobStatus({
+          scheduledAt: input.scheduledAt,
+          startTime: input.startTime,
+          assignedToId: input.assignedToId,
+        })
+      : undefined
+
+  await prisma.$transaction(async (tx) => {
+    const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
+      ...(input.title != null && { title: input.title }),
+      ...(input.clientId != null && { clientId: input.clientId }),
+      ...(input.address != null && { address: input.address }),
+      ...(input.instructions !== undefined && { instructions: input.instructions }),
+      ...(input.notes !== undefined && { notes: input.notes }),
+      ...(input.isScheduleLater !== undefined && { isScheduleLater: input.isScheduleLater }),
+      ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt }),
+      ...(input.startTime !== undefined && { startTime: input.startTime }),
+      ...(input.endTime !== undefined && { endTime: input.endTime }),
+      ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
+      ...(input.quoteTermsConditions !== undefined && {
+        quoteTermsConditions: input.quoteTermsConditions,
+      }),
+      ...(input.discount !== undefined && { discount: new Prisma.Decimal(input.discount) }),
+      ...(input.discountType !== undefined && { discountType: input.discountType }),
+      ...(jobStatus != null && { jobStatus }),
+    }
+
+    await tx.workOrder.update({ where: { id: workOrderId }, data: updateData })
+
+    if (input.lineItems) {
+      await tx.lineItem.deleteMany({ where: { workOrderId } })
+      if (input.lineItems.length > 0) {
+        await tx.lineItem.createMany({
+          data: input.lineItems.map((li) => ({
+            workOrderId,
+            name: li.name,
+            itemType: li.itemType ?? 'SERVICE',
+            description: li.description ?? null,
+            quantity: li.quantity,
+            price: li.price,
+            cost: li.cost ?? null,
+            priceListItemId: li.priceListItemId ?? null,
+          })),
+        })
+      }
+    }
+
+    await recalculateQuoteFinancials(workOrderId, tx)
+  })
+
+  return getQuoteById(businessId, workOrderId)
+}
+
+/**
+ * Delete quote (work order with quoteRequired=true). Cascades to line items, payments, etc.
+ */
+export async function deleteQuote(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId, quoteRequired: true },
+    select: { id: true },
+  })
+  if (!existing) throw new WorkOrderNotFoundError()
+
+  await prisma.workOrder.delete({ where: { id: workOrderId } })
+}
+
+/**
+ * Manually set quote status to AWAITING_RESPONSE (spec: "Awaiting response: also can be set manually").
+ * Only allowed when current status is NOT_SENT. Sets sent_at and expires_at per settings.
+ */
+export async function setQuoteAwaitingResponse(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId, quoteRequired: true },
+    select: { id: true, quoteStatus: true },
+  })
+  if (!wo) throw new WorkOrderNotFoundError()
+  if (wo.quoteStatus !== 'NOT_SENT') {
+    throw new QuoteTerminalStateError()
+  }
+
+  const settings = await prisma.businessSettings.findUnique({
+    where: { businessId },
+    select: { quoteExpirationDays: true },
+  })
+  const expirationDays = settings?.quoteExpirationDays ?? 7
+  const now = new Date()
+  const expiresAt = new Date(now)
+  expiresAt.setDate(expiresAt.getDate() + expirationDays)
+
+  await prisma.workOrder.update({
+    where: { id: workOrderId },
+    data: {
+      quoteStatus: 'AWAITING_RESPONSE',
+      quoteSentAt: now,
+      quoteExpiresAt: expiresAt,
+    },
+  })
+
+  return getQuoteById(businessId, workOrderId)
+}
+
+/**
  * Send quote action (§6.2.1).
  * Sets quoteStatus = AWAITING_RESPONSE, records timestamps, generates correlative.
  * Blocks if no line items exist (spec: "Sent Quote blocked if no Line items specified").
@@ -396,7 +564,8 @@ export async function sendQuoteEmail(
     throw new Error('Client has no email address. Add an email to the client to send the quote.')
   }
 
-  const companyReplyTo = wo.business.settings?.replyToEmail ?? wo.business.email
+  const companyReplyTo =
+    (wo.business.settings?.replyToEmail?.trim() || wo.business.email)
   const displayName = wo.business.name?.trim() || 'Company'
   // Use verified sender for From (Resend only allows verified domains); replies go to Reply-To
   const fromHeader = clientToCustomerFrom(displayName)

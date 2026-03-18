@@ -106,7 +106,7 @@ export async function createClient(businessId: string, data: CreateClientInput) 
   if (client.email) {
     const business = await prisma.business.findUnique({
       where: { id: businessId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, logoUrl: true },
     })
     if (business?.email) {
       sendClientProfileUpdateEmail({
@@ -114,6 +114,7 @@ export async function createClient(businessId: string, data: CreateClientInput) 
         clientName: client.name,
         businessName: business.name,
         companyReplyTo: business.email,
+        companyLogoUrl: business.logoUrl ?? undefined,
         isUpdate: false,
       })
     }
@@ -295,7 +296,7 @@ export async function updateClient(
   if (client.email) {
     const business = await prisma.business.findUnique({
       where: { id: businessId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, logoUrl: true },
     })
     if (business?.email) {
       sendClientProfileUpdateEmail({
@@ -303,6 +304,7 @@ export async function updateClient(
         clientName: client.name,
         businessName: business.name,
         companyReplyTo: business.email,
+        companyLogoUrl: business.logoUrl ?? undefined,
         isUpdate: true,
       })
     }
@@ -334,7 +336,7 @@ export async function updateClientByClientId(clientId: string, data: UpdateClien
   if (client.email) {
     const business = await prisma.business.findUnique({
       where: { id: client.businessId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, logoUrl: true },
     })
     if (business?.email) {
       sendClientProfileUpdateEmail({
@@ -342,6 +344,7 @@ export async function updateClientByClientId(clientId: string, data: UpdateClien
         clientName: client.name,
         businessName: business.name,
         companyReplyTo: business.email,
+        companyLogoUrl: business.logoUrl ?? undefined,
         isUpdate: true,
       })
     }

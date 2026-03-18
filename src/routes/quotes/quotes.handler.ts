@@ -11,6 +11,9 @@ import {
   listQuotes,
   createQuote,
   getQuote,
+  updateQuote,
+  deleteQuote,
+  setQuoteAwaitingResponse,
   sendQuote,
   sendQuoteEmail,
   approveQuote,
@@ -131,6 +134,104 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
       console.error('Error creating quote:', error)
       return c.json({ message: 'Failed to create quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  update: async (c) => {
+    const user = c.get('user')
+    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId)
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'update')))
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+
+      const { quoteId } = c.req.valid('param')
+      const body = c.req.valid('json')
+      const quote = await updateQuote(businessId, quoteId, {
+        ...(body.title != null && { title: body.title }),
+        ...(body.clientId != null && { clientId: body.clientId }),
+        ...(body.address != null && { address: body.address }),
+        ...(body.isScheduleLater !== undefined && { isScheduleLater: body.isScheduleLater }),
+        ...(body.scheduledAt !== undefined && { scheduledAt: body.scheduledAt ?? null }),
+        ...(body.startTime !== undefined && { startTime: body.startTime ?? null }),
+        ...(body.endTime !== undefined && { endTime: body.endTime ?? null }),
+        ...(body.assignedToId !== undefined && { assignedToId: body.assignedToId ?? null }),
+        ...(body.instructions !== undefined && { instructions: body.instructions ?? null }),
+        ...(body.notes !== undefined && { notes: body.notes ?? null }),
+        ...(body.quoteTermsConditions !== undefined && {
+          quoteTermsConditions: body.quoteTermsConditions ?? null,
+        }),
+        ...(body.discount !== undefined && { discount: body.discount }),
+        ...(body.discountType !== undefined && { discountType: body.discountType ?? null }),
+        ...(body.lineItems !== undefined && { lineItems: body.lineItems }),
+      })
+      return c.json(
+        { message: 'Quote updated successfully', success: true, data: quote },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError)
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      console.error('Error updating quote:', error)
+      return c.json({ message: 'Failed to update quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  delete: async (c) => {
+    const user = c.get('user')
+    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId)
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'update')))
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+
+      const { quoteId } = c.req.valid('param')
+      await deleteQuote(businessId, quoteId)
+      return c.json(
+        { message: 'Quote deleted successfully', success: true as const },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError)
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      console.error('Error deleting quote:', error)
+      return c.json({ message: 'Failed to delete quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  setAwaitingResponse: async (c) => {
+    const user = c.get('user')
+    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId)
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'update')))
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+
+      const { quoteId } = c.req.valid('param')
+      const quote = await setQuoteAwaitingResponse(businessId, quoteId)
+      return c.json(
+        { message: 'Quote set to awaiting response', success: true, data: quote },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError)
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof QuoteTerminalStateError)
+        return c.json(
+          { message: 'Quote must be in NOT_SENT status to set awaiting response' },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      console.error('Error setting quote awaiting response:', error)
+      return c.json(
+        { message: 'Failed to set quote awaiting response' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 

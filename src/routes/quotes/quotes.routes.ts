@@ -54,6 +54,26 @@ export const CreateQuoteBodySchema = z
   })
   .openapi({ description: 'Create quote — creates a WorkOrder with quoteRequired=true' })
 
+/** Update quote (work order) fields. quoteStatus is never sent here — use send/approve/reject/set-awaiting-response. */
+export const UpdateQuoteBodySchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    clientId: z.string().min(1).optional(),
+    address: z.string().min(1).optional(),
+    isScheduleLater: z.boolean().optional(),
+    scheduledAt: z.coerce.date().optional().nullable(),
+    startTime: z.string().optional().nullable(),
+    endTime: z.string().optional().nullable(),
+    assignedToId: z.string().optional().nullable(),
+    instructions: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    quoteTermsConditions: z.string().optional().nullable(),
+    discount: z.number().min(0).optional(),
+    discountType: z.enum(['PERCENTAGE', 'AMOUNT']).optional().nullable(),
+    lineItems: z.array(LineItemCreateSchema).optional(),
+  })
+  .openapi({ description: 'Update quote; status changes only via actions' })
+
 export const SendQuoteBodySchema = z
   .object({
     observations: z.string().optional().nullable(),
@@ -234,6 +254,58 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Created'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  update: createRoute({
+    method: 'patch',
+    tags: ['Quotes'],
+    path: '/{quoteId}',
+    summary: 'Update quote (work order) fields. quoteStatus is only changed via actions (send/approve/reject/set-awaiting-response).',
+    request: {
+      params: QuoteParamsSchema,
+      body: jsonContentRequired(UpdateQuoteBodySchema, 'Update quote payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Updated'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  delete: createRoute({
+    method: 'delete',
+    tags: ['Quotes'],
+    path: '/{quoteId}',
+    summary: 'Delete quote (work order with quoteRequired=true). Cascades to line items, payments, etc.',
+    request: { params: QuoteParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ message: z.string(), success: z.literal(true) })),
+        'Deleted'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  setAwaitingResponse: createRoute({
+    method: 'post',
+    tags: ['Quotes'],
+    path: '/{quoteId}/set-awaiting-response',
+    summary: 'Manually set quote status to AWAITING_RESPONSE (only when current status is NOT_SENT). Sets sent_at and expires_at from settings.',
+    request: { params: QuoteParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Status updated'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Quote not in NOT_SENT state'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

@@ -10,6 +10,8 @@ export interface BookingConfirmationEmailProps {
   timeRange: string
   assignedTeamMemberName: string
   businessName: string
+  /** Company logo URL (Company Settings). Shown in header instead of platform logo. */
+  logoUrl?: string | null
 }
 
 export const BookingConfirmationEmail = ({
@@ -19,9 +21,14 @@ export const BookingConfirmationEmail = ({
   timeRange,
   assignedTeamMemberName,
   businessName,
+  logoUrl,
 }: BookingConfirmationEmailProps) => {
   return (
-    <EmailLayout preview="Your booking has been confirmed">
+    <EmailLayout
+      preview="Your booking has been confirmed"
+      logoUrl={logoUrl}
+      headerTitle={businessName}
+    >
       <Section style={emailStyles.content}>
         <Text style={emailStyles.text}>Dear {clientName},</Text>
         <Text style={emailStyles.text}>

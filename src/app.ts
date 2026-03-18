@@ -8,6 +8,9 @@ import teamRouter from '~/routes/team'
 import router from '~/routes/test'
 import workorderRouter from '~/routes/workorders'
 import quoteRouter from '~/routes/quotes'
+import taskRouter from '~/routes/tasks'
+import scheduleRouter from '~/routes/schedule'
+import settingsRouter from '~/routes/settings'
 import type { AppOpenAPI } from '~/types'
 
 export function registerRoutes(app: AppOpenAPI) {
@@ -22,4 +25,7 @@ export function registerRoutes(app: AppOpenAPI) {
     .route('/api/roles', roleRouter)
     .route('/api/team', teamRouter)
     .route('/api/quotes', quoteRouter)
+    .route('/api/tasks', taskRouter)
+    .route('/api/schedule', scheduleRouter)
+    .route('/api/settings', settingsRouter)
 }
