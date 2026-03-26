@@ -7,7 +7,6 @@ import prisma from '~/lib/prisma'
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://api.kellu.co'
 
-/** Not Better Auth's built-in default — only used when BETTER_AUTH_SECRET is unset (insecure if public). */
 const INSECURE_FALLBACK_SECRET =
   'kellu-fallback-auth-secret-set-BETTER_AUTH_SECRET-env-min-length-48'
 
@@ -34,13 +33,17 @@ export const auth = betterAuth({
     PRODUCTION_BACKEND_ORIGIN,
   ],
   advanced: {
-    // kelluproject.kellu.co → api.kellu.co is same-site (eTLD+1: kellu.co); Lax + host-only API cookies work.
     defaultCookieAttributes: {
-      sameSite: 'lax',
-      secure: Bun.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       httpOnly: true,
+      domain: Bun.env.NODE_ENV === 'production' ? '.kellu.co' : undefined,
     },
-    useSecureCookies: Bun.env.NODE_ENV === 'production',
+    crossSubDomainCookies: {
+      enabled: Bun.env.NODE_ENV === 'production',
+      domain: Bun.env.NODE_ENV === 'production' ? '.kellu.co' : undefined,
+    },
+    useSecureCookies: true,
   },
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
@@ -58,12 +61,8 @@ export const auth = betterAuth({
   plugins: [
     customSession(async ({ user }) => {
       const dbUser = await prisma.user.findUnique({
-        where: {
-          id: user.id,
-        },
-        select: {
-          role: true,
-        },
+        where: { id: user.id },
+        select: { role: true },
       })
       return {
         user: {
@@ -72,8 +71,6 @@ export const auth = betterAuth({
         },
       }
     }),
-    openAPI({
-      theme: 'kepler',
-    }),
+    openAPI({ theme: 'kepler' }),
   ],
 })
