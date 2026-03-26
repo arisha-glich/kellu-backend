@@ -63,7 +63,13 @@
     "globals": ["Prisma", "Hono"]
   },
   "files": {
-    "includes": ["./src/**", "tests"],
-    "experimentalScannerIgnores": ["src/generated/**"]
-  }
+    "includes": ["./src/**", "!./src/generated", "tests"]
+  },
+  "overrides": [
+    {
+      "includes": ["src/generated/**"],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false }
+    }
+  ]
 }

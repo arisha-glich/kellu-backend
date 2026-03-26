@@ -2,7 +2,8 @@
   "name": "hono-backend-template",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "build": "biome lint && bun build src/index.ts --outdir=dist",
+    "build": "bun build src/index.ts --outdir=dist",
+    "build:check": "biome lint && bun build src/index.ts --outdir=dist",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
