@@ -9,7 +9,7 @@ COPY package.json ./
 COPY bun.lockb* ./
 
 # Install dependencies
-RUN bun install --frozen-lockfile --production=false
+RUN bun install --frozen-lockfile
 
 # Build stage
 FROM base AS build
