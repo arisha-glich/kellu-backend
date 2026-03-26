@@ -30,16 +30,14 @@ export const auth = betterAuth({
     PRODUCTION_BACKEND_ORIGIN,
   ],
   advanced: {
+    // No explicit Domain: *.onrender.com is on the public suffix list (cookies often rejected).
+    // Frontend proxies /api so the browser stores cookies on the app host (first-party).
     defaultCookieAttributes: {
-      sameSite: 'none',
-      secure: true,
+      sameSite: 'lax',
+      secure: Bun.env.NODE_ENV === 'production',
       httpOnly: true,
-      domain: Bun.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
     },
-    crossSubDomainCookies: {
-      enabled: Bun.env.NODE_ENV === 'production',
-      domain: Bun.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
-    },
+    useSecureCookies: Bun.env.NODE_ENV === 'production',
   },
   database: prismaAdapter(prisma, {
     provider: 'postgresql',

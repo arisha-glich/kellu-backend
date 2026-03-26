@@ -13,10 +13,13 @@ const app = createApp()
 app.use(
   '*',
   cors({
-    origin: ORIGINS,
+    origin: (origin) => {
+      if (!origin) return null
+      return ORIGINS.includes(origin) ? origin : null
+    },
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['POST', 'GET', 'PATCH', 'DELETE', 'OPTIONS'],
-    exposeHeaders: ['Content-Length'],
+    exposeHeaders: ['Content-Length', 'Set-Cookie'],
     maxAge: 600,
     credentials: true,
   })
