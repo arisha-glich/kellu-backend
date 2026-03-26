@@ -5,6 +5,7 @@ export const ORIGINS = [
   'http://localhost:4000',
   'http://localhost:5000',
   'http://localhost:8000',
+  'http://localhost:8080',
   'http://localhost:9000',
   'https://demo.kellu.com',
   'https://kellu-frontend.onrender.com',

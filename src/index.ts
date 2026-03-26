@@ -47,7 +47,7 @@ app.on(['POST', 'GET'], '/api/auth/*', c => {
 registerRoutes(app)
 configureOpenAPI(app)
 
-const port = Number(Bun.env.PORT ?? Bun.env.PORT_NO ?? 8000)
+const port = Number(Bun.env.PORT ?? Bun.env.PORT_NO ?? 8080)
 
 console.log(`Auth reference available at http://localhost:${port}/api/auth/reference`)
 console.log(`API reference available at http://localhost:${port}/reference`)

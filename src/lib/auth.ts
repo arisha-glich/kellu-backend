@@ -11,7 +11,12 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  trustedOrigins: [...ORIGINS, 'http://localhost:8000', PRODUCTION_BACKEND_ORIGIN],
+  trustedOrigins: [
+    ...ORIGINS,
+    'http://localhost:8000',
+    'http://localhost:8080',
+    PRODUCTION_BACKEND_ORIGIN,
+  ],
   advanced: {
     defaultCookieAttributes: {
       sameSite: 'none',
