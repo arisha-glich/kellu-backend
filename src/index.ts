@@ -47,10 +47,12 @@ app.on(['POST', 'GET'], '/api/auth/*', c => {
 registerRoutes(app)
 configureOpenAPI(app)
 
-console.log('Auth reference available at http://localhost:8000/api/auth/reference')
-console.log('API reference available at http://localhost:8000/reference')
+const port = Number(Bun.env.PORT ?? Bun.env.PORT_NO ?? 8000)
+
+console.log(`Auth reference available at http://localhost:${port}/api/auth/reference`)
+console.log(`API reference available at http://localhost:${port}/reference`)
 
 export default {
   fetch: app.fetch,
-  port: Bun.env.PORT_NO,
+  port,
 }
