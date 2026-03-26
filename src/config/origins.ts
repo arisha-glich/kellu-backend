@@ -9,4 +9,6 @@ export const ORIGINS = [
   'http://localhost:9000',
   'https://demo.kellu.com',
   'https://kellu-frontend.onrender.com',
+  'https://kelluproject.kellu.co',
+  'https://api.kellu.co',
 ]

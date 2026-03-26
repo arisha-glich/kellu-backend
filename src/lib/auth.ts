@@ -5,7 +5,7 @@ import { ORIGINS } from '~/config/origins'
 import { UserRole } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 
-const PRODUCTION_BACKEND_ORIGIN = 'https://kellu-backend.onrender.com'
+const PRODUCTION_BACKEND_ORIGIN = 'https://api.kellu.co'
 
 /** Not Better Auth's built-in default — only used when BETTER_AUTH_SECRET is unset (insecure if public). */
 const INSECURE_FALLBACK_SECRET =
@@ -34,8 +34,7 @@ export const auth = betterAuth({
     PRODUCTION_BACKEND_ORIGIN,
   ],
   advanced: {
-    // No explicit Domain: *.onrender.com is on the public suffix list (cookies often rejected).
-    // Frontend proxies /api so the browser stores cookies on the app host (first-party).
+    // kelluproject.kellu.co → api.kellu.co is same-site (eTLD+1: kellu.co); Lax + host-only API cookies work.
     defaultCookieAttributes: {
       sameSite: 'lax',
       secure: Bun.env.NODE_ENV === 'production',
