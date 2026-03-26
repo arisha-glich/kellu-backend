@@ -1,13 +1,12 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { UserRole } from '~/generated/prisma'
 import type { BUSINESS_ROUTES } from '~/routes/business/business.routes'
-import { isAdmin } from '~/middleware/is-admin'
 import {
   BusinessNotFoundError,
   businessService,
   EmailAlreadyUsedError,
 } from '~/services/business.service'
 import type { HandlerMapFromRoutes } from '~/types'
-import { UserRole } from '~/generated/prisma'
 
 export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
   getBusinesses: async c => {
@@ -63,9 +62,12 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     const user = c.get('user')
     console.log(user)
     if (!user || user.role !== UserRole.SUPER_ADMIN) {
-      return c.json({ message: 'only super admins can create businesses' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json(
+        { message: 'only super admins can create businesses' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
     }
-    
+
     try {
       const body = await c.req.valid('json')
       const business = await businessService.createBusiness({
@@ -122,7 +124,10 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
   updateBusinessCommission: async c => {
     const user = c.get('user')
     if (!user || user.role !== UserRole.SUPER_ADMIN) {
-      return c.json({ message: 'only super admins can update business commission' }, HttpStatusCodes.UNAUTHORIZED)
+      return c.json(
+        { message: 'only super admins can update business commission' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
     }
     try {
       const { id } = c.req.valid('param')

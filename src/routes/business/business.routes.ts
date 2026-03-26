@@ -397,7 +397,7 @@ export const BUSINESS_ROUTES = {
 
   sendEmail: createRoute({
     method: 'post',
-        tags: [TAGS.business],
+    tags: [TAGS.business],
     path: '/{id}/send-email',
     summary: 'Send email to business',
     request: {

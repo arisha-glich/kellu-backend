@@ -12,5 +12,5 @@ export const TAGS = {
   reminders: 'Reminders',
   auditLogs: 'Audit Logs',
   business: 'Business',
-
+  insights: 'Insights',
 }

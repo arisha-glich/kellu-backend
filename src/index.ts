@@ -4,6 +4,7 @@ import { auth } from '~/lib/auth'
 import configureOpenAPI from '~/lib/configure-open-api'
 import createApp from '~/lib/create-app'
 import { registerEmailListeners } from '~/services/email-helpers'
+import { ORIGINS } from './config/origins'
 
 registerEmailListeners()
 const app = createApp()
@@ -12,7 +13,7 @@ const app = createApp()
 app.use(
   '*',
   cors({
-    origin: 'http://localhost:3000',
+    origin:ORIGINS,
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['POST', 'GET', 'PATCH', 'DELETE', 'OPTIONS'],
     exposeHeaders: ['Content-Length'],

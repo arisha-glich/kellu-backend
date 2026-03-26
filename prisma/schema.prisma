@@ -206,7 +206,7 @@ model Member {
   includeInNotificationsWhenAssigned Boolean  @default(true)
   createdAt                          DateTime @default(now())
   updatedAt                          DateTime @updatedAt
-
+  calendarColor String?
   userId     String
   user       User     @relation("TeamMember", fields: [userId], references: [id], onDelete: Cascade)
   businessId String

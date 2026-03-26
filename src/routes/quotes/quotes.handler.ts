@@ -1,7 +1,3 @@
-/**
- * Quote API handlers — follows the exact same pattern as workorder.handler.ts
- */
-
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { QUOTE_ROUTES } from '~/routes/quotes/quotes.routes'
 import { getBusinessIdByUserId, BusinessNotFoundError } from '~/services/business.service'
