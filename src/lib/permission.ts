@@ -1,5 +1,5 @@
-import { createAccessControl } from "better-auth/plugins/access"
-import { defaultStatements, adminAc } from "better-auth/plugins/admin/access"
+import { createAccessControl } from 'better-auth/plugins/access'
+import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access'
 
 /**
  * Resource-action statement — defines ALL possible permissions in the system.
@@ -7,18 +7,18 @@ import { defaultStatements, adminAc } from "better-auth/plugins/admin/access"
  */
 export const statement = {
   ...defaultStatements,
-  workorders: ["create", "read", "update", "delete"],
-  quotes: ["create", "read", "update"],
-  tasks: ["create", "read", "update", "delete"],
-  expenses: ["create", "read", "update", "delete"],
-  priceList: ["create", "read", "update", "delete"],
-  invoices: ["create", "read", "update", "delete"],
-  clients: ["create", "read", "update", "delete"],
-  users: ["create", "read", "update", "delete"],
-  roles: ["create", "read", "update", "delete"],
-  settings: ["read", "update"],
-  reminderConfigs: ["create", "read", "update", "delete"],
-  reports: ["read"],
+  workorders: ['create', 'read', 'update', 'delete'],
+  quotes: ['create', 'read', 'update'],
+  tasks: ['create', 'read', 'update', 'delete'],
+  expenses: ['create', 'read', 'update', 'delete'],
+  priceList: ['create', 'read', 'update', 'delete'],
+  invoices: ['create', 'read', 'update', 'delete'],
+  clients: ['create', 'read', 'update', 'delete'],
+  users: ['create', 'read', 'update', 'delete'],
+  roles: ['create', 'read', 'update', 'delete'],
+  settings: ['read', 'update'],
+  reminderConfigs: ['create', 'read', 'update', 'delete'],
+  reports: ['read'],
 } as const
 
 export const ac = createAccessControl(statement)
@@ -29,18 +29,18 @@ export const ac = createAccessControl(statement)
  */
 export const superAdmin = ac.newRole({
   ...adminAc.statements,
-  workorders: ["create", "read", "update", "delete"],
-  quotes: ["create", "read", "update"],
-  tasks: ["create", "read", "update", "delete"],
-  expenses: ["create", "read", "update", "delete"],
-  priceList: ["create", "read", "update", "delete"],
-  invoices: ["create", "read", "update", "delete"],
-  clients: ["create", "read", "update", "delete"],
-  users: ["create", "read", "update", "delete"],
-  roles: ["create", "read", "update", "delete"],
-  settings: ["read", "update"],
-  reminderConfigs: ["create", "read", "update", "delete"],
-  reports: ["read"],
+  workorders: ['create', 'read', 'update', 'delete'],
+  quotes: ['create', 'read', 'update'],
+  tasks: ['create', 'read', 'update', 'delete'],
+  expenses: ['create', 'read', 'update', 'delete'],
+  priceList: ['create', 'read', 'update', 'delete'],
+  invoices: ['create', 'read', 'update', 'delete'],
+  clients: ['create', 'read', 'update', 'delete'],
+  users: ['create', 'read', 'update', 'delete'],
+  roles: ['create', 'read', 'update', 'delete'],
+  settings: ['read', 'update'],
+  reminderConfigs: ['create', 'read', 'update', 'delete'],
+  reports: ['read'],
 })
 
 /**
@@ -48,18 +48,18 @@ export const superAdmin = ac.newRole({
  * Cannot access platform-level admin operations.
  */
 export const businessOwner = ac.newRole({
-  workorders: ["create", "read", "update", "delete"],
-  quotes: ["create", "read", "update"],
-  tasks: ["create", "read", "update", "delete"],
-  expenses: ["create", "read", "update", "delete"],
-  priceList: ["create", "read", "update", "delete"],
-  invoices: ["create", "read", "update", "delete"],
-  clients: ["create", "read", "update", "delete"],
-  users: ["create", "read", "update", "delete"],
-  roles: ["create", "read", "update", "delete"],
-  settings: ["read", "update"],
-  reminderConfigs: ["create", "read", "update", "delete"],
-  reports: ["read"],
+  workorders: ['create', 'read', 'update', 'delete'],
+  quotes: ['create', 'read', 'update'],
+  tasks: ['create', 'read', 'update', 'delete'],
+  expenses: ['create', 'read', 'update', 'delete'],
+  priceList: ['create', 'read', 'update', 'delete'],
+  invoices: ['create', 'read', 'update', 'delete'],
+  clients: ['create', 'read', 'update', 'delete'],
+  users: ['create', 'read', 'update', 'delete'],
+  roles: ['create', 'read', 'update', 'delete'],
+  settings: ['read', 'update'],
+  reminderConfigs: ['create', 'read', 'update', 'delete'],
+  reports: ['read'],
 })
 
 /**
@@ -67,18 +67,18 @@ export const businessOwner = ac.newRole({
  * Business owner can assign this to trusted staff members.
  */
 export const admin = ac.newRole({
-  workorders: ["create", "read", "update", "delete"],
-  quotes: ["create", "read", "update"],
-  tasks: ["create", "read", "update", "delete"],
-  expenses: ["create", "read", "update", "delete"],
-  priceList: ["create", "read", "update", "delete"],
-  invoices: ["create", "read", "update", "delete"],
-  clients: ["create", "read", "update", "delete"],
-  users: ["read"],
-  roles: ["read"],
-  settings: ["read", "update"],
-  reminderConfigs: ["create", "read", "update", "delete"],
-  reports: ["read"],
+  workorders: ['create', 'read', 'update', 'delete'],
+  quotes: ['create', 'read', 'update'],
+  tasks: ['create', 'read', 'update', 'delete'],
+  expenses: ['create', 'read', 'update', 'delete'],
+  priceList: ['create', 'read', 'update', 'delete'],
+  invoices: ['create', 'read', 'update', 'delete'],
+  clients: ['create', 'read', 'update', 'delete'],
+  users: ['read'],
+  roles: ['read'],
+  settings: ['read', 'update'],
+  reminderConfigs: ['create', 'read', 'update', 'delete'],
+  reports: ['read'],
 })
 
 /**
@@ -86,12 +86,12 @@ export const admin = ac.newRole({
  * Per spec §11.2: can update job/visit status and submit job reports.
  */
 export const technician = ac.newRole({
-  workorders: ["read", "update"],   // read assigned, update status (on_my_way, in_progress, completed)
-  quotes: ["read"],                  // read assigned quotes
-  tasks: ["read", "update"],         // read assigned tasks, update status
-  expenses: ["create", "read"],      // can log expenses on their jobs
-  clients: ["read"],                 // read-only client info on assigned jobs
-  reports: ["read"],                 // can view/submit job reports
+  workorders: ['read', 'update'], // read assigned, update status (on_my_way, in_progress, completed)
+  quotes: ['read'], // read assigned quotes
+  tasks: ['read', 'update'], // read assigned tasks, update status
+  expenses: ['create', 'read'], // can log expenses on their jobs
+  clients: ['read'], // read-only client info on assigned jobs
+  reports: ['read'], // can view/submit job reports
 })
 
 /**
@@ -99,10 +99,10 @@ export const technician = ac.newRole({
  * Matches the keys passed to the admin plugin.
  */
 export const ROLES = {
-  SUPER_ADMIN: "superAdmin",
-  BUSINESS_OWNER: "businessOwner",
-  ADMIN: "admin",
-  TECHNICIAN: "technician",
+  SUPER_ADMIN: 'superAdmin',
+  BUSINESS_OWNER: 'businessOwner',
+  ADMIN: 'admin',
+  TECHNICIAN: 'technician',
 } as const
 
 export type RoleName = (typeof ROLES)[keyof typeof ROLES]

@@ -39,7 +39,9 @@ export async function getBusinessIdByUserId(userId: string): Promise<string | nu
     where: { ownerId: userId },
     select: { id: true },
   })
-  if (ownedBusiness) return ownedBusiness.id
+  if (ownedBusiness) {
+    return ownedBusiness.id
+  }
 
   // 2. Otherwise check if they are an active team member
   const membership = await prisma.member.findFirst({
@@ -131,10 +133,7 @@ export interface BusinessDetailResult {
   }
 }
 
-function resolveStatus(
-  business: { isActive: boolean },
-  owner: { banned: boolean } | null
-): string {
+function resolveStatus(business: { isActive: boolean }, owner: { banned: boolean } | null): string {
   if (owner?.banned) {
     return 'Suspended'
   }

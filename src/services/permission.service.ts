@@ -23,8 +23,12 @@ export async function hasPermission(
     where: { id: businessId },
     select: { ownerId: true },
   })
-  if (!business) return false
-  if (business.ownerId === userId) return true
+  if (!business) {
+    return false
+  }
+  if (business.ownerId === userId) {
+    return true
+  }
 
   const member = await prisma.member.findFirst({
     where: { userId, businessId, isActive: true },
@@ -38,10 +42,12 @@ export async function hasPermission(
       },
     },
   })
-  if (!member) return false
+  if (!member) {
+    return false
+  }
 
   const allowed = member.role.permissions.some(
-    (rp) => rp.permission.resource === resource && rp.permission.action === action
+    rp => rp.permission.resource === resource && rp.permission.action === action
   )
   return allowed
 }

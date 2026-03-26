@@ -35,23 +35,22 @@ const InvoiceStatusEnum = z.enum([
 ])
 const DiscountTypeEnum = z.enum(['PERCENTAGE', 'AMOUNT'])
 const ItemTypeEnum = z.enum(['SERVICE', 'PRODUCT'])
-const PaymentMethodEnum = z.enum([
-  'CASH',
-  'CARD',
-  'TRANSFER',
-  'MERCADOPAGO',
-  'TRANSBANK',
-  'OTHER',
-])
+const PaymentMethodEnum = z.enum(['CASH', 'CARD', 'TRANSFER', 'MERCADOPAGO', 'TRANSBANK', 'OTHER'])
 
 export const WorkOrderParamsSchema = z.object({
-  workOrderId: z.string().openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
+  workOrderId: z
+    .string()
+    .openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
 })
 
 /** Params for line-item sub-resource (workOrderId + lineItemId). */
 export const WorkOrderLineItemParamsSchema = z.object({
-  workOrderId: z.string().openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
-  lineItemId: z.string().openapi({ param: { name: 'lineItemId', in: 'path' }, description: 'Line item ID' }),
+  workOrderId: z
+    .string()
+    .openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
+  lineItemId: z
+    .string()
+    .openapi({ param: { name: 'lineItemId', in: 'path' }, description: 'Line item ID' }),
 })
 
 const PriceListItemSchemaInWorkorder = z.object({
@@ -70,7 +69,10 @@ export const WorkOrderListQuerySchema = z.object({
   search: z
     .string()
     .optional()
-    .openapi({ param: { name: 'search', in: 'query' }, description: 'Search by client name, title, or address' }),
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by client name, title, or address',
+    }),
   quoteStatus: QuoteStatusEnum.optional().openapi({
     param: { name: 'quoteStatus', in: 'query' },
     description: 'Filter by quote status',
@@ -87,9 +89,18 @@ export const WorkOrderListQuerySchema = z.object({
     .enum(['scheduledAt', 'createdAt', 'updatedAt', 'title'])
     .optional()
     .openapi({ param: { name: 'sortBy', in: 'query' } }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const LineItemCreateSchema = z.object({
@@ -125,7 +136,10 @@ export const AddLineItemsBodySchema = z
   .object({
     items: z.array(AddLineItemSchema).min(1).max(100),
   })
-  .openapi({ description: 'Add line items: from price list (priceListItemId + quantity) or custom (name, quantity, price)' })
+  .openapi({
+    description:
+      'Add line items: from price list (priceListItemId + quantity) or custom (name, quantity, price)',
+  })
 
 export const AddToPriceListBodySchema = z
   .object({
@@ -167,7 +181,9 @@ export const RegisterPaymentBodySchema = z
     referenceNumber: z.string().optional().nullable(),
     note: z.string().optional().nullable(),
   })
-  .openapi({ description: 'Register payment on work order (paymentDate defaults to now if omitted)' })
+  .openapi({
+    description: 'Register payment on work order (paymentDate defaults to now if omitted)',
+  })
 
 const WorkOrderListItemSchema = z.object({
   id: z.string(),
@@ -286,7 +302,7 @@ const AddWorkOrderExpenseBodySchema = z
   })
   .transform(d => ({
     ...d,
-    attachmentUrl: d.attachmentUrl === '' ? null : d.attachmentUrl ?? null,
+    attachmentUrl: d.attachmentUrl === '' ? null : (d.attachmentUrl ?? null),
   }))
   .openapi({ description: 'Expense fields for job-level expense (linked to this work order)' })
 
@@ -309,7 +325,10 @@ export const WorkOrderPriceListQuerySchema = z.object({
   search: z
     .string()
     .optional()
-    .openapi({ param: { name: 'search', in: 'query' }, description: 'Search by name or description' }),
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by name or description',
+    }),
   itemType: ItemTypeEnum.optional().openapi({
     param: { name: 'itemType', in: 'query' },
     description: 'Filter by item type (SERVICE or PRODUCT)',
@@ -318,9 +337,18 @@ export const WorkOrderPriceListQuerySchema = z.object({
     .enum(['name', 'createdAt', 'itemType'])
     .optional()
     .openapi({ param: { name: 'sortBy', in: 'query' } }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const WorkOrderPriceListResponseSchema = z.object({
@@ -396,7 +424,10 @@ export const WORK_ORDER_ROUTES = {
     summary: 'Create work order ',
     request: { body: jsonContentRequired(CreateWorkOrderBodySchema, 'Create work order payload') },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Created'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Created'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
@@ -430,7 +461,10 @@ export const WORK_ORDER_ROUTES = {
     summary: 'Delete work order',
     request: { params: WorkOrderParamsSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ deleted: z.boolean() })), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ deleted: z.boolean() })),
+        'OK'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -448,7 +482,10 @@ export const WORK_ORDER_ROUTES = {
       body: jsonContentRequired(RegisterPaymentBodySchema, 'Payment payload'),
     },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Payment registered'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Payment registered'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -463,7 +500,10 @@ export const WORK_ORDER_ROUTES = {
     summary: 'Send booking confirmation email to client (§6.2.3). Sets bookingConfirmationSentAt.',
     request: { params: WorkOrderParamsSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Booking confirmation sent'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Booking confirmation sent'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Client has no email'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
@@ -482,8 +522,14 @@ export const WORK_ORDER_ROUTES = {
       body: jsonContentRequired(AddLineItemsBodySchema, 'Items: from price list or custom'),
     },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Line items added'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or price list item not found'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Line items added'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or price list item not found'
+      ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -505,7 +551,10 @@ export const WORK_ORDER_ROUTES = {
         zodResponseSchema(AddToPriceListResponseSchema),
         'Price list item created from line item'
       ),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or line item not found'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or line item not found'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -540,7 +589,10 @@ export const WORK_ORDER_ROUTES = {
       body: jsonContentRequired(AddWorkOrderExpenseBodySchema, 'Expense payload'),
     },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(WorkOrderExpenseItemSchema), 'Expense created'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderExpenseItemSchema),
+        'Expense created'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

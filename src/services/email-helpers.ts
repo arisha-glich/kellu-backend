@@ -12,7 +12,7 @@
 import type { EmailTemplate } from '~/lib/email-render'
 import { emailSubjects, renderEmailTemplate } from '~/lib/email-render'
 import { appEventEmitter } from '~/lib/event-emitter'
-import { emailService, registerEmailListeners as baseRegister } from '~/services/email.service'
+import { registerEmailListeners as baseRegister, emailService } from '~/services/email.service'
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000'
 
@@ -48,7 +48,6 @@ export interface SendBusinessInvitationParams {
  * From: Kellu <noresponder@...>, Reply-To: equipo@kellu.co
  */
 export async function sendBusinessInvitationEmail(
-
   params: SendBusinessInvitationParams
 ): Promise<void> {
   const { to, businessName, ownerName, email, tempPassword } = params
@@ -228,23 +227,21 @@ export interface SendTeamMemberInvitationParams {
 export async function sendTeamMemberInvitationEmail(
   params: SendTeamMemberInvitationParams
 ): Promise<void> {
-  const { to, memberName, businessName, roleName, email, password, description, permissions } = params
+  const { to, memberName, businessName, roleName, email, password, description, permissions } =
+    params
   const loginUrl = getDashboardLoginUrl()
 
   const subject = (emailSubjects as Record<string, string>)['add-team-member']
-  const html = await renderEmailTemplate(
-    'add-team-member' as never,
-    {
-      memberName,
-      businessName,
-      roleName,
-      email,
-      password,
-      loginUrl,
-      description: description ?? undefined,
-      permissions: permissions ?? [],
-    }
-  )
+  const html = await renderEmailTemplate('add-team-member' as never, {
+    memberName,
+    businessName,
+    roleName,
+    email,
+    password,
+    loginUrl,
+    description: description ?? undefined,
+    permissions: permissions ?? [],
+  })
 
   await emailService.send({
     to,

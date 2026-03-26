@@ -59,6 +59,13 @@ const CurrentSettingsResponseSchema = z.object({
   settings: SettingsBlockSchema,
 })
 
+const ScheduleColorAssigneeSchema = z.object({
+  memberId: z.string(),
+  name: z.string(),
+  email: z.string().email(),
+  color: z.string().nullable(),
+})
+
 const UpdateSettingsBodySchema = z
   .object({
     fullName: z.string().optional(),
@@ -103,10 +110,7 @@ export const SETTINGS_ROUTES = {
     path: '/',
     summary: 'Get current business settings (profile + company + settings)',
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(
-        zodResponseSchema(CurrentSettingsResponseSchema),
-        'OK'
-      ),
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(CurrentSettingsResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -121,11 +125,53 @@ export const SETTINGS_ROUTES = {
     summary: 'Update current business profile and/or company settings',
     request: { body: jsonContentRequired(UpdateSettingsBodySchema, 'Update payload') },
     responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(CurrentSettingsResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getScheduleColors: createRoute({
+    method: 'get',
+    tags: ['Settings'],
+    path: '/schedule/colors',
+    summary: 'Get schedule settings calendar colors by team member',
+    responses: {
       [HttpStatusCodes.OK]: jsonContent(
-        zodResponseSchema(CurrentSettingsResponseSchema),
+        zodResponseSchema(z.array(ScheduleColorAssigneeSchema)),
         'OK'
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  updateScheduleColor: createRoute({
+    method: 'patch',
+    tags: ['Settings'],
+    path: '/schedule/colors/{memberId}',
+    summary: 'Assign calendar color to team member',
+    request: {
+      params: z.object({
+        memberId: z.string().openapi({ param: { name: 'memberId', in: 'path' } }),
+      }),
+      body: jsonContentRequired(
+        z.object({
+          color: z
+            .string()
+            .regex(/^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/, 'Color must be HEX (#RRGGBB or #RGB)')
+            .nullable(),
+        }),
+        'Color payload'
+      ),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ScheduleColorAssigneeSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or member not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

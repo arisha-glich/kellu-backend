@@ -94,12 +94,26 @@ export interface UpdateSettingsInput {
   sendTeamPhotosWithConfirmation?: boolean
 }
 
+export interface ScheduleColorAssignee {
+  memberId: string
+  name: string
+  email: string
+  color: string | null
+}
+
+export interface ScheduleColorUpdateInput {
+  memberId: string
+  color: string | null
+}
+
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({
     where: { id: businessId },
     select: { id: true },
   })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** Get current business settings (profile + company + settings) for the logged-in user's business. */
@@ -116,7 +130,9 @@ export async function getCurrentBusinessSettings(
     },
   })
 
-  if (!business) throw new BusinessNotFoundError()
+  if (!business) {
+    throw new BusinessNotFoundError()
+  }
 
   const settings = business.settings
 
@@ -144,7 +160,7 @@ export async function getCurrentBusinessSettings(
       rutNumber: business.rutNumber,
     },
     settings: {
-      replyToEmail: (settings?.replyToEmail?.trim() || business.email) || null,
+      replyToEmail: settings?.replyToEmail?.trim() || business.email || null,
       quoteExpirationDays: settings?.quoteExpirationDays ?? 7,
       invoiceDueDays: settings?.invoiceDueDays ?? 3,
       arrivalWindowHours: settings?.arrivalWindowHours ?? null,
@@ -176,13 +192,19 @@ export async function updateCurrentBusinessSettings(
     where: { id: businessId },
     include: { owner: true, settings: true },
   })
-  if (!business) throw new BusinessNotFoundError()
+  if (!business) {
+    throw new BusinessNotFoundError()
+  }
 
   // Owner (personal profile)
   if ((input.fullName !== undefined || input.email !== undefined) && business.ownerId) {
     const ownerData: Prisma.UserUpdateInput = {}
-    if (input.fullName !== undefined) ownerData.name = input.fullName
-    if (input.email !== undefined) ownerData.email = input.email
+    if (input.fullName !== undefined) {
+      ownerData.name = input.fullName
+    }
+    if (input.email !== undefined) {
+      ownerData.email = input.email
+    }
     if (Object.keys(ownerData).length > 0) {
       await prisma.user.update({
         where: { id: business.ownerId },
@@ -242,7 +264,8 @@ export async function updateCurrentBusinessSettings(
     }),
     ...(input.whatsappSender !== undefined && { whatsappSender: input.whatsappSender }),
     ...(input.defaultTaxRate !== undefined && {
-      defaultTaxRate: input.defaultTaxRate != null ? new Prisma.Decimal(input.defaultTaxRate) : null,
+      defaultTaxRate:
+        input.defaultTaxRate != null ? new Prisma.Decimal(input.defaultTaxRate) : null,
     }),
     ...(input.taxIdRut !== undefined && { rutNumber: input.taxIdRut }),
     ...(input.sendTeamPhotosWithConfirmation !== undefined && {
@@ -276,4 +299,72 @@ export async function updateCurrentBusinessSettings(
   }
 
   return result
+}
+
+/** Schedule settings: list active team members and their calendar colors. */
+export async function listScheduleColors(businessId: string): Promise<ScheduleColorAssignee[]> {
+  await ensureBusinessExists(businessId)
+
+  const members = await prisma.member.findMany({
+    where: { businessId, isActive: true },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  return members.map(m => ({
+    memberId: m.id,
+    name: m.user.name ?? 'Unknown',
+    email: m.user.email,
+    color: m.calendarColor ?? null,
+  }))
+}
+
+/** Schedule settings: assign/update one team member calendar color. */
+export async function updateScheduleColor(
+  businessId: string,
+  input: ScheduleColorUpdateInput
+): Promise<ScheduleColorAssignee> {
+  await ensureBusinessExists(businessId)
+
+  const member = await prisma.member.findFirst({
+    where: { id: input.memberId, businessId, isActive: true },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+  if (!member) {
+    throw new Error('MEMBER_NOT_FOUND')
+  }
+
+  const updated = await prisma.member.update({
+    where: { id: input.memberId },
+    data: { calendarColor: input.color },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+
+  return {
+    memberId: updated.id,
+    name: updated.user.name ?? 'Unknown',
+    email: updated.user.email,
+    color: updated.calendarColor ?? null,
+  }
 }

@@ -30,13 +30,13 @@ export interface ScheduleItem {
   isScheduleLater: boolean
   assignedToId: string | null
   assignedToName: string | null
-  assignedToColor: string | null   // for calendar block color by technician
+  assignedToColor: string | null // for calendar block color by technician
   status: string
   completedAt: Date | null
   workOrderNumber: string | null
-  workOrderId: string | null       // for tasks linked to a workorder
-  quoteStatus: string | null       // workorders only
-  invoiceStatus: string | null     // workorders only
+  workOrderId: string | null // for tasks linked to a workorder
+  quoteStatus: string | null // workorders only
+  invoiceStatus: string | null // workorders only
 }
 
 export interface TeamMemberLane {
@@ -47,11 +47,11 @@ export interface TeamMemberLane {
 }
 
 export interface DailyScheduleResult {
-  date: string                     // YYYY-MM-DD
-  unassigned: ScheduleItem[]       // no assignedToId, has scheduledAt
-  anytime: ScheduleItem[]          // isAnyTime = true
-  lanes: TeamMemberLane[]          // one lane per active team member
-  unscheduled: ScheduleItem[]      // no scheduledAt at all
+  date: string // YYYY-MM-DD
+  unassigned: ScheduleItem[] // no assignedToId, has scheduledAt
+  anytime: ScheduleItem[] // isAnyTime = true
+  lanes: TeamMemberLane[] // one lane per active team member
+  unscheduled: ScheduleItem[] // no scheduledAt at all
 }
 
 export interface ScheduleFilters {
@@ -113,7 +113,9 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
     where: { id: businessId },
     select: { id: true },
   })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 // Derives job status from schedule fields (planning statuses are automatic)
@@ -124,10 +126,16 @@ function deriveJobStatus(wo: {
 }): string {
   // Execution statuses are manual — don't override them
   const executionStatuses = ['ON_MY_WAY', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']
-  if (executionStatuses.includes(wo.jobStatus)) return wo.jobStatus
+  if (executionStatuses.includes(wo.jobStatus)) {
+    return wo.jobStatus
+  }
 
-  if (!wo.scheduledAt) return 'UNSCHEDULED'
-  if (!wo.assignedToId) return 'UNASSIGNED'
+  if (!wo.scheduledAt) {
+    return 'UNSCHEDULED'
+  }
+  if (!wo.assignedToId) {
+    return 'UNASSIGNED'
+  }
   return 'SCHEDULED'
 }
 
@@ -167,7 +175,7 @@ function mapWorkOrderToItem(wo: {
     isScheduleLater: wo.isScheduleLater,
     assignedToId: wo.assignedToId,
     assignedToName: wo.assignedTo?.user?.name ?? null,
-    assignedToColor: (wo.assignedTo as any)?.calendarColor ?? null,
+    assignedToColor: wo.assignedTo?.calendarColor ?? null,
     status: deriveJobStatus(wo),
     completedAt: wo.completedAt,
     workOrderNumber: wo.workOrderNumber,
@@ -210,7 +218,7 @@ function mapTaskToItem(t: {
     isScheduleLater: false,
     assignedToId: t.assignedToId,
     assignedToName: t.assignedTo?.user?.name ?? null,
-    assignedToColor: (t.assignedTo as any)?.calendarColor ?? null,
+    assignedToColor: t.assignedTo?.calendarColor ?? null,
     status: t.taskStatus,
     completedAt: t.completedAt,
     workOrderNumber: null,
@@ -255,7 +263,7 @@ export async function getTeamMembersForSchedule(
   return members.map(m => ({
     memberId: m.id,
     name: m.user.name ?? 'Unknown',
-    color: (m as any).calendarColor ?? null,
+    color: m.calendarColor ?? null,
   }))
 }
 
@@ -295,7 +303,7 @@ export async function getDailySchedule(
     orderBy: { createdAt: 'asc' },
   })
 
-  const memberIds = allMembers.map(m => m.id)
+  const _memberIds = allMembers.map(m => m.id)
 
   const baseWoWhere: Prisma.WorkOrderWhereInput = { businessId }
   const baseTaskWhere: Prisma.TaskWhereInput = { businessId }
@@ -321,7 +329,7 @@ export async function getDailySchedule(
     allScheduledItems.push(...wos.map(mapWorkOrderToItem))
 
     // Anytime items for this day
-    const wosAnytime = await prisma.workOrder.findMany({
+    const _wosAnytime = await prisma.workOrder.findMany({
       where: {
         ...baseWoWhere,
         isAnyTime: true,
@@ -376,21 +384,25 @@ export async function getDailySchedule(
     const memberItems = timed
       .filter(i => i.assignedToId === m.id)
       .sort((a, b) => {
-        if (!a.startTime || !b.startTime) return 0
+        if (!a.startTime || !b.startTime) {
+          return 0
+        }
         return a.startTime.localeCompare(b.startTime)
       })
 
     return {
       memberId: m.id,
       name: m.user.name ?? 'Unknown',
-      color: (m as any).calendarColor ?? null,
+      color: m.calendarColor ?? null,
       items: memberItems,
     }
   })
 
   // Sort unassigned by start time
   unassignedRow.sort((a, b) => {
-    if (!a.startTime || !b.startTime) return 0
+    if (!a.startTime || !b.startTime) {
+      return 0
+    }
     return a.startTime.localeCompare(b.startTime)
   })
 
@@ -462,9 +474,15 @@ export async function getScheduleItems(
   }
 
   scheduled.sort((a, b) => {
-    if (!a.scheduledAt && !b.scheduledAt) return 0
-    if (!a.scheduledAt) return 1
-    if (!b.scheduledAt) return -1
+    if (!a.scheduledAt && !b.scheduledAt) {
+      return 0
+    }
+    if (!a.scheduledAt) {
+      return 1
+    }
+    if (!b.scheduledAt) {
+      return -1
+    }
     return a.scheduledAt.getTime() - b.scheduledAt.getTime()
   })
 
@@ -489,7 +507,9 @@ export async function rescheduleItem(
       where: { id: itemId, businessId },
       select: { id: true, jobStatus: true },
     })
-    if (!wo) throw new Error('Work order not found')
+    if (!wo) {
+      throw new Error('Work order not found')
+    }
 
     // Cannot reschedule completed or cancelled
     if (['COMPLETED', 'CANCELLED'].includes(wo.jobStatus)) {
@@ -497,11 +517,21 @@ export async function rescheduleItem(
     }
 
     const updateData: Prisma.WorkOrderUpdateInput = {}
-    if (input.scheduledAt !== undefined) updateData.scheduledAt = input.scheduledAt
-    if (input.startTime !== undefined) updateData.startTime = input.startTime
-    if (input.endTime !== undefined) updateData.endTime = input.endTime
-    if (input.isAnyTime !== undefined) updateData.isAnyTime = input.isAnyTime
-    if (input.isScheduleLater !== undefined) updateData.isScheduleLater = input.isScheduleLater
+    if (input.scheduledAt !== undefined) {
+      updateData.scheduledAt = input.scheduledAt
+    }
+    if (input.startTime !== undefined) {
+      updateData.startTime = input.startTime
+    }
+    if (input.endTime !== undefined) {
+      updateData.endTime = input.endTime
+    }
+    if (input.isAnyTime !== undefined) {
+      updateData.isAnyTime = input.isAnyTime
+    }
+    if (input.isScheduleLater !== undefined) {
+      updateData.isScheduleLater = input.isScheduleLater
+    }
     if (input.assignedToId !== undefined) {
       updateData.assignedTo = input.assignedToId
         ? { connect: { id: input.assignedToId } }
@@ -514,23 +544,33 @@ export async function rescheduleItem(
       include: WORK_ORDER_INCLUDE,
     })
 
-    return mapWorkOrderToItem(updated as any)
+    return mapWorkOrderToItem(updated)
   } else {
     const task = await prisma.task.findFirst({
       where: { id: itemId, businessId },
       select: { id: true, taskStatus: true },
     })
-    if (!task) throw new Error('Task not found')
+    if (!task) {
+      throw new Error('Task not found')
+    }
 
     if (task.taskStatus === 'COMPLETED') {
       throw new Error('Cannot reschedule a completed task')
     }
 
     const updateData: Prisma.TaskUpdateInput = {}
-    if (input.scheduledAt !== undefined) updateData.scheduledAt = input.scheduledAt
-    if (input.startTime !== undefined) updateData.startTime = input.startTime
-    if (input.endTime !== undefined) updateData.endTime = input.endTime
-    if (input.isAnyTime !== undefined) updateData.isAnyTime = input.isAnyTime
+    if (input.scheduledAt !== undefined) {
+      updateData.scheduledAt = input.scheduledAt
+    }
+    if (input.startTime !== undefined) {
+      updateData.startTime = input.startTime
+    }
+    if (input.endTime !== undefined) {
+      updateData.endTime = input.endTime
+    }
+    if (input.isAnyTime !== undefined) {
+      updateData.isAnyTime = input.isAnyTime
+    }
     if (input.assignedToId !== undefined) {
       updateData.assignedTo = input.assignedToId
         ? { connect: { id: input.assignedToId } }
@@ -543,7 +583,7 @@ export async function rescheduleItem(
       include: TASK_INCLUDE,
     })
 
-    return mapTaskToItem(updated as any)
+    return mapTaskToItem(updated)
   }
 }
 
@@ -575,7 +615,9 @@ export async function quickCreateWorkOrder(
     where: { id: clientId, businessId },
     select: { id: true },
   })
-  if (!client) throw new Error('Client not found')
+  if (!client) {
+    throw new Error('Client not found')
+  }
 
   // Generate work order number
   const count = await prisma.workOrder.count({ where: { businessId } })
@@ -583,8 +625,11 @@ export async function quickCreateWorkOrder(
 
   // Determine initial job status from schedule fields
   let jobStatus: 'UNSCHEDULED' | 'UNASSIGNED' | 'SCHEDULED' = 'UNSCHEDULED'
-  if (scheduledAt && assignedToId) jobStatus = 'SCHEDULED'
-  else if (scheduledAt) jobStatus = 'UNASSIGNED'
+  if (scheduledAt && assignedToId) {
+    jobStatus = 'SCHEDULED'
+  } else if (scheduledAt) {
+    jobStatus = 'UNASSIGNED'
+  }
 
   const wo = await prisma.workOrder.create({
     data: {
@@ -605,7 +650,7 @@ export async function quickCreateWorkOrder(
     include: WORK_ORDER_INCLUDE,
   })
 
-  return mapWorkOrderToItem(wo as any)
+  return mapWorkOrderToItem(wo)
 }
 
 // ─────────────────────────────────────────────
@@ -613,9 +658,7 @@ export async function quickCreateWorkOrder(
 // Standalone tasks are not linked to a work order
 // ─────────────────────────────────────────────
 
-export async function quickCreateTask(
-  input: QuickCreateTaskInput
-): Promise<ScheduleItem> {
+export async function quickCreateTask(input: QuickCreateTaskInput): Promise<ScheduleItem> {
   const {
     businessId,
     clientId,
@@ -650,5 +693,5 @@ export async function quickCreateTask(
     include: TASK_INCLUDE,
   })
 
-  return mapTaskToItem(task as any)
+  return mapTaskToItem(task)
 }

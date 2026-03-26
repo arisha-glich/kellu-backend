@@ -3,8 +3,7 @@
  * CRUD for PriceListItem: item type, name, description, cost, markup%, price.
  */
 
-import type { Prisma } from '~/generated/prisma'
-import type { ItemType } from '~/generated/prisma'
+import type { ItemType, Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 
@@ -36,24 +35,21 @@ export type UpdatePriceListItemInput = Partial<CreatePriceListItemInput>
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** List price list items (Master Price List) with optional search and filter. */
 export async function listPriceListItems(businessId: string, filters: PriceListFilters = {}) {
   await ensureBusinessExists(businessId)
-  const {
-    search,
-    itemType,
-    page = 1,
-    limit = 20,
-    sortBy = 'name',
-    order = 'asc',
-  } = filters
+  const { search, itemType, page = 1, limit = 20, sortBy = 'name', order = 'asc' } = filters
   const skip = (page - 1) * limit
 
   const where: Prisma.PriceListItemWhereInput = { businessId }
-  if (itemType) where.itemType = itemType
+  if (itemType) {
+    where.itemType = itemType
+  }
   if (search?.trim()) {
     where.OR = [
       { name: { contains: search.trim(), mode: 'insensitive' } },
@@ -91,7 +87,9 @@ export async function getPriceListItemById(businessId: string, id: string) {
   const item = await prisma.priceListItem.findFirst({
     where: { id, businessId },
   })
-  if (!item) throw new PriceListItemNotFoundError()
+  if (!item) {
+    throw new PriceListItemNotFoundError()
+  }
   return item
 }
 
@@ -122,7 +120,9 @@ export async function updatePriceListItem(
     where: { id, businessId },
     select: { id: true },
   })
-  if (!existing) throw new PriceListItemNotFoundError()
+  if (!existing) {
+    throw new PriceListItemNotFoundError()
+  }
   return prisma.priceListItem.update({
     where: { id },
     data: {
@@ -143,7 +143,9 @@ export async function deletePriceListItem(businessId: string, id: string): Promi
     where: { id, businessId },
     select: { id: true },
   })
-  if (!existing) throw new PriceListItemNotFoundError()
+  if (!existing) {
+    throw new PriceListItemNotFoundError()
+  }
   await prisma.priceListItem.delete({ where: { id } })
 }
 
@@ -153,7 +155,9 @@ export async function importPriceListItems(
   items: CreatePriceListItemInput[]
 ): Promise<{ created: number; data: Awaited<ReturnType<typeof prisma.priceListItem.create>>[] }> {
   await ensureBusinessExists(businessId)
-  if (!items.length) return { created: 0, data: [] }
+  if (!items.length) {
+    return { created: 0, data: [] }
+  }
   const created = await prisma.priceListItem.createManyAndReturn({
     data: items.map(input => ({
       businessId,

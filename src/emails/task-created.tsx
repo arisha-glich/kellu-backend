@@ -36,11 +36,7 @@ export const TaskCreatedEmail = ({
   logoUrl,
 }: TaskCreatedEmailProps) => {
   return (
-    <EmailLayout
-      preview={`New task: ${title}`}
-      logoUrl={logoUrl}
-      headerTitle={businessName}
-    >
+    <EmailLayout preview={`New task: ${title}`} logoUrl={logoUrl} headerTitle={businessName}>
       <Section style={emailStyles.content}>
         <Text style={emailStyles.h1}>New task assigned</Text>
         <Text style={emailStyles.text}>Dear {clientName},</Text>

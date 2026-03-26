@@ -47,10 +47,13 @@ export const UpdateTaskBodySchema = z
   .openapi({ description: 'Update task fields' })
 
 export const TaskListQuerySchema = z.object({
-  search: z.string().optional().openapi({
-    param: { name: 'search', in: 'query' },
-    description: 'Search by title, address, instructions, or client name',
-  }),
+  search: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by title, address, instructions, or client name',
+    }),
   taskStatus: TaskStatusEnum.optional().openapi({
     param: { name: 'taskStatus', in: 'query' },
   }),
@@ -58,9 +61,18 @@ export const TaskListQuerySchema = z.object({
     .enum(['createdAt', 'updatedAt', 'title', 'scheduledAt'])
     .optional()
     .openapi({ param: { name: 'sortBy', in: 'query' } }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const ClientRefSchema = z.object({
@@ -152,10 +164,7 @@ export const TASK_ROUTES = {
     path: '/overview',
     summary: 'Get task status counts for overview block',
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(
-        zodResponseSchema(z.array(TaskOverviewItemSchema)),
-        'OK'
-      ),
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.array(TaskOverviewItemSchema)), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

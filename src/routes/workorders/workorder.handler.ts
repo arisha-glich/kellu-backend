@@ -4,28 +4,26 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { WORK_ORDER_ROUTES } from '~/routes/workorders/workorder.routes'
+import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import { createExpenseForWorkOrder, listExpensesByWorkOrder } from '~/services/expense.service'
+import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
+import { hasPermission } from '~/services/permission.service'
 import { listPriceListItems } from '~/services/price-list.service'
-import {
-  listExpensesByWorkOrder,
-  createExpenseForWorkOrder,
-} from '~/services/expense.service'
 import {
   addLineItemsToWorkOrder,
   addLineItemToPriceList,
+  ClientNotFoundError,
   createWorkOrder,
   deleteWorkOrder,
   getWorkOrderById,
   getWorkOrderOverview,
+  LineItemNotFoundError,
   listWorkOrders,
   registerPayment,
   sendBookingConfirmation,
   updateWorkOrder,
-  ClientNotFoundError,
-  LineItemNotFoundError,
   WorkOrderNotFoundError,
 } from '~/services/workorder.service'
-import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
-import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> = {
@@ -223,6 +221,27 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'WORKORDER_CREATED',
+          title: `You created a work order - ${workOrder.title}`,
+          message: `${workOrder.workOrderNumber ?? 'Work order'} - ${workOrder.client?.name ?? ''}`,
+          metadata: {
+            workOrderId: workOrder.id,
+            workOrderNumber: workOrder.workOrderNumber,
+            clientName: workOrder.client?.name ?? null,
+          },
+        })
+        await sendUserOperationEmail({
+          to: user.email,
+          userName: user.name,
+          actionTitle: 'Work order created successfully',
+          actionMessage: `Your work order "${workOrder.title}" was created successfully.`,
+        })
+      } catch (notifyError) {
+        console.error('Work order notification/email failed:', notifyError)
+      }
       return c.json(
         { message: 'Work order created successfully', success: true, data: workOrder },
         HttpStatusCodes.CREATED
@@ -399,7 +418,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       let options: { subject?: string } | undefined
       try {
         const body = (await c.req.json()) as { subject?: string } | null
-        if (body?.subject) options = { subject: body.subject }
+        if (body?.subject) {
+          options = { subject: body.subject }
+        }
       } catch {
         // No body or invalid JSON – use default subject
       }
@@ -417,7 +438,10 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       }
       if (error instanceof Error && error.message.includes('no email')) {
         return c.json(
-          { message: 'Client has no email address. Add an email to the client to send booking confirmation.' },
+          {
+            message:
+              'Client has no email address. Add an email to the client to send booking confirmation.',
+          },
           HttpStatusCodes.BAD_REQUEST
         )
       }
@@ -463,10 +487,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         return c.json({ message: 'Price list item not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error adding line items:', error)
-      return c.json(
-        { message: 'Failed to add line items' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to add line items' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
@@ -592,10 +613,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error creating work order expense:', error)
-      return c.json(
-        { message: 'Failed to create expense' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to create expense' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 }

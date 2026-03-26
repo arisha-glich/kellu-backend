@@ -6,7 +6,6 @@ import { createRoute, z } from '@hono/zod-openapi'
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
-import { getMeContext } from '~/services/me.service'
 
 const MeContextSchema = z.object({
   businessId: z.string().nullable(),
@@ -27,7 +26,8 @@ export const ME_ROUTES = {
     method: 'get',
     tags: ['Me'],
     path: '/context',
-    summary: 'Get current user context (business, member role, permissions) for role-based portal view',
+    summary:
+      'Get current user context (business, member role, permissions) for role-based portal view',
     request: {},
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(MeContextSchema), 'OK'),

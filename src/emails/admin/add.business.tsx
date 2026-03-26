@@ -19,7 +19,7 @@ const credentialBox = {
   margin: '20px 0',
 }
 
-const featureList = {
+const _featureList = {
   margin: '8px 0',
   paddingLeft: '20px',
   color: '#374151',
@@ -27,7 +27,7 @@ const featureList = {
   lineHeight: '22px',
 }
 
-const featureTitle = {
+const _featureTitle = {
   color: '#0f172a',
   fontSize: '16px',
   fontWeight: 'bold',
@@ -41,7 +41,6 @@ export const AddBusinessEmail = ({
   password,
   loginUrl,
 }: AddBusinessEmailProps) => {
-
   return (
     <EmailLayout preview={`Your ${businessName} account has been created on Kellu`}>
       <Section style={emailStyles.content}>

@@ -6,14 +6,15 @@ import { AddTeamMemberEmail } from '../emails/admin/add.team-member'
 import { BookingConfirmationEmail } from '../emails/booking-confirmation'
 import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
+import { SettingsUpdatedEmail } from '../emails/settings-updated'
+import { TaskCreatedEmail } from '../emails/task-created'
 import { WelcomeEmail } from '../emails/welcome'
 import { WorkOrderCreatedEmail } from '../emails/work-order-created'
-import { TaskCreatedEmail } from '../emails/task-created'
-import { SettingsUpdatedEmail } from '../emails/settings-updated'
 
 const APP_NAME =
   (typeof globalThis !== 'undefined' &&
-    (globalThis as unknown as { process?: { env?: Record<string, string> } }).process?.env?.APP_NAME) ??
+    (globalThis as unknown as { process?: { env?: Record<string, string> } }).process?.env
+      ?.APP_NAME) ??
   'Kelly'
 
 /** Kelly: business onboarding, auth, and client-facing (booking confirmation, work order created, etc.) */
@@ -59,7 +60,16 @@ export async function renderEmailTemplate(
       )
     }
     case 'add-team-member': {
-      const { memberName, businessName, roleName, email, password, loginUrl, description, permissions } = data
+      const {
+        memberName,
+        businessName,
+        roleName,
+        email,
+        password,
+        loginUrl,
+        description,
+        permissions,
+      } = data
       return render(
         <AddTeamMemberEmail
           memberName={memberName}
@@ -93,7 +103,15 @@ export async function renderEmailTemplate(
       )
     }
     case 'booking-confirmation': {
-      const { clientName, serviceTitle, date, timeRange, assignedTeamMemberName, businessName, logoUrl } = data
+      const {
+        clientName,
+        serviceTitle,
+        date,
+        timeRange,
+        assignedTeamMemberName,
+        businessName,
+        logoUrl,
+      } = data
       return render(
         <BookingConfirmationEmail
           clientName={clientName}

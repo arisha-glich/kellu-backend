@@ -4,17 +4,17 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { TEAM_ROUTES } from '~/routes/team/team.routes'
+import { getBusinessIdByUserId } from '~/services/business.service'
 import {
   addMember,
+  EmailAlreadyUsedError,
   getMemberById,
   listMembers,
-  removeMember,
-  updateMember,
-  EmailAlreadyUsedError,
   MemberNotFoundError,
   RoleNotFoundError,
+  removeMember,
+  updateMember,
 } from '~/services/team.service'
-import { getBusinessIdByUserId } from '~/services/business.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
@@ -24,7 +24,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
     try {
-      const businessId = await getBusinessIdByUserId(user.id)  
+      const businessId = await getBusinessIdByUserId(user.id)
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
@@ -72,10 +72,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error fetching member:', error)
-      return c.json(
-        { message: 'Failed to retrieve member' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to retrieve member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
@@ -119,10 +116,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error adding team member:', error)
-      return c.json(
-        { message: 'Failed to add team member' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to add team member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 

@@ -3,6 +3,7 @@ import clientRouter from '~/routes/clients'
 import expenseRouter from '~/routes/expenses'
 import insightsRouter from '~/routes/insights'
 import invoiceRouter from '~/routes/invoices'
+import notificationRouter from '~/routes/notifications'
 import priceListRouter from '~/routes/pricelistitems'
 import quoteRouter from '~/routes/quotes'
 import roleRouter from '~/routes/roles'
@@ -22,6 +23,7 @@ export function registerRoutes(app: AppOpenAPI) {
     .route('/api/clients', clientRouter)
     .route('/api/workorders', workorderRouter)
     .route('/api/invoices', invoiceRouter)
+    .route('/api/notifications', notificationRouter)
     .route('/api/price-list', priceListRouter)
     .route('/api/expenses', expenseRouter)
     .route('/api/roles', roleRouter)

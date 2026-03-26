@@ -5,21 +5,22 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { INVOICE_ROUTES } from '~/routes/invoices/invoice.routes'
-import {
-  listInvoices,
-  getInvoiceOverview,
-  getInvoiceById,
-  createInvoice,
-  sendInvoice,
-  InvoiceNotFoundError,
-  ClientNotFoundError,
-} from '~/services/invoice.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import {
+  ClientNotFoundError,
+  createInvoice,
+  getInvoiceById,
+  getInvoiceOverview,
+  InvoiceNotFoundError,
+  listInvoices,
+  sendInvoice,
+} from '~/services/invoice.service'
+import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
-  list: async (c) => {
+  list: async c => {
     const user = c.get('user')
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
@@ -62,7 +63,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
     }
   },
 
-  overview: async (c) => {
+  overview: async c => {
     const user = c.get('user')
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
@@ -95,7 +96,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
     }
   },
 
-  getById: async (c) => {
+  getById: async c => {
     const user = c.get('user')
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
@@ -132,7 +133,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
     }
   },
 
-  create: async (c) => {
+  create: async c => {
     const user = c.get('user')
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
@@ -157,6 +158,28 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         workOrderId: body.workOrderId,
         lineItems: body.lineItems,
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'INVOICE_CREATED',
+          title: `You created an invoice - ${invoice.total != null ? `$${Number(invoice.total).toFixed(2)}` : ''}`,
+          message: `${invoice.invoiceNumber ?? 'Invoice'} - ${invoice.title}`,
+          metadata: {
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            title: invoice.title,
+            total: invoice.total != null ? Number(invoice.total) : null,
+          },
+        })
+        await sendUserOperationEmail({
+          to: user.email,
+          userName: user.name,
+          actionTitle: 'Invoice created successfully',
+          actionMessage: `Your invoice "${invoice.title}" was created successfully.`,
+        })
+      } catch (notifyError) {
+        console.error('Invoice create notification/email failed:', notifyError)
+      }
       return c.json(
         { message: 'Invoice created successfully', success: true, data: invoice },
         HttpStatusCodes.CREATED
@@ -169,14 +192,11 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error creating invoice:', error)
-      return c.json(
-        { message: 'Failed to create invoice' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to create invoice' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  sendInvoice: async (c) => {
+  sendInvoice: async c => {
     const user = c.get('user')
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
@@ -194,6 +214,29 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
       }
       const { invoiceId } = c.req.valid('param')
       const invoice = await sendInvoice(businessId, invoiceId)
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'INVOICE_SENT',
+          title: `You sent an invoice - ${invoice.total != null ? `$${Number(invoice.total).toFixed(2)}` : ''}`,
+          message: `${invoice.invoiceNumber ?? 'Invoice'} - ${invoice.title}`,
+          metadata: {
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            title: invoice.title,
+            total: invoice.total != null ? Number(invoice.total) : null,
+            sentAt: invoice.sentAt ?? null,
+          },
+        })
+        await sendUserOperationEmail({
+          to: user.email,
+          userName: user.name,
+          actionTitle: 'Invoice sent successfully',
+          actionMessage: `Your invoice "${invoice.title}" was sent successfully.`,
+        })
+      } catch (notifyError) {
+        console.error('Invoice send notification/email failed:', notifyError)
+      }
       return c.json(
         { message: 'Invoice sent successfully', success: true, data: invoice },
         HttpStatusCodes.OK
@@ -209,10 +252,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
       }
       console.error('Error sending invoice:', error)
-      return c.json(
-        { message: 'Failed to send invoice' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to send invoice' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 }

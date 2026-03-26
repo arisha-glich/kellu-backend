@@ -13,7 +13,7 @@ const app = createApp()
 app.use(
   '*',
   cors({
-    origin:ORIGINS,
+    origin: ORIGINS,
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['POST', 'GET', 'PATCH', 'DELETE', 'OPTIONS'],
     exposeHeaders: ['Content-Length'],
@@ -33,7 +33,8 @@ app.use('*', async (c, next) => {
   c.set('user', session.user)
   c.set(
     'session',
-    (session as { user: typeof session.user; session?: typeof auth.$Infer.Session.session }).session ?? null
+    (session as { user: typeof session.user; session?: typeof auth.$Infer.Session.session })
+      .session ?? null
   )
   return next()
 })

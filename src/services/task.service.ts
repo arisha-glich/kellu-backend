@@ -3,8 +3,7 @@
  * CRUD + status transitions: SCHEDULED → IN_PROGRESS → COMPLETED.
  */
 
-import type { Prisma } from '~/generated/prisma'
-import type { TaskStatus } from '~/generated/prisma'
+import type { Prisma, TaskStatus } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { sendTaskCreatedEmail } from '~/services/email-helpers'
@@ -55,7 +54,9 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
     where: { id: businessId },
     select: { id: true },
   })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 async function getTaskById(businessId: string, taskId: string) {
@@ -73,7 +74,9 @@ async function getTaskById(businessId: string, taskId: string) {
       },
     },
   })
-  if (!task) throw new TaskNotFoundError()
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
   return task
 }
 
@@ -95,7 +98,9 @@ export async function listTasks(businessId: string, filters: TaskListFilters = {
 
   const where: Prisma.TaskWhereInput = { businessId }
 
-  if (taskStatus) where.taskStatus = taskStatus
+  if (taskStatus) {
+    where.taskStatus = taskStatus
+  }
 
   if (search?.trim()) {
     where.OR = [
@@ -152,7 +157,9 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       where: { id: input.clientId, businessId },
       select: { id: true },
     })
-    if (!client) throw new Error('CLIENT_NOT_FOUND')
+    if (!client) {
+      throw new Error('CLIENT_NOT_FOUND')
+    }
   }
 
   if (input.workOrderId) {
@@ -160,7 +167,9 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       where: { id: input.workOrderId, businessId },
       select: { id: true },
     })
-    if (!wo) throw new Error('WORK_ORDER_NOT_FOUND')
+    if (!wo) {
+      throw new Error('WORK_ORDER_NOT_FOUND')
+    }
   }
 
   if (input.assignedToId) {
@@ -168,7 +177,9 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       where: { id: input.assignedToId, businessId },
       select: { id: true },
     })
-    if (!member) throw new Error('MEMBER_NOT_FOUND')
+    if (!member) {
+      throw new Error('MEMBER_NOT_FOUND')
+    }
   }
 
   const task = await prisma.task.create({
@@ -202,7 +213,7 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       })
       if (taskForEmail?.client?.email && taskForEmail.business) {
         const companyReplyTo =
-          (taskForEmail.business.settings?.replyToEmail?.trim() || taskForEmail.business.email)
+          taskForEmail.business.settings?.replyToEmail?.trim() || taskForEmail.business.email
         const assignedName = taskForEmail.assignedTo?.user?.name ?? 'Our team'
         const dateStr = taskForEmail.scheduledAt
           ? taskForEmail.scheduledAt.toLocaleDateString('en-US', {
@@ -211,12 +222,11 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
               day: 'numeric',
             })
           : 'To be confirmed'
-        const timeRangeStr =
-          taskForEmail.isAnyTime
-            ? 'Anytime'
-            : taskForEmail.startTime && taskForEmail.endTime
-              ? `${taskForEmail.startTime} - ${taskForEmail.endTime}`
-              : taskForEmail.startTime ?? taskForEmail.endTime ?? 'To be confirmed'
+        const timeRangeStr = taskForEmail.isAnyTime
+          ? 'Anytime'
+          : taskForEmail.startTime && taskForEmail.endTime
+            ? `${taskForEmail.startTime} - ${taskForEmail.endTime}`
+            : (taskForEmail.startTime ?? taskForEmail.endTime ?? 'To be confirmed')
         sendTaskCreatedEmail({
           to: taskForEmail.client.email,
           clientName: taskForEmail.client.name,
@@ -242,18 +252,16 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
 /**
  * Update task fields. Status is only changed via start/complete actions.
  */
-export async function updateTask(
-  businessId: string,
-  taskId: string,
-  input: UpdateTaskInput
-) {
+export async function updateTask(businessId: string, taskId: string, input: UpdateTaskInput) {
   await ensureBusinessExists(businessId)
 
   const existing = await prisma.task.findFirst({
     where: { id: taskId, businessId },
     select: { id: true },
   })
-  if (!existing) throw new TaskNotFoundError()
+  if (!existing) {
+    throw new TaskNotFoundError()
+  }
 
   if (input.clientId != null) {
     if (input.clientId) {
@@ -261,7 +269,9 @@ export async function updateTask(
         where: { id: input.clientId, businessId },
         select: { id: true },
       })
-      if (!client) throw new Error('CLIENT_NOT_FOUND')
+      if (!client) {
+        throw new Error('CLIENT_NOT_FOUND')
+      }
     }
   }
 
@@ -270,7 +280,9 @@ export async function updateTask(
       where: { id: input.workOrderId, businessId },
       select: { id: true },
     })
-    if (!wo) throw new Error('WORK_ORDER_NOT_FOUND')
+    if (!wo) {
+      throw new Error('WORK_ORDER_NOT_FOUND')
+    }
   }
 
   if (input.assignedToId != null && input.assignedToId) {
@@ -278,7 +290,9 @@ export async function updateTask(
       where: { id: input.assignedToId, businessId },
       select: { id: true },
     })
-    if (!member) throw new Error('MEMBER_NOT_FOUND')
+    if (!member) {
+      throw new Error('MEMBER_NOT_FOUND')
+    }
   }
 
   await prisma.task.update({
@@ -310,7 +324,9 @@ export async function deleteTask(businessId: string, taskId: string) {
     where: { id: taskId, businessId },
     select: { id: true },
   })
-  if (!existing) throw new TaskNotFoundError()
+  if (!existing) {
+    throw new TaskNotFoundError()
+  }
 
   await prisma.task.delete({ where: { id: taskId } })
 }
@@ -325,7 +341,9 @@ export async function startTask(businessId: string, taskId: string) {
     where: { id: taskId, businessId },
     select: { id: true, taskStatus: true },
   })
-  if (!task) throw new TaskNotFoundError()
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
   if (task.taskStatus === 'COMPLETED') {
     throw new Error('TASK_ALREADY_COMPLETED')
   }
@@ -352,7 +370,9 @@ export async function completeTask(businessId: string, taskId: string) {
     where: { id: taskId, businessId },
     select: { id: true, taskStatus: true },
   })
-  if (!task) throw new TaskNotFoundError()
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
   if (task.taskStatus === 'COMPLETED') {
     throw new Error('TASK_ALREADY_COMPLETED')
   }
@@ -382,5 +402,5 @@ export async function getTaskOverview(businessId: string) {
     _count: { id: true },
   })
 
-  return counts.map((c) => ({ status: c.taskStatus, count: c._count.id }))
+  return counts.map(c => ({ status: c.taskStatus, count: c._count.id }))
 }

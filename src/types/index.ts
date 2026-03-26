@@ -1,12 +1,12 @@
 /* eslint-disable ts/no-explicit-any */
 import type { OpenAPIHono, RouteConfig, RouteHandler, z } from '@hono/zod-openapi'
 import type { Env } from 'hono'
-import type { auth } from '~/lib/auth'
 import type { UserRole } from '~/generated/prisma'
+import type { auth } from '~/lib/auth'
 
 export interface AppBindings {
   Variables: {
-    user: typeof auth.$Infer.Session.user & {role: UserRole}| null
+    user: (typeof auth.$Infer.Session.user & { role: UserRole }) | null
     session: typeof auth.$Infer.Session.session | null
   }
 }

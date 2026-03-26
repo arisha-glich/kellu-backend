@@ -4,8 +4,8 @@
  * financials (subtotal, discount, tax, total, cost, amountPaid, balance), job status derivation.
  */
 
-import { Prisma } from '~/generated/prisma'
 import type { DiscountType, InvoiceStatus, JobStatus, QuoteStatus } from '~/generated/prisma'
+import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { sendBookingConfirmationEmail, sendWorkOrderCreatedEmail } from '~/services/email-helpers'
@@ -70,9 +70,15 @@ export interface CreateWorkOrderInput {
 export type UpdateWorkOrderInput = Partial<CreateWorkOrderInput>
 
 function toNum(d: unknown): number {
-  if (d == null) return 0
-  if (typeof d === 'number' && !Number.isNaN(d)) return d
-  if (typeof d === 'string') return Number.parseFloat(d) || 0
+  if (d == null) {
+    return 0
+  }
+  if (typeof d === 'number' && !Number.isNaN(d)) {
+    return d
+  }
+  if (typeof d === 'string') {
+    return Number.parseFloat(d) || 0
+  }
   // Handle Prisma Decimal objects
   if (typeof d === 'object' && d !== null && 'toNumber' in d) {
     return (d as { toNumber: () => number }).toNumber()
@@ -87,8 +93,12 @@ function deriveJobStatus(data: {
   assignedToId?: string | null
 }): JobStatus {
   const hasSchedule = !!(data.scheduledAt ?? data.startTime)
-  if (!hasSchedule) return 'UNSCHEDULED'
-  if (!data.assignedToId) return 'UNASSIGNED'
+  if (!hasSchedule) {
+    return 'UNSCHEDULED'
+  }
+  if (!data.assignedToId) {
+    return 'UNASSIGNED'
+  }
   return 'SCHEDULED'
 }
 
@@ -96,7 +106,10 @@ function deriveJobStatus(data: {
 async function recalculateFinancials(
   workOrderId: string,
   taxPercent: number = 0,
-  tx?: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>
+  tx?: Omit<
+    typeof prisma,
+    '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+  >
 ): Promise<void> {
   const db = tx ?? prisma
 
@@ -161,12 +174,14 @@ async function recalculateFinancials(
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** Get default tax percent from business settings (or 0). */
 async function getDefaultTaxPercent(businessId: string): Promise<number> {
-  const s = await prisma.businessSettings.findUnique({
+  const _s = await prisma.businessSettings.findUnique({
     where: { businessId },
     select: { id: true },
   })
@@ -190,9 +205,15 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
   const skip = (page - 1) * limit
 
   const searchWhere: Prisma.WorkOrderWhereInput = { businessId }
-  if (quoteStatus) searchWhere.quoteStatus = quoteStatus
-  if (jobStatus) searchWhere.jobStatus = jobStatus
-  if (invoiceStatus) searchWhere.invoiceStatus = invoiceStatus
+  if (quoteStatus) {
+    searchWhere.quoteStatus = quoteStatus
+  }
+  if (jobStatus) {
+    searchWhere.jobStatus = jobStatus
+  }
+  if (invoiceStatus) {
+    searchWhere.invoiceStatus = invoiceStatus
+  }
 
   if (search?.trim()) {
     searchWhere.OR = [
@@ -202,7 +223,8 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
     ]
   }
 
-  const orderByField = sortBy === 'scheduledAt' ? 'scheduledAt' : sortBy === 'title' ? 'title' : sortBy
+  const orderByField =
+    sortBy === 'scheduledAt' ? 'scheduledAt' : sortBy === 'title' ? 'title' : sortBy
   const orderBy = { [orderByField]: order }
 
   const [items, total] = await Promise.all([
@@ -274,7 +296,9 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
       attachments: true,
     },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
   return wo
 }
 
@@ -285,7 +309,9 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
     orderBy: { createdAt: 'desc' },
     select: { workOrderNumber: true },
   })
-  if (!last?.workOrderNumber) return '1'
+  if (!last?.workOrderNumber) {
+    return '1'
+  }
   const num = Number.parseInt(last.workOrderNumber.replace(/^#/, ''), 10)
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
@@ -297,7 +323,9 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
     where: { id: input.clientId, businessId },
     select: { id: true },
   })
-  if (!client) throw new ClientNotFoundError()
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
 
   const jobStatus = deriveJobStatus({
     scheduledAt: input.scheduledAt,
@@ -307,7 +335,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   const workOrderNumber = `#${await nextWorkOrderNumber(businessId)}`
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
-  const wo = await prisma.$transaction(async (tx) => {
+  const wo = await prisma.$transaction(async tx => {
     const created = await tx.workOrder.create({
       data: {
         businessId,
@@ -335,7 +363,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
 
     if (input.lineItems?.length) {
       await tx.lineItem.createMany({
-        data: input.lineItems.map((li) => ({
+        data: input.lineItems.map(li => ({
           workOrderId: created.id,
           name: li.name,
           itemType: li.itemType ?? 'SERVICE',
@@ -367,7 +395,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       })
       if (woForEmail?.client?.email && woForEmail.business) {
         const companyReplyTo =
-          (woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email)
+          woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
         const assignedName = woForEmail.assignedTo?.user?.name ?? 'Our team'
         const dateStr = formatBookingDate(woForEmail.scheduledAt)
         const timeRangeStr = formatTimeRange(
@@ -377,7 +405,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         )
         const lineItemsSummary = woForEmail.lineItems
           .map(
-            (li) =>
+            li =>
               `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
           )
           .join('\n')
@@ -418,10 +446,14 @@ export async function updateWorkOrder(
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!existing) throw new WorkOrderNotFoundError()
+  if (!existing) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const jobStatus =
-    input.scheduledAt !== undefined || input.startTime !== undefined || input.assignedToId !== undefined
+    input.scheduledAt !== undefined ||
+    input.startTime !== undefined ||
+    input.assignedToId !== undefined
       ? deriveJobStatus({
           scheduledAt: input.scheduledAt,
           startTime: input.startTime,
@@ -431,7 +463,7 @@ export async function updateWorkOrder(
 
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
       ...(input.title != null && { title: input.title }),
       ...(input.clientId != null && { clientId: input.clientId }),
@@ -444,8 +476,12 @@ export async function updateWorkOrder(
       ...(input.endTime !== undefined && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
       ...(input.quoteRequired !== undefined && { quoteRequired: input.quoteRequired }),
-      ...(input.quoteTermsConditions !== undefined && { quoteTermsConditions: input.quoteTermsConditions }),
-      ...(input.invoiceTermsConditions !== undefined && { invoiceTermsConditions: input.invoiceTermsConditions }),
+      ...(input.quoteTermsConditions !== undefined && {
+        quoteTermsConditions: input.quoteTermsConditions,
+      }),
+      ...(input.invoiceTermsConditions !== undefined && {
+        invoiceTermsConditions: input.invoiceTermsConditions,
+      }),
       ...(input.discount !== undefined && { discount: input.discount }),
       ...(input.discountType !== undefined && { discountType: input.discountType }),
       ...(jobStatus != null && { jobStatus }),
@@ -457,7 +493,7 @@ export async function updateWorkOrder(
       await tx.lineItem.deleteMany({ where: { workOrderId } })
       if (input.lineItems.length > 0) {
         await tx.lineItem.createMany({
-          data: input.lineItems.map((li) => ({
+          data: input.lineItems.map(li => ({
             workOrderId,
             name: li.name,
             itemType: li.itemType ?? 'SERVICE',
@@ -479,7 +515,9 @@ export async function updateWorkOrder(
 
 /** Format date for email (e.g. "January 15, 2024"). */
 function formatBookingDate(d: Date | null): string {
-  if (!d) return 'To be confirmed'
+  if (!d) {
+    return 'To be confirmed'
+  }
   return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -491,7 +529,9 @@ function formatBookingDate(d: Date | null): string {
  * Normalize a time value for display as "HH:mm". Handles ISO datetime strings and plain "09:00" strings.
  */
 function normalizeTimeDisplay(value: string | null | undefined): string | null {
-  if (value == null || String(value).trim() === '') return null
+  if (value == null || String(value).trim() === '') {
+    return null
+  }
   const s = String(value).trim()
   const date = new Date(s)
   if (!Number.isNaN(date.getTime()) && s.includes('T')) {
@@ -501,7 +541,9 @@ function normalizeTimeDisplay(value: string | null | undefined): string | null {
       hour12: false,
     })
   }
-  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(s)) return s.length === 5 ? s : s.slice(0, 5)
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(s)) {
+    return s.length === 5 ? s : s.slice(0, 5)
+  }
   return s
 }
 
@@ -513,10 +555,18 @@ function formatTimeRange(
 ): string {
   const startNorm = normalizeTimeDisplay(start)
   const endNorm = normalizeTimeDisplay(end)
-  if (startNorm && endNorm) return `${startNorm} - ${endNorm}`
-  if (startNorm || endNorm) return startNorm ?? endNorm ?? 'To be confirmed'
+  if (startNorm && endNorm) {
+    return `${startNorm} - ${endNorm}`
+  }
+  if (startNorm || endNorm) {
+    return startNorm ?? endNorm ?? 'To be confirmed'
+  }
   if (scheduledAt) {
-    const t = scheduledAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const t = scheduledAt.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
     return t
   }
   return 'To be confirmed'
@@ -541,15 +591,18 @@ export async function sendBookingConfirmation(
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const clientEmail = wo.client.email?.trim()
   if (!clientEmail) {
-    throw new Error('Client has no email address. Add an email to the client to send booking confirmation.')
+    throw new Error(
+      'Client has no email address. Add an email to the client to send booking confirmation.'
+    )
   }
 
-  const companyReplyTo =
-    (wo.business.settings?.replyToEmail?.trim() || wo.business.email)
+  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const assignedTeamMemberName = wo.assignedTo?.user?.name ?? 'Our team'
   const dateStr = formatBookingDate(wo.scheduledAt)
   const timeRangeStr = formatTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
@@ -618,15 +671,19 @@ export async function addLineItemsToWorkOrder(
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     for (const item of items) {
       if (isFromPriceList(item)) {
         const pl = await tx.priceListItem.findFirst({
           where: { id: item.priceListItemId, businessId },
         })
-        if (!pl) throw new Error('PRICE_LIST_ITEM_NOT_FOUND')
+        if (!pl) {
+          throw new Error('PRICE_LIST_ITEM_NOT_FOUND')
+        }
         await tx.lineItem.create({
           data: {
             workOrderId,
@@ -673,11 +730,15 @@ export async function addLineItemToPriceList(
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
   const lineItem = await prisma.lineItem.findFirst({
     where: { id: lineItemId, workOrderId },
   })
-  if (!lineItem) throw new LineItemNotFoundError()
+  if (!lineItem) {
+    throw new LineItemNotFoundError()
+  }
 
   const priceListItem = await prisma.priceListItem.create({
     data: {
@@ -706,7 +767,9 @@ export async function deleteWorkOrder(businessId: string, workOrderId: string): 
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
   await prisma.workOrder.delete({ where: { id: workOrderId } })
 }
 
@@ -728,15 +791,19 @@ export async function registerPayment(
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     await tx.payment.create({
       data: {
         workOrderId,
         amount: data.amount,
         paymentDate: data.paymentDate ?? new Date(),
-        paymentMethod: data.paymentMethod as Parameters<typeof prisma.payment.create>[0]['data']['paymentMethod'],
+        paymentMethod: data.paymentMethod as Parameters<
+          typeof prisma.payment.create
+        >[0]['data']['paymentMethod'],
         referenceNumber: data.referenceNumber ?? null,
         note: data.note ?? null,
       },

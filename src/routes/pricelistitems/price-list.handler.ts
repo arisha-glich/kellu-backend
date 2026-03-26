@@ -4,18 +4,18 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { PRICE_LIST_ROUTES } from '~/routes/pricelistitems/price-list.routes'
+import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import { hasPermission } from '~/services/permission.service'
 import {
   createPriceListItem,
   deletePriceListItem,
   getPriceListItemById,
   importPriceListItems,
   listPriceListItems,
-  updatePriceListItem,
   PriceListItemNotFoundError,
+  updatePriceListItem,
 } from '~/services/price-list.service'
-import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import type { HandlerMapFromRoutes } from '~/types'
-import { hasPermission } from '~/services/permission.service'
 export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> = {
   list: async c => {
     const user = c.get('user')
@@ -27,7 +27,10 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
       return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
     }
     if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'read'))) {
-      return c.json({ message: 'You do not have permission to list price list items' }, HttpStatusCodes.FORBIDDEN)
+      return c.json(
+        { message: 'You do not have permission to list price list items' },
+        HttpStatusCodes.FORBIDDEN
+      )
     }
     try {
       const query = c.req.valid('query')
@@ -67,9 +70,12 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
-      const { id } = c.req.valid('param') 
+      const { id } = c.req.valid('param')
       if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'read'))) {
-        return c.json({ message: 'You do not have permission to view this price list item' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to view this price list item' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const item = await getPriceListItemById(businessId, id)
       return c.json(
@@ -102,9 +108,12 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'create'))) {
-        return c.json({ message: 'You do not have permission to create price list items' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to create price list items' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
-      const body = await c.req.valid('json')  
+      const body = await c.req.valid('json')
       const item = await createPriceListItem(businessId, {
         itemType: body.itemType,
         name: body.name,
@@ -140,7 +149,10 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'update'))) {
-        return c.json({ message: 'You do not have permission to update price list items' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to update price list items' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { id } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -181,9 +193,12 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
-      const { id } = c.req.valid('param') 
+      const { id } = c.req.valid('param')
       if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'delete'))) {
-        return c.json({ message: 'You do not have permission to delete price list items' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to delete price list items' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       await deletePriceListItem(businessId, id)
       return c.json(
@@ -216,9 +231,12 @@ export const PRICE_LIST_HANDLER: HandlerMapFromRoutes<typeof PRICE_LIST_ROUTES> 
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'pricelistitems', 'create'))) {
-        return c.json({ message: 'You do not have permission to import price list items' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to import price list items' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
-      const body = await c.req.valid('json')  
+      const body = await c.req.valid('json')
       const result = await importPriceListItems(businessId, body.items)
       return c.json(
         {

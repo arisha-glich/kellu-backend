@@ -5,29 +5,32 @@
  * All quote status transitions live here (send, approve, reject, convert, expire).
  */
 
-import { Prisma } from '~/generated/prisma'
 import type { JobStatus, QuoteStatus } from '~/generated/prisma'
+import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
-import {
-  WorkOrderNotFoundError,
-  ClientNotFoundError,
-} from '~/services/workorder.service'
-import { clientToCustomerFrom } from '~/services/email-helpers'
 import { emailService } from '~/services/email.service'
+import { clientToCustomerFrom } from '~/services/email-helpers'
+import { ClientNotFoundError, WorkOrderNotFoundError } from '~/services/workorder.service'
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
 export class QuoteAlreadySentError extends Error {
-  constructor() { super('QUOTE_ALREADY_SENT') }
+  constructor() {
+    super('QUOTE_ALREADY_SENT')
+  }
 }
 
 export class QuoteTerminalStateError extends Error {
-  constructor() { super('QUOTE_IN_TERMINAL_STATE') }
+  constructor() {
+    super('QUOTE_IN_TERMINAL_STATE')
+  }
 }
 
 export class QuoteNoLineItemsError extends Error {
-  constructor() { super('QUOTE_NO_LINE_ITEMS') }
+  constructor() {
+    super('QUOTE_NO_LINE_ITEMS')
+  }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -93,7 +96,9 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
     where: { id: businessId },
     select: { id: true },
   })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** Generate next work order number (shared with workorder service). */
@@ -103,7 +108,9 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
     orderBy: { createdAt: 'desc' },
     select: { workOrderNumber: true },
   })
-  if (!last?.workOrderNumber) return '1'
+  if (!last?.workOrderNumber) {
+    return '1'
+  }
   const num = Number.parseInt(last.workOrderNumber.replace(/^#/, ''), 10)
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
@@ -115,8 +122,12 @@ function deriveJobStatus(data: {
   assignedToId?: string | null
 }): JobStatus {
   const hasSchedule = !!(data.scheduledAt ?? data.startTime)
-  if (!hasSchedule) return 'UNSCHEDULED'
-  if (!data.assignedToId) return 'UNASSIGNED'
+  if (!hasSchedule) {
+    return 'UNSCHEDULED'
+  }
+  if (!data.assignedToId) {
+    return 'UNASSIGNED'
+  }
   return 'SCHEDULED'
 }
 
@@ -136,21 +147,28 @@ async function getQuoteById(businessId: string, workOrderId: string) {
       expenses: true,
     },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
   return wo
 }
 
 /** Recalculate quote financials from line items. */
 async function recalculateQuoteFinancials(
   workOrderId: string,
-  tx?: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>
+  tx?: Omit<
+    typeof prisma,
+    '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+  >
 ): Promise<void> {
   const db = tx ?? prisma
   const wo = await db.workOrder.findUnique({
     where: { id: workOrderId },
     select: { discount: true, discountType: true },
   })
-  if (!wo) return
+  if (!wo) {
+    return
+  }
 
   const lineItems = await db.lineItem.findMany({
     where: { workOrderId },
@@ -158,9 +176,15 @@ async function recalculateQuoteFinancials(
   })
 
   function toNum(d: unknown): number {
-    if (d == null) return 0
-    if (typeof d === 'number') return d
-    if (typeof d === 'string') return Number.parseFloat(d) || 0
+    if (d == null) {
+      return 0
+    }
+    if (typeof d === 'number') {
+      return d
+    }
+    if (typeof d === 'string') {
+      return Number.parseFloat(d) || 0
+    }
     if (typeof d === 'object' && 'toNumber' in (d as object)) {
       return (d as { toNumber: () => number }).toNumber()
     }
@@ -217,7 +241,9 @@ export async function listQuotes(businessId: string, filters: QuoteListFilters =
     quoteRequired: true, // ← the only difference from listWorkOrders
   }
 
-  if (quoteStatus) where.quoteStatus = quoteStatus
+  if (quoteStatus) {
+    where.quoteStatus = quoteStatus
+  }
 
   if (search?.trim()) {
     where.OR = [
@@ -267,7 +293,9 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
     where: { id: input.clientId, businessId },
     select: { id: true },
   })
-  if (!client) throw new ClientNotFoundError()
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
 
   const workOrderNumber = `#${await nextWorkOrderNumber(businessId)}`
 
@@ -277,7 +305,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
     select: { quoteTermsConditions: true, quoteExpirationDays: true },
   })
 
-  const wo = await prisma.$transaction(async (tx) => {
+  const wo = await prisma.$transaction(async tx => {
     const created = await tx.workOrder.create({
       data: {
         businessId,
@@ -308,7 +336,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
 
     if (input.lineItems?.length) {
       await tx.lineItem.createMany({
-        data: input.lineItems.map((li) => ({
+        data: input.lineItems.map(li => ({
           workOrderId: created.id,
           name: li.name,
           itemType: li.itemType ?? 'SERVICE',
@@ -356,7 +384,9 @@ export async function updateQuote(
       assignedToId: true,
     },
   })
-  if (!existing) throw new WorkOrderNotFoundError()
+  if (!existing) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const jobStatus =
     input.scheduledAt !== undefined ||
@@ -369,7 +399,7 @@ export async function updateQuote(
         })
       : undefined
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
       ...(input.title != null && { title: input.title }),
       ...(input.clientId != null && { clientId: input.clientId }),
@@ -395,7 +425,7 @@ export async function updateQuote(
       await tx.lineItem.deleteMany({ where: { workOrderId } })
       if (input.lineItems.length > 0) {
         await tx.lineItem.createMany({
-          data: input.lineItems.map((li) => ({
+          data: input.lineItems.map(li => ({
             workOrderId,
             name: li.name,
             itemType: li.itemType ?? 'SERVICE',
@@ -425,7 +455,9 @@ export async function deleteQuote(businessId: string, workOrderId: string) {
     where: { id: workOrderId, businessId, quoteRequired: true },
     select: { id: true },
   })
-  if (!existing) throw new WorkOrderNotFoundError()
+  if (!existing) {
+    throw new WorkOrderNotFoundError()
+  }
 
   await prisma.workOrder.delete({ where: { id: workOrderId } })
 }
@@ -441,7 +473,9 @@ export async function setQuoteAwaitingResponse(businessId: string, workOrderId: 
     where: { id: workOrderId, businessId, quoteRequired: true },
     select: { id: true, quoteStatus: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
   if (wo.quoteStatus !== 'NOT_SENT') {
     throw new QuoteTerminalStateError()
   }
@@ -483,7 +517,9 @@ export async function sendQuote(
     where: { id: workOrderId, businessId, quoteRequired: true },
     include: { lineItems: { select: { id: true } } },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
   // Block if terminal state
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
@@ -493,7 +529,9 @@ export async function sendQuote(
 
   // Block if no line items (spec requirement)
   const lineItemCount = await prisma.lineItem.count({ where: { workOrderId } })
-  if (lineItemCount === 0) throw new QuoteNoLineItemsError()
+  if (lineItemCount === 0) {
+    throw new QuoteNoLineItemsError()
+  }
 
   // Get settings for expiry days
   const settings = await prisma.businessSettings.findUnique({
@@ -557,24 +595,23 @@ export async function sendQuoteEmail(
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const toEmail = (options?.to ?? wo.client.email)?.trim()
   if (!toEmail) {
     throw new Error('Client has no email address. Add an email to the client to send the quote.')
   }
 
-  const companyReplyTo =
-    (wo.business.settings?.replyToEmail?.trim() || wo.business.email)
+  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const displayName = wo.business.name?.trim() || 'Company'
   // Use verified sender for From (Resend only allows verified domains); replies go to Reply-To
   const fromHeader = clientToCustomerFrom(displayName)
   const subject =
     options?.subject ??
     `Quote from ${displayName} - ${wo.title} ${wo.quoteCorrelative ?? ''}`.trim()
-  const html =
-    options?.message ??
-    defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
+  const html = options?.message ?? defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
 
   await emailService.send({
     to: toEmail,
@@ -598,7 +635,9 @@ export async function approveQuote(businessId: string, workOrderId: string) {
     where: { id: workOrderId, businessId, quoteRequired: true },
     select: { id: true, quoteStatus: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
   if (terminalStates.includes(wo.quoteStatus)) {
@@ -626,7 +665,9 @@ export async function rejectQuote(businessId: string, workOrderId: string) {
     where: { id: workOrderId, businessId, quoteRequired: true },
     select: { id: true, quoteStatus: true },
   })
-  if (!wo) throw new WorkOrderNotFoundError()
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
   if (terminalStates.includes(wo.quoteStatus)) {
@@ -657,11 +698,17 @@ export async function convertQuoteIfEligible(
     where: { id: workOrderId, businessId },
     select: { quoteStatus: true, jobStatus: true },
   })
-  if (!wo) return
-  if (wo.quoteStatus !== 'APPROVED') return
+  if (!wo) {
+    return
+  }
+  if (wo.quoteStatus !== 'APPROVED') {
+    return
+  }
 
   const eligibleJobStatuses = ['SCHEDULED', 'ON_MY_WAY', 'IN_PROGRESS', 'COMPLETED']
-  if (!eligibleJobStatuses.includes(wo.jobStatus)) return
+  if (!eligibleJobStatuses.includes(wo.jobStatus)) {
+    return
+  }
 
   await prisma.workOrder.update({
     where: { id: workOrderId },
@@ -702,5 +749,5 @@ export async function getQuoteOverview(businessId: string) {
     _count: { id: true },
   })
 
-  return counts.map((c) => ({ status: c.quoteStatus, count: c._count.id }))
+  return counts.map(c => ({ status: c.quoteStatus, count: c._count.id }))
 }

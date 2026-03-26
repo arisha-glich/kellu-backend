@@ -33,9 +33,18 @@ export const InvoiceListQuerySchema = z.object({
     .enum(['dueAt', 'createdAt', 'updatedAt', 'title'])
     .optional()
     .openapi({ param: { name: 'sortBy', in: 'query' } }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const InvoiceListItemSchema = z.object({
@@ -81,7 +90,9 @@ export const InvoiceOverviewResponseSchema = z.object({
 })
 
 export const InvoiceParamsSchema = z.object({
-  invoiceId: z.string().openapi({ param: { name: 'invoiceId', in: 'path' }, description: 'Invoice ID' }),
+  invoiceId: z
+    .string()
+    .openapi({ param: { name: 'invoiceId', in: 'path' }, description: 'Invoice ID' }),
 })
 
 const LineItemCreateSchema = z.object({
@@ -105,26 +116,28 @@ export const CreateInvoiceBodySchema = z
   })
   .openapi({ description: 'New Invoice form: client, address, title, line items' })
 
-const InvoiceDetailSchema = z.object({
-  id: z.string(),
-  invoiceNumber: z.string().nullable(),
-  title: z.string(),
-  address: z.string().nullable(),
-  status: InvoiceStatusEnum,
-  sentAt: z.coerce.date().nullable(),
-  dueAt: z.coerce.date().nullable(),
-  subtotal: z.union([z.number(), z.string()]).nullable(),
-  discount: z.union([z.number(), z.string()]).nullable(),
-  tax: z.union([z.number(), z.string()]).nullable(),
-  total: z.union([z.number(), z.string()]).nullable(),
-  amountPaid: z.union([z.number(), z.string()]).nullable(),
-  balance: z.union([z.number(), z.string()]).nullable(),
-  client: z.any(),
-  lineItems: z.array(z.any()),
-  payments: z.array(z.any()),
-  workOrder: z.any().nullable(),
-  assignedTo: z.any().nullable(),
-}).passthrough()
+const InvoiceDetailSchema = z
+  .object({
+    id: z.string(),
+    invoiceNumber: z.string().nullable(),
+    title: z.string(),
+    address: z.string().nullable(),
+    status: InvoiceStatusEnum,
+    sentAt: z.coerce.date().nullable(),
+    dueAt: z.coerce.date().nullable(),
+    subtotal: z.union([z.number(), z.string()]).nullable(),
+    discount: z.union([z.number(), z.string()]).nullable(),
+    tax: z.union([z.number(), z.string()]).nullable(),
+    total: z.union([z.number(), z.string()]).nullable(),
+    amountPaid: z.union([z.number(), z.string()]).nullable(),
+    balance: z.union([z.number(), z.string()]).nullable(),
+    client: z.any(),
+    lineItems: z.array(z.any()),
+    payments: z.array(z.any()),
+    workOrder: z.any().nullable(),
+    assignedTo: z.any().nullable(),
+  })
+  .passthrough()
 
 export const INVOICE_ROUTES = {
   list: createRoute({
@@ -146,7 +159,8 @@ export const INVOICE_ROUTES = {
     method: 'get',
     tags: ['Invoices'],
     path: '/overview',
-    summary: 'Get invoice overview (Past due, Sent but not due, Pending to send, Issued 30d, Average)',
+    summary:
+      'Get invoice overview (Past due, Sent but not due, Pending to send, Issued 30d, Average)',
     request: {},
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceOverviewResponseSchema), 'OK'),
@@ -197,7 +211,10 @@ export const INVOICE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceDetailSchema), 'Invoice sent'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Invoice not found'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invoice already sent or invalid state'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Invoice already sent or invalid state'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

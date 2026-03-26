@@ -82,19 +82,35 @@ export const SendQuoteBodySchema = z
 
 export const SendQuoteEmailBodySchema = z
   .object({
-    subject: z.string().optional().nullable().openapi({ description: 'Override default subject (e.g. from template)' }),
-    message: z.string().optional().nullable().openapi({ description: 'HTML or plain text body; default used if omitted' }),
-    to: z.string().email().optional().nullable().openapi({ description: 'Override recipient; defaults to client email' }),
+    subject: z
+      .string()
+      .optional()
+      .nullable()
+      .openapi({ description: 'Override default subject (e.g. from template)' }),
+    message: z
+      .string()
+      .optional()
+      .nullable()
+      .openapi({ description: 'HTML or plain text body; default used if omitted' }),
+    to: z
+      .string()
+      .email()
+      .optional()
+      .nullable()
+      .openapi({ description: 'Override recipient; defaults to client email' }),
   })
   .openapi({ description: 'Optional overrides for quote email (From/Reply-To come from Settings)' })
 
 // ─── Query ───────────────────────────────────────────────────────────────────
 
 export const QuoteListQuerySchema = z.object({
-  search: z.string().optional().openapi({
-    param: { name: 'search', in: 'query' },
-    description: 'Search by client name, title, or address',
-  }),
+  search: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by client name, title, or address',
+    }),
   quoteStatus: QuoteStatusEnum.optional().openapi({
     param: { name: 'quoteStatus', in: 'query' },
   }),
@@ -106,8 +122,14 @@ export const QuoteListQuerySchema = z.object({
     .enum(['asc', 'desc'])
     .optional()
     .openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 // ─── Response schemas ─────────────────────────────────────────────────────────
@@ -219,10 +241,7 @@ export const QUOTE_ROUTES = {
     path: '/overview',
     summary: 'Get quote status counts for overview block',
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(
-        zodResponseSchema(z.array(QuoteOverviewItemSchema)),
-        'OK'
-      ),
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.array(QuoteOverviewItemSchema)), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -264,7 +283,8 @@ export const QUOTE_ROUTES = {
     method: 'patch',
     tags: ['Quotes'],
     path: '/{quoteId}',
-    summary: 'Update quote (work order) fields. quoteStatus is only changed via actions (send/approve/reject/set-awaiting-response).',
+    summary:
+      'Update quote (work order) fields. quoteStatus is only changed via actions (send/approve/reject/set-awaiting-response).',
     request: {
       params: QuoteParamsSchema,
       body: jsonContentRequired(UpdateQuoteBodySchema, 'Update quote payload'),
@@ -282,7 +302,8 @@ export const QUOTE_ROUTES = {
     method: 'delete',
     tags: ['Quotes'],
     path: '/{quoteId}',
-    summary: 'Delete quote (work order with quoteRequired=true). Cascades to line items, payments, etc.',
+    summary:
+      'Delete quote (work order with quoteRequired=true). Cascades to line items, payments, etc.',
     request: { params: QuoteParamsSchema },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(
@@ -300,12 +321,16 @@ export const QUOTE_ROUTES = {
     method: 'post',
     tags: ['Quotes'],
     path: '/{quoteId}/set-awaiting-response',
-    summary: 'Manually set quote status to AWAITING_RESPONSE (only when current status is NOT_SENT). Sets sent_at and expires_at from settings.',
+    summary:
+      'Manually set quote status to AWAITING_RESPONSE (only when current status is NOT_SENT). Sets sent_at and expires_at from settings.',
     request: { params: QuoteParamsSchema },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Status updated'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Quote not in NOT_SENT state'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Quote not in NOT_SENT state'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -324,7 +349,10 @@ export const QUOTE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Quote sent'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'No line items or terminal state'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'No line items or terminal state'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -335,7 +363,8 @@ export const QUOTE_ROUTES = {
     method: 'post',
     tags: ['Quotes'],
     path: '/{quoteId}/send-email',
-    summary: 'Send (or resend) quote email to client. From/Reply-To from Settings; optional subject/message/to.',
+    summary:
+      'Send (or resend) quote email to client. From/Reply-To from Settings; optional subject/message/to.',
     request: {
       params: QuoteParamsSchema,
       body: jsonContent(SendQuoteEmailBodySchema.optional(), 'Optional subject, message, to'),

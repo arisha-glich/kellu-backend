@@ -1,7 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent } from 'stoker/openapi/helpers'
-import { TAGS } from '~/config/tags'
 import { zodResponseSchema } from '~/lib/zod-helper'
 import { BusinessParamsSchema } from '~/routes/business/business.routes'
 

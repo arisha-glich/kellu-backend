@@ -4,21 +4,23 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { EXPENSE_ROUTES } from '~/routes/expenses/expense.routes'
+import { getBusinessIdByUserId } from '~/services/business.service'
 import {
   createExpense,
   deleteExpense,
+  ExpenseNotFoundError,
   getExpenseById,
   listExpenses,
   updateExpense,
-  ExpenseNotFoundError,
   WorkOrderNotFoundError,
 } from '~/services/expense.service'
-import { getBusinessIdByUserId } from '~/services/business.service'
-import type { HandlerMapFromRoutes } from '~/types'
 import { hasPermission } from '~/services/permission.service'
+import type { HandlerMapFromRoutes } from '~/types'
 
 function parseDate(value: string | undefined): Date | undefined {
-  if (!value) return undefined
+  if (!value) {
+    return undefined
+  }
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? undefined : d
 }
@@ -35,7 +37,10 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'expenses', 'read'))) {
-        return c.json({ message: 'You do not have permission to list expenses' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to list expenses' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const query = c.req.valid('query')
       const page = query.page ? Number.parseInt(query.page, 10) : 1
@@ -80,7 +85,10 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'expenses', 'read'))) {
-        return c.json({ message: 'You do not have permission to view this expense' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to view this expense' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { expenseId } = c.req.valid('param')
       const expense = await getExpenseById(businessId, expenseId)
@@ -114,9 +122,12 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'expenses', 'create'))) {
-        return c.json({ message: 'You do not have permission to create expenses' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to create expenses' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
-      const body = await c.req.valid('json')  
+      const body = await c.req.valid('json')
       const expense = await createExpense(businessId, {
         date: body.date,
         itemName: body.itemName,
@@ -138,10 +149,7 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error creating expense:', error)
-      return c.json(
-        { message: 'Failed to create expense' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to create expense' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
@@ -156,7 +164,10 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'expenses', 'update'))) {
-        return c.json({ message: 'You do not have permission to update expenses' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to update expenses' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { expenseId } = c.req.valid('param')
       const body = await c.req.valid('json')
@@ -184,10 +195,7 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error updating expense:', error)
-      return c.json(
-        { message: 'Failed to update expense' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to update expense' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
@@ -202,7 +210,10 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       if (!(await hasPermission(user.id, businessId, 'expenses', 'delete'))) {
-        return c.json({ message: 'You do not have permission to delete expenses' }, HttpStatusCodes.FORBIDDEN)
+        return c.json(
+          { message: 'You do not have permission to delete expenses' },
+          HttpStatusCodes.FORBIDDEN
+        )
       }
       const { expenseId } = c.req.valid('param')
       await deleteExpense(businessId, expenseId)
@@ -218,10 +229,7 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error deleting expense:', error)
-      return c.json(
-        { message: 'Failed to delete expense' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to delete expense' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 }

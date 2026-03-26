@@ -8,7 +8,9 @@ import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
 export const MemberIdParamSchema = z.object({
-  memberId: z.string().openapi({ param: { name: 'memberId', in: 'path' }, description: 'Member ID' }),
+  memberId: z
+    .string()
+    .openapi({ param: { name: 'memberId', in: 'path' }, description: 'Member ID' }),
 })
 
 const MemberUserSchema = z.object({
@@ -53,7 +55,7 @@ export const AddMemberBodySchema = z
   })
   .transform(d => ({
     ...d,
-    pictureUrl: d.pictureUrl === '' ? null : d.pictureUrl ?? null,
+    pictureUrl: d.pictureUrl === '' ? null : (d.pictureUrl ?? null),
   }))
   .openapi({
     description:
@@ -72,7 +74,7 @@ export const UpdateMemberBodySchema = z
   })
   .transform(d => ({
     ...d,
-    pictureUrl: d.pictureUrl === '' ? null : d.pictureUrl ?? null,
+    pictureUrl: d.pictureUrl === '' ? null : (d.pictureUrl ?? null),
   }))
   .openapi({ description: 'Update team member (partial)' })
 
@@ -84,7 +86,10 @@ export const TEAM_ROUTES = {
     summary: 'List team members',
     request: {},
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ data: z.array(MemberItemSchema) })), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: z.array(MemberItemSchema) })),
+        'OK'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -114,7 +119,10 @@ export const TEAM_ROUTES = {
     responses: {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(MemberItemSchema), 'Created'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or role not found'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Email already in use in this business'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Email already in use in this business'
+      ),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -144,7 +152,10 @@ export const TEAM_ROUTES = {
     summary: 'Remove team member from business',
     request: { params: MemberIdParamSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ deleted: z.boolean() })), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ deleted: z.boolean() })),
+        'OK'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Member not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

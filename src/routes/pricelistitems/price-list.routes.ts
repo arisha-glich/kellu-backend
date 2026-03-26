@@ -18,7 +18,10 @@ export const PriceListQuerySchema = z.object({
   search: z
     .string()
     .optional()
-    .openapi({ param: { name: 'search', in: 'query' }, description: 'Search by name or description' }),
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by name or description',
+    }),
   itemType: ItemTypeEnum.optional().openapi({
     param: { name: 'itemType', in: 'query' },
     description: 'Filter by item type (SERVICE or PRODUCT)',
@@ -27,9 +30,18 @@ export const PriceListQuerySchema = z.object({
     .enum(['name', 'createdAt', 'itemType'])
     .optional()
     .openapi({ param: { name: 'sortBy', in: 'query' } }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const PriceListItemSchema = z.object({
@@ -171,7 +183,10 @@ export const PRICE_LIST_ROUTES = {
     summary: 'Bulk import price list items (CSV/Excel: parse client-side and send as JSON array)',
     request: { body: jsonContentRequired(ImportPriceListBodySchema, 'Array of items to import') },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(ImportPriceListResponseSchema), 'Import result'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(ImportPriceListResponseSchema),
+        'Import result'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),

@@ -4,8 +4,8 @@
  * Optional workOrderId links invoice to a work order.
  */
 
-import { Prisma } from '~/generated/prisma'
 import type { InvoiceStatus } from '~/generated/prisma'
+import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 
@@ -22,9 +22,15 @@ export class ClientNotFoundError extends Error {
 }
 
 function toNum(d: unknown): number {
-  if (d == null) return 0
-  if (typeof d === 'number' && !Number.isNaN(d)) return d
-  if (typeof d === 'string') return Number.parseFloat(d) || 0
+  if (d == null) {
+    return 0
+  }
+  if (typeof d === 'number' && !Number.isNaN(d)) {
+    return d
+  }
+  if (typeof d === 'string') {
+    return Number.parseFloat(d) || 0
+  }
   if (typeof d === 'object' && d !== null && 'toNumber' in d) {
     return (d as { toNumber: () => number }).toNumber()
   }
@@ -37,13 +43,17 @@ function effectiveInvoiceStatus(
   dueAt: Date | null,
   balance: unknown
 ): InvoiceStatus {
-  if (status !== 'AWAITING_PAYMENT' || !dueAt || toNum(balance) <= 0) return status
+  if (status !== 'AWAITING_PAYMENT' || !dueAt || toNum(balance) <= 0) {
+    return status
+  }
   return new Date() > dueAt ? 'OVERDUE' : status
 }
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** Generate next invoice number per business (unique). */
@@ -53,7 +63,9 @@ async function nextInvoiceNumber(businessId: string): Promise<string> {
     orderBy: { createdAt: 'desc' },
     select: { invoiceNumber: true },
   })
-  if (!last?.invoiceNumber) return '1'
+  if (!last?.invoiceNumber) {
+    return '1'
+  }
   const num = Number.parseInt(last.invoiceNumber.replace(/^\D+/, ''), 10)
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
@@ -63,14 +75,19 @@ async function recalculateInvoiceFinancials(
   invoiceId: string,
   taxPercent: number = 0,
   discountAmount: number = 0,
-  tx?: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>
+  tx?: Omit<
+    typeof prisma,
+    '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+  >
 ): Promise<void> {
   const db = tx ?? prisma
   const inv = await db.invoice.findUnique({
     where: { id: invoiceId },
     select: { discount: true, discountType: true },
   })
-  if (!inv) return
+  if (!inv) {
+    return
+  }
 
   const lineItems = await db.lineItem.findMany({
     where: { invoiceId },
@@ -172,7 +189,7 @@ export async function listInvoices(businessId: string, filters: InvoiceListFilte
     prisma.invoice.count({ where }),
   ])
 
-  const data: InvoiceListItem[] = items.map((inv) => ({
+  const data: InvoiceListItem[] = items.map(inv => ({
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
     title: inv.title,
@@ -230,7 +247,9 @@ export async function getInvoiceOverview(businessId: string): Promise<InvoiceOve
     'BAD_DEBT',
   ]
   const byStatusMap = new Map<string, { count: number; total: number }>()
-  for (const s of statusOrder) byStatusMap.set(s, { count: 0, total: 0 })
+  for (const s of statusOrder) {
+    byStatusMap.set(s, { count: 0, total: 0 })
+  }
 
   let issuedCount = 0
   let issuedTotal = 0
@@ -250,9 +269,9 @@ export async function getInvoiceOverview(businessId: string): Promise<InvoiceOve
   }
 
   const byStatus: InvoiceOverviewBucket[] = statusOrder
-    .filter((s) => (byStatusMap.get(s)?.count ?? 0) > 0)
-    .map((status) => {
-      const b = byStatusMap.get(status)!
+    .filter(s => (byStatusMap.get(s)?.count ?? 0) > 0)
+    .map(status => {
+      const b = byStatusMap.get(status) ?? { count: 0, total: 0 }
       return { status, count: b.count, total: b.total }
     })
 
@@ -276,7 +295,9 @@ export async function getInvoiceById(businessId: string, invoiceId: string) {
       workOrder: { select: { id: true, workOrderNumber: true, title: true } },
     },
   })
-  if (!inv) throw new InvoiceNotFoundError()
+  if (!inv) {
+    throw new InvoiceNotFoundError()
+  }
   return inv
 }
 
@@ -306,11 +327,13 @@ export async function createInvoice(
     where: { id: input.clientId, businessId },
     select: { id: true },
   })
-  if (!client) throw new ClientNotFoundError()
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
 
   const invoiceNumber = await nextInvoiceNumber(businessId)
 
-  const inv = await prisma.$transaction(async (tx) => {
+  const inv = await prisma.$transaction(async tx => {
     const created = await tx.invoice.create({
       data: {
         businessId,
@@ -326,7 +349,7 @@ export async function createInvoice(
 
     if (input.lineItems?.length) {
       await tx.lineItem.createMany({
-        data: input.lineItems.map((li) => ({
+        data: input.lineItems.map(li => ({
           invoiceId: created.id,
           name: li.name,
           itemType: (li.itemType ?? 'SERVICE') as 'SERVICE' | 'PRODUCT',
@@ -354,13 +377,17 @@ export async function sendInvoice(businessId: string, invoiceId: string) {
     where: { id: businessId },
     include: { settings: true },
   })
-  if (!business) throw new BusinessNotFoundError()
+  if (!business) {
+    throw new BusinessNotFoundError()
+  }
 
   const inv = await prisma.invoice.findFirst({
     where: { id: invoiceId, businessId },
     select: { id: true, status: true },
   })
-  if (!inv) throw new InvoiceNotFoundError()
+  if (!inv) {
+    throw new InvoiceNotFoundError()
+  }
   if (inv.status !== 'NOT_SENT') {
     throw new Error('Invoice was already sent or is in a terminal state')
   }

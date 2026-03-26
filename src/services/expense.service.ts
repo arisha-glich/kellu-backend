@@ -6,7 +6,6 @@
 
 import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
-import { BusinessNotFoundError } from '~/services/business.service'
 
 export class ExpenseNotFoundError extends Error {
   constructor() {
@@ -66,7 +65,9 @@ export interface ExpenseWithWorkOrder {
 }
 
 function toDecimalSafe(value: number | string): string {
-  if (typeof value === 'number') return String(value)
+  if (typeof value === 'number') {
+    return String(value)
+  }
   return value
 }
 
@@ -74,20 +75,41 @@ function toDecimalSafe(value: number | string): string {
 export async function listExpenses(
   businessId: string,
   filters: ExpenseListFilters = {}
-): Promise<{ data: ExpenseWithWorkOrder[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
-  const { workOrderId, dateFrom, dateTo, invoiceNumber, clientId, page = 1, limit = 20, sortBy = 'date', order = 'desc' } = filters
+): Promise<{
+  data: ExpenseWithWorkOrder[]
+  pagination: { page: number; limit: number; total: number; totalPages: number }
+}> {
+  const {
+    workOrderId,
+    dateFrom,
+    dateTo,
+    invoiceNumber,
+    clientId,
+    page = 1,
+    limit = 20,
+    sortBy = 'date',
+    order = 'desc',
+  } = filters
 
   const where: Prisma.ExpenseWhereInput = {
     businessId,
   }
 
-  if (workOrderId) where.workOrderId = workOrderId
+  if (workOrderId) {
+    where.workOrderId = workOrderId
+  }
   if (dateFrom || dateTo) {
     where.date = {}
-    if (dateFrom) (where.date as Prisma.DateTimeFilter).gte = dateFrom
-    if (dateTo) (where.date as Prisma.DateTimeFilter).lte = dateTo
+    if (dateFrom) {
+      ;(where.date as Prisma.DateTimeFilter).gte = dateFrom
+    }
+    if (dateTo) {
+      ;(where.date as Prisma.DateTimeFilter).lte = dateTo
+    }
   }
-  if (invoiceNumber) where.invoiceNumber = { contains: invoiceNumber, mode: 'insensitive' }
+  if (invoiceNumber) {
+    where.invoiceNumber = { contains: invoiceNumber, mode: 'insensitive' }
+  }
   if (clientId) {
     where.workOrder = { clientId }
   }
@@ -133,7 +155,9 @@ export async function listExpensesByWorkOrder(
     where: { id: workOrderId, businessId },
     select: { id: true },
   })
-  if (!workOrder) throw new WorkOrderNotFoundError()
+  if (!workOrder) {
+    throw new WorkOrderNotFoundError()
+  }
 
   const items = await prisma.expense.findMany({
     where: { businessId, workOrderId },
@@ -154,7 +178,10 @@ export async function listExpensesByWorkOrder(
 }
 
 /** Get a single expense by ID (must belong to business). */
-export async function getExpenseById(businessId: string, expenseId: string): Promise<ExpenseWithWorkOrder | null> {
+export async function getExpenseById(
+  businessId: string,
+  expenseId: string
+): Promise<ExpenseWithWorkOrder | null> {
   const expense = await prisma.expense.findFirst({
     where: { id: expenseId, businessId },
     include: {
@@ -173,13 +200,18 @@ export async function getExpenseById(businessId: string, expenseId: string): Pro
 }
 
 /** Create an expense (global: workOrderId optional; job-level: pass workOrderId). */
-export async function createExpense(businessId: string, input: CreateExpenseInput): Promise<ExpenseWithWorkOrder> {
+export async function createExpense(
+  businessId: string,
+  input: CreateExpenseInput
+): Promise<ExpenseWithWorkOrder> {
   if (input.workOrderId) {
     const wo = await prisma.workOrder.findFirst({
       where: { id: input.workOrderId, businessId },
       select: { id: true },
     })
-    if (!wo) throw new WorkOrderNotFoundError()
+    if (!wo) {
+      throw new WorkOrderNotFoundError()
+    }
   }
 
   const expense = await prisma.expense.create({
@@ -227,23 +259,39 @@ export async function updateExpense(
     where: { id: expenseId, businessId },
     select: { id: true },
   })
-  if (!existing) throw new ExpenseNotFoundError()
+  if (!existing) {
+    throw new ExpenseNotFoundError()
+  }
 
   if (input.workOrderId !== undefined && input.workOrderId !== null) {
     const wo = await prisma.workOrder.findFirst({
       where: { id: input.workOrderId, businessId },
       select: { id: true },
     })
-    if (!wo) throw new WorkOrderNotFoundError()
+    if (!wo) {
+      throw new WorkOrderNotFoundError()
+    }
   }
 
   const data: Prisma.ExpenseUpdateInput = {}
-  if (input.date !== undefined) data.date = input.date
-  if (input.itemName !== undefined) data.itemName = input.itemName
-  if (input.details !== undefined) data.details = input.details
-  if (input.total !== undefined) data.total = new Prisma.Decimal(toDecimalSafe(input.total))
-  if (input.invoiceNumber !== undefined) data.invoiceNumber = input.invoiceNumber
-  if (input.attachmentUrl !== undefined) data.attachmentUrl = input.attachmentUrl
+  if (input.date !== undefined) {
+    data.date = input.date
+  }
+  if (input.itemName !== undefined) {
+    data.itemName = input.itemName
+  }
+  if (input.details !== undefined) {
+    data.details = input.details
+  }
+  if (input.total !== undefined) {
+    data.total = new Prisma.Decimal(toDecimalSafe(input.total))
+  }
+  if (input.invoiceNumber !== undefined) {
+    data.invoiceNumber = input.invoiceNumber
+  }
+  if (input.attachmentUrl !== undefined) {
+    data.attachmentUrl = input.attachmentUrl
+  }
   if (input.workOrderId !== undefined) {
     data.workOrder = input.workOrderId
       ? { connect: { id: input.workOrderId } }
@@ -274,6 +322,8 @@ export async function deleteExpense(businessId: string, expenseId: string): Prom
     where: { id: expenseId, businessId },
     select: { id: true },
   })
-  if (!existing) throw new ExpenseNotFoundError()
+  if (!existing) {
+    throw new ExpenseNotFoundError()
+  }
   await prisma.expense.delete({ where: { id: expenseId } })
 }

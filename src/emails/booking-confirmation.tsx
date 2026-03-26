@@ -31,9 +31,7 @@ export const BookingConfirmationEmail = ({
     >
       <Section style={emailStyles.content}>
         <Text style={emailStyles.text}>Dear {clientName},</Text>
-        <Text style={emailStyles.text}>
-          Your booking has been confirmed for {serviceTitle}.
-        </Text>
+        <Text style={emailStyles.text}>Your booking has been confirmed for {serviceTitle}.</Text>
         <Section style={emailStyles.card}>
           <Text style={emailStyles.cardHeading}>Schedule details</Text>
           <Text style={emailStyles.cardText}>

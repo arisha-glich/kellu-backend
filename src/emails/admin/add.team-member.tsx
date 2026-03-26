@@ -56,7 +56,8 @@ export const AddTeamMemberEmail = ({
         <Heading style={emailStyles.h1}>You're on the team</Heading>
         <Text style={emailStyles.text}>Hi {memberName},</Text>
         <Text style={emailStyles.text}>
-          You've been added to <strong>{businessName}</strong> with the role <strong>{roleName}</strong>.
+          You've been added to <strong>{businessName}</strong> with the role{' '}
+          <strong>{roleName}</strong>.
           {description ? (
             <>
               <br />
@@ -71,8 +72,8 @@ export const AddTeamMemberEmail = ({
             <Text style={{ ...emailStyles.cardHeading, marginBottom: '12px', fontSize: '16px' }}>
               Your permissions
             </Text>
-            {permissions.map((p, i) => (
-              <Text key={i} style={permissionItem}>
+            {permissions.map(p => (
+              <Text key={`${p.resource}:${p.action}`} style={permissionItem}>
                 • {p.resource}: {p.action}
               </Text>
             ))}
@@ -98,7 +99,9 @@ export const AddTeamMemberEmail = ({
           </Button>
         </Section>
 
-        <Text style={{ ...emailStyles.text, marginTop: '16px', color: '#64748b', fontSize: '14px' }}>
+        <Text
+          style={{ ...emailStyles.text, marginTop: '16px', color: '#64748b', fontSize: '14px' }}
+        >
           After logging in you will be taken to the dashboard. You can update your password in
           settings. If you have questions, contact your business admin or reply to this email.
         </Text>

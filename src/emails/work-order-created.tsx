@@ -49,7 +49,8 @@ export const WorkOrderCreatedEmail = ({
         <Text style={emailStyles.h1}>Work order created</Text>
         <Text style={emailStyles.text}>Dear {clientName},</Text>
         <Text style={emailStyles.text}>
-          <strong>{businessName}</strong> has created a new work order for you. Here are the details:
+          <strong>{businessName}</strong> has created a new work order for you. Here are the
+          details:
         </Text>
 
         <Section style={detailBox}>

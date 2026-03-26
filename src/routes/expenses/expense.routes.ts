@@ -9,36 +9,65 @@ import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
 export const ExpenseIdParamSchema = z.object({
-  expenseId: z.string().openapi({ param: { name: 'expenseId', in: 'path' }, description: 'Expense ID' }),
+  expenseId: z
+    .string()
+    .openapi({ param: { name: 'expenseId', in: 'path' }, description: 'Expense ID' }),
 })
 
 export const ExpenseListQuerySchema = z.object({
-  workOrderId: z.string().optional().openapi({
-    param: { name: 'workOrderId', in: 'query' },
-    description: 'Filter by linked work order',
-  }),
-  dateFrom: z.string().optional().openapi({
-    param: { name: 'dateFrom', in: 'query' },
-    description: 'Filter expenses from this date (e.g. YYYY-MM-DD)',
-  }),
-  dateTo: z.string().optional().openapi({
-    param: { name: 'dateTo', in: 'query' },
-    description: 'Filter expenses until this date (e.g. YYYY-MM-DD)',
-  }),
-  invoiceNumber: z.string().optional().openapi({
-    param: { name: 'invoiceNumber', in: 'query' },
-    description: 'Filter by invoice number (partial match)',
-  }),
-  clientId: z.string().optional().openapi({
-    param: { name: 'clientId', in: 'query' },
-    description: 'Filter by client (expenses linked to a work order for this client)',
-  }),
-  sortBy: z.enum(['date', 'createdAt', 'total', 'itemName']).optional().openapi({
-    param: { name: 'sortBy', in: 'query' },
-  }),
-  order: z.enum(['asc', 'desc']).optional().openapi({ param: { name: 'order', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  workOrderId: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'workOrderId', in: 'query' },
+      description: 'Filter by linked work order',
+    }),
+  dateFrom: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'dateFrom', in: 'query' },
+      description: 'Filter expenses from this date (e.g. YYYY-MM-DD)',
+    }),
+  dateTo: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'dateTo', in: 'query' },
+      description: 'Filter expenses until this date (e.g. YYYY-MM-DD)',
+    }),
+  invoiceNumber: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'invoiceNumber', in: 'query' },
+      description: 'Filter by invoice number (partial match)',
+    }),
+  clientId: z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: 'clientId', in: 'query' },
+      description: 'Filter by client (expenses linked to a work order for this client)',
+    }),
+  sortBy: z
+    .enum(['date', 'createdAt', 'total', 'itemName'])
+    .optional()
+    .openapi({
+      param: { name: 'sortBy', in: 'query' },
+    }),
+  order: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'order', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const WorkOrderRefSchema = z.object({
@@ -95,7 +124,7 @@ export const CreateExpenseBodySchema = z
   })
   .transform(d => ({
     ...d,
-    attachmentUrl: d.attachmentUrl === '' ? null : d.attachmentUrl ?? null,
+    attachmentUrl: d.attachmentUrl === '' ? null : (d.attachmentUrl ?? null),
   }))
   .openapi({
     description:
@@ -114,7 +143,7 @@ export const UpdateExpenseBodySchema = z
   })
   .transform(d => ({
     ...d,
-    attachmentUrl: d.attachmentUrl === '' ? null : d.attachmentUrl ?? null,
+    attachmentUrl: d.attachmentUrl === '' ? null : (d.attachmentUrl ?? null),
   }))
   .openapi({ description: 'Update expense (partial)' })
 
@@ -157,7 +186,10 @@ export const EXPENSE_ROUTES = {
     request: { body: jsonContentRequired(CreateExpenseBodySchema, 'Expense payload') },
     responses: {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(ExpenseItemSchema), 'Created'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or work order not found'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Business or work order not found'
+      ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -176,7 +208,10 @@ export const EXPENSE_ROUTES = {
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ExpenseItemSchema), 'OK'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Expense or work order not found'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Expense or work order not found'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -190,7 +225,10 @@ export const EXPENSE_ROUTES = {
     summary: 'Delete expense',
     request: { params: ExpenseIdParamSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ deleted: z.boolean() })), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ deleted: z.boolean() })),
+        'OK'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Expense not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

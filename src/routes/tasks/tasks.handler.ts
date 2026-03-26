@@ -4,31 +4,35 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { TASK_ROUTES } from '~/routes/tasks/tasks.routes'
-import { getBusinessIdByUserId, BusinessNotFoundError } from '~/services/business.service'
+import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { hasPermission } from '~/services/permission.service'
 import {
-  listTasks,
-  getTask,
-  createTask,
-  updateTask,
-  deleteTask,
-  startTask,
   completeTask,
+  createTask,
+  deleteTask,
+  getTask,
   getTaskOverview,
+  listTasks,
+  startTask,
   TaskNotFoundError,
+  updateTask,
 } from '~/services/task.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
-  list: async (c) => {
+  list: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'read')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'read'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const query = c.req.valid('query')
       const page = query.page ? Number.parseInt(query.page, 10) : 1
@@ -47,20 +51,24 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof BusinessNotFoundError)
+      if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error listing tasks:', error)
       return c.json({ message: 'Failed to retrieve tasks' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  overview: async (c) => {
+  overview: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
 
       const overview = await getTaskOverview(businessId)
       return c.json(
@@ -69,19 +77,26 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
       )
     } catch (error) {
       console.error('Error fetching task overview:', error)
-      return c.json({ message: 'Failed to retrieve overview' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+      return c.json(
+        { message: 'Failed to retrieve overview' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 
-  getById: async (c) => {
+  getById: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'read')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'read'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const { taskId } = c.req.valid('param')
       const task = await getTask(businessId, taskId)
@@ -90,22 +105,27 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof TaskNotFoundError)
+      if (error instanceof TaskNotFoundError) {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error fetching task:', error)
       return c.json({ message: 'Failed to retrieve task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  create: async (c) => {
+  create: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'create')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'create'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const body = c.req.valid('json')
       const task = await createTask(businessId, {
@@ -125,28 +145,36 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.CREATED
       )
     } catch (error) {
-      if (error instanceof BusinessNotFoundError)
+      if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'CLIENT_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'CLIENT_NOT_FOUND') {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND') {
         return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND') {
         return c.json({ message: 'Assigned member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error creating task:', error)
       return c.json({ message: 'Failed to create task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  update: async (c) => {
+  update: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'update')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'update'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const { taskId } = c.req.valid('param')
       const body = c.req.valid('json')
@@ -167,28 +195,36 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof TaskNotFoundError)
+      if (error instanceof TaskNotFoundError) {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'CLIENT_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'CLIENT_NOT_FOUND') {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'WORK_ORDER_NOT_FOUND') {
         return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND')
+      }
+      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND') {
         return c.json({ message: 'Assigned member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error updating task:', error)
       return c.json({ message: 'Failed to update task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  delete: async (c) => {
+  delete: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'delete')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'delete'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const { taskId } = c.req.valid('param')
       await deleteTask(businessId, taskId)
@@ -197,22 +233,27 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof TaskNotFoundError)
+      if (error instanceof TaskNotFoundError) {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error deleting task:', error)
       return c.json({ message: 'Failed to delete task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  start: async (c) => {
+  start: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'update')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'update'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const { taskId } = c.req.valid('param')
       const task = await startTask(businessId, taskId)
@@ -221,24 +262,30 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof TaskNotFoundError)
+      if (error instanceof TaskNotFoundError) {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'TASK_ALREADY_COMPLETED')
+      }
+      if (error instanceof Error && error.message === 'TASK_ALREADY_COMPLETED') {
         return c.json({ message: 'Task is already completed' }, HttpStatusCodes.BAD_REQUEST)
+      }
       console.error('Error starting task:', error)
       return c.json({ message: 'Failed to start task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
-  complete: async (c) => {
+  complete: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId)
+      if (!businessId) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      if (!(await hasPermission(user.id, businessId, 'tasks', 'update')))
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'update'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
 
       const { taskId } = c.req.valid('param')
       const task = await completeTask(businessId, taskId)
@@ -247,10 +294,12 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof TaskNotFoundError)
+      if (error instanceof TaskNotFoundError) {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof Error && error.message === 'TASK_ALREADY_COMPLETED')
+      }
+      if (error instanceof Error && error.message === 'TASK_ALREADY_COMPLETED') {
         return c.json({ message: 'Task is already completed' }, HttpStatusCodes.BAD_REQUEST)
+      }
       console.error('Error completing task:', error)
       return c.json({ message: 'Failed to complete task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }

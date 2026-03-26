@@ -3,21 +3,23 @@
  * Business owners manage custom roles; system roles are seeded automatically.
  */
 
-import prisma from "~/lib/prisma"
-import { BusinessNotFoundError } from "~/services/business.service"
-import { statement } from "~/lib/permission"
+import { statement } from '~/lib/permission'
+import prisma from '~/lib/prisma'
+import { BusinessNotFoundError } from '~/services/business.service'
 
 export class RoleNotFoundError extends Error {
-  constructor() { super("ROLE_NOT_FOUND") }
+  constructor() {
+    super('ROLE_NOT_FOUND')
+  }
 }
 
 export class RoleInUseError extends Error {
-  constructor() { super("ROLE_IN_USE") }
+  constructor() {
+    super('ROLE_IN_USE')
+  }
 }
 
-export class InvalidPermissionError extends Error {
-  constructor(msg: string) { super(msg) }
-}
+export class InvalidPermissionError extends Error {}
 
 /** All valid resources extracted from the statement */
 export const ALL_RESOURCES = Object.keys(statement) as Array<keyof typeof statement>
@@ -49,7 +51,7 @@ export function validatePermissions(
     }
     if (!validActions.includes(p.action)) {
       throw new InvalidPermissionError(
-        `Invalid action '${p.action}' for resource '${p.resource}'. Valid: ${validActions.join(", ")}`
+        `Invalid action '${p.action}' for resource '${p.resource}'. Valid: ${validActions.join(', ')}`
       )
     }
   }
@@ -71,7 +73,9 @@ export interface UpdateRoleInput {
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** List all roles for a business (including system roles). */
@@ -85,7 +89,7 @@ export async function listRoles(businessId: string) {
       },
       _count: { select: { members: true } },
     },
-    orderBy: [{ isSystem: "desc" }, { createdAt: "asc" }],
+    orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
   })
 }
 
@@ -99,7 +103,9 @@ export async function getRoleById(businessId: string, roleId: string) {
       _count: { select: { members: true } },
     },
   })
-  if (!role) throw new RoleNotFoundError()
+  if (!role) {
+    throw new RoleNotFoundError()
+  }
   return role
 }
 
@@ -109,15 +115,16 @@ export async function createRole(businessId: string, input: CreateRoleInput) {
   validatePermissions(input.permissions)
 
   const resolvedPermissions = await Promise.all(
-    input.permissions.map(async (p) => 
-     prisma.permission.upsert({
-      where: { resource_action: { resource: p.resource, action: p.action } },
-      update: {},
-      create: { resource: p.resource, action: p.action },
-    })
-  ))
+    input.permissions.map(async p =>
+      prisma.permission.upsert({
+        where: { resource_action: { resource: p.resource, action: p.action } },
+        update: {},
+        create: { resource: p.resource, action: p.action },
+      })
+    )
+  )
 
-  const role = await prisma.$transaction(async (tx) => {
+  const role = await prisma.$transaction(async tx => {
     const created = await tx.role.create({
       data: {
         businessId,
@@ -128,139 +135,105 @@ export async function createRole(businessId: string, input: CreateRoleInput) {
       },
     })
 
-   
-      await tx.rolePermission.createMany({
-        data: resolvedPermissions.map(p => ({
-           roleId: created.id,
-            permissionId: p.id })),
-      })
-      return tx.role.findUnique({
-        where: { id: created.id },
-        include: {
-          permissions: { include: { permission: true } },
-          _count: { select: { members: true } },
-        },
-      })
+    await tx.rolePermission.createMany({
+      data: resolvedPermissions.map(p => ({
+        roleId: created.id,
+        permissionId: p.id,
+      })),
     })
-  
-  return role
+    return tx.role.findUnique({
+      where: { id: created.id },
+      include: {
+        permissions: { include: { permission: true } },
+        _count: { select: { members: true } },
+      },
+    })
+  })
 
-  
+  return role
 }
 
 /** Update a custom role. System roles cannot be modified. */
 export async function updateRole(
-
   businessId: string,
 
   roleId: string,
 
   input: UpdateRoleInput
-
 ) {
-
   await ensureBusinessExists(businessId)
 
   const existing = await prisma.role.findFirst({
-
     where: { id: roleId, businessId },
 
     select: { id: true, isSystem: true },
-
   })
 
-  if (!existing) throw new RoleNotFoundError()
+  if (!existing) {
+    throw new RoleNotFoundError()
+  }
 
   if (existing.isSystem) {
-
-    throw new InvalidPermissionError("System roles cannot be modified")
-
+    throw new InvalidPermissionError('System roles cannot be modified')
   }
 
   if (input.permissions) {
-
     validatePermissions(input.permissions)
-
   }
 
   // Step 1: Upsert all permissions OUTSIDE the transaction (no timeout risk)
 
   const resolvedPermissions = input.permissions
-
     ? await Promise.all(
-
-        input.permissions.map((p) =>
-
+        input.permissions.map(p =>
           prisma.permission.upsert({
-
             where: { resource_action: { resource: p.resource, action: p.action } },
 
             update: {},
 
             create: { resource: p.resource, action: p.action },
-
           })
-
         )
-
       )
-
     : null
 
   // Step 2: Update role + swap permissions in one fast transaction
 
-  return prisma.$transaction(async (tx) => {
-
+  return prisma.$transaction(async tx => {
     await tx.role.update({
-
       where: { id: roleId },
 
       data: {
-
         ...(input.name != null && { name: input.name }),
 
         ...(input.displayName !== undefined && { displayName: input.displayName }),
 
         ...(input.description !== undefined && { description: input.description }),
-
       },
-
     })
 
     if (resolvedPermissions !== null) {
-
       await tx.rolePermission.deleteMany({ where: { roleId } })
 
       await tx.rolePermission.createMany({
-
-        data: resolvedPermissions.map((p) => ({
-
+        data: resolvedPermissions.map(p => ({
           roleId,
 
           permissionId: p.id,
-
         })),
-
       })
-
     }
 
     return tx.role.findUnique({
-
       where: { id: roleId },
 
       include: {
-
         permissions: { include: { permission: true } },
 
         _count: { select: { members: true } },
-
       },
-
     })
-
   })
-
 }
 
 /** Delete a custom role. Fails if members are assigned to it. */
@@ -270,9 +243,15 @@ export async function deleteRole(businessId: string, roleId: string): Promise<vo
     where: { id: roleId, businessId },
     select: { id: true, isSystem: true, _count: { select: { members: true } } },
   })
-  if (!role) throw new RoleNotFoundError()
-  if (role.isSystem) throw new InvalidPermissionError("System roles cannot be deleted")
-  if (role._count.members > 0) throw new RoleInUseError()
+  if (!role) {
+    throw new RoleNotFoundError()
+  }
+  if (role.isSystem) {
+    throw new InvalidPermissionError('System roles cannot be deleted')
+  }
+  if (role._count.members > 0) {
+    throw new RoleInUseError()
+  }
 
   await prisma.role.delete({ where: { id: roleId } })
 }
@@ -284,62 +263,62 @@ export async function deleteRole(businessId: string, roleId: string): Promise<vo
 export async function seedSystemRoles(businessId: string): Promise<void> {
   const systemRoles = [
     {
-      name: "admin",
-      displayName: "Admin",
-      description: "Full access to all business modules",
+      name: 'admin',
+      displayName: 'Admin',
+      description: 'Full access to all business modules',
       permissions: [
-        { resource: "workorders", action: "create" },
-        { resource: "workorders", action: "read" },
-        { resource: "workorders", action: "update" },
-        { resource: "workorders", action: "delete" },
-        { resource: "tasks", action: "create" },
-        { resource: "tasks", action: "read" },
-        { resource: "tasks", action: "update" },
-        { resource: "tasks", action: "delete" },
-        { resource: "expenses", action: "create" },
-        { resource: "expenses", action: "read" },
-        { resource: "expenses", action: "update" },
-        { resource: "expenses", action: "delete" },
-        { resource: "priceList", action: "create" },
-        { resource: "priceList", action: "read" },
-        { resource: "priceList", action: "update" },
-        { resource: "priceList", action: "delete" },
-        { resource: "invoices", action: "create" },
-        { resource: "invoices", action: "read" },
-        { resource: "invoices", action: "update" },
-        { resource: "invoices", action: "delete" },
-        { resource: "quotes", action: "create" },
-        { resource: "quotes", action: "read" },
-        { resource: "quotes", action: "update" },
-        { resource: "clients", action: "create" },
-        { resource: "clients", action: "read" },
-        { resource: "clients", action: "update" },
-        { resource: "clients", action: "delete" },
-        { resource: "users", action: "read" },
-        { resource: "roles", action: "read" },
-        { resource: "settings", action: "read" },
-        { resource: "settings", action: "update" },
-        { resource: "reminderConfigs", action: "create" },
-        { resource: "reminderConfigs", action: "read" },
-        { resource: "reminderConfigs", action: "update" },
-        { resource: "reminderConfigs", action: "delete" },
-        { resource: "reports", action: "read" },
+        { resource: 'workorders', action: 'create' },
+        { resource: 'workorders', action: 'read' },
+        { resource: 'workorders', action: 'update' },
+        { resource: 'workorders', action: 'delete' },
+        { resource: 'tasks', action: 'create' },
+        { resource: 'tasks', action: 'read' },
+        { resource: 'tasks', action: 'update' },
+        { resource: 'tasks', action: 'delete' },
+        { resource: 'expenses', action: 'create' },
+        { resource: 'expenses', action: 'read' },
+        { resource: 'expenses', action: 'update' },
+        { resource: 'expenses', action: 'delete' },
+        { resource: 'priceList', action: 'create' },
+        { resource: 'priceList', action: 'read' },
+        { resource: 'priceList', action: 'update' },
+        { resource: 'priceList', action: 'delete' },
+        { resource: 'invoices', action: 'create' },
+        { resource: 'invoices', action: 'read' },
+        { resource: 'invoices', action: 'update' },
+        { resource: 'invoices', action: 'delete' },
+        { resource: 'quotes', action: 'create' },
+        { resource: 'quotes', action: 'read' },
+        { resource: 'quotes', action: 'update' },
+        { resource: 'clients', action: 'create' },
+        { resource: 'clients', action: 'read' },
+        { resource: 'clients', action: 'update' },
+        { resource: 'clients', action: 'delete' },
+        { resource: 'users', action: 'read' },
+        { resource: 'roles', action: 'read' },
+        { resource: 'settings', action: 'read' },
+        { resource: 'settings', action: 'update' },
+        { resource: 'reminderConfigs', action: 'create' },
+        { resource: 'reminderConfigs', action: 'read' },
+        { resource: 'reminderConfigs', action: 'update' },
+        { resource: 'reminderConfigs', action: 'delete' },
+        { resource: 'reports', action: 'read' },
       ],
     },
     {
-      name: "technician",
-      displayName: "Technician",
-      description: "Access only to assigned jobs and status updates",
+      name: 'technician',
+      displayName: 'Technician',
+      description: 'Access only to assigned jobs and status updates',
       permissions: [
-        { resource: "workorders", action: "read" },
-        { resource: "workorders", action: "update" },
-        { resource: "quotes", action: "read" },
-        { resource: "tasks", action: "read" },
-        { resource: "tasks", action: "update" },
-        { resource: "expenses", action: "create" },
-        { resource: "expenses", action: "read" },
-        { resource: "clients", action: "read" },
-        { resource: "reports", action: "read" },
+        { resource: 'workorders', action: 'read' },
+        { resource: 'workorders', action: 'update' },
+        { resource: 'quotes', action: 'read' },
+        { resource: 'tasks', action: 'read' },
+        { resource: 'tasks', action: 'update' },
+        { resource: 'expenses', action: 'create' },
+        { resource: 'expenses', action: 'read' },
+        { resource: 'clients', action: 'read' },
+        { resource: 'reports', action: 'read' },
       ],
     },
   ]
@@ -350,7 +329,9 @@ export async function seedSystemRoles(businessId: string): Promise<void> {
       where: { businessId_name: { businessId, name: roleData.name } },
       select: { id: true },
     })
-    if (exists) continue
+    if (exists) {
+      continue
+    }
 
     const role = await prisma.role.create({
       data: {

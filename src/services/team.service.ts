@@ -11,8 +11,8 @@
  */
 
 import { hashPassword } from 'better-auth/crypto'
-import prisma from '~/lib/prisma'
 import { UserRole } from '~/generated/prisma'
+import prisma from '~/lib/prisma'
 import { sendTeamMemberInvitationEmail } from '~/services/email-helpers'
 
 export class BusinessNotFoundError extends Error {
@@ -39,11 +39,7 @@ export class EmailAlreadyUsedError extends Error {
   }
 }
 
-export class InvalidOperationError extends Error {
-  constructor(msg: string) {
-    super(msg)
-  }
-}
+export class InvalidOperationError extends Error {}
 
 export interface MemberWithUserAndRole {
   id: string
@@ -95,7 +91,9 @@ export interface UpdateMemberInput {
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
-  if (!b) throw new BusinessNotFoundError()
+  if (!b) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 /** List team members for the business — excludes the business owner. */
@@ -163,14 +161,19 @@ export async function getMemberById(
 }
 
 /** Add a team member: creates User (with isOwner=false), Account (credential), and Member. */
-export async function addMember(businessId: string, input: AddMemberInput): Promise<MemberWithUserAndRole> {
+export async function addMember(
+  businessId: string,
+  input: AddMemberInput
+): Promise<MemberWithUserAndRole> {
   await ensureBusinessExists(businessId)
 
   const role = await prisma.role.findFirst({
     where: { id: input.roleId, businessId },
     select: { id: true },
   })
-  if (!role) throw new RoleNotFoundError()
+  if (!role) {
+    throw new RoleNotFoundError()
+  }
 
   // Check if a user with this email already exists
   const existingUser = await prisma.user.findUnique({
@@ -191,7 +194,9 @@ export async function addMember(businessId: string, input: AddMemberInput): Prom
         select: { id: true },
       })
       if (ownsThisBusiness) {
-        throw new InvalidOperationError('This user is the owner of this business and cannot be added as a team member')
+        throw new InvalidOperationError(
+          'This user is the owner of this business and cannot be added as a team member'
+        )
       }
     }
 
@@ -200,7 +205,9 @@ export async function addMember(businessId: string, input: AddMemberInput): Prom
       where: { userId_businessId: { userId: existingUser.id, businessId } },
       select: { id: true },
     })
-    if (existingMember) throw new EmailAlreadyUsedError()
+    if (existingMember) {
+      throw new EmailAlreadyUsedError()
+    }
 
     // User exists but not yet in this business — add as member only (no new user created)
     const member = await prisma.member.create({
@@ -235,7 +242,7 @@ export async function addMember(businessId: string, input: AddMemberInput): Prom
   }
 
   // New user — create User + Account + Member inside a transaction
-  const member = await prisma.$transaction(async (tx) => {
+  const member = await prisma.$transaction(async tx => {
     const hashedPassword = await hashPassword(input.password)
 
     const newUser = await tx.user.create({
@@ -246,7 +253,7 @@ export async function addMember(businessId: string, input: AddMemberInput): Prom
         rut: input.rut ?? null,
         image: input.pictureUrl ?? null,
         role: UserRole.BUSINESS_OWNER, // same enum — allows login through the same auth flow
-        isOwner: false,                // ✅ distinguishes them from an actual business owner
+        isOwner: false, // ✅ distinguishes them from an actual business owner
       },
     })
 
@@ -308,7 +315,7 @@ export async function addMember(businessId: string, input: AddMemberInput): Prom
   })
   const roleName = roleWithPermissions?.displayName ?? roleWithPermissions?.name ?? member.role.name
   const permissions =
-    roleWithPermissions?.permissions.map((rp) => ({
+    roleWithPermissions?.permissions.map(rp => ({
       resource: rp.permission.resource,
       action: rp.permission.action,
     })) ?? []
@@ -348,17 +355,21 @@ export async function updateMember(
     },
     include: { user: { select: { id: true } } },
   })
-  if (!member) throw new MemberNotFoundError()
+  if (!member) {
+    throw new MemberNotFoundError()
+  }
 
   if (input.roleId !== undefined) {
     const role = await prisma.role.findFirst({
       where: { id: input.roleId, businessId },
       select: { id: true },
     })
-    if (!role) throw new RoleNotFoundError()
+    if (!role) {
+      throw new RoleNotFoundError()
+    }
   }
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     // Update user profile fields if any provided
     const userData: {
       name?: string
@@ -366,10 +377,18 @@ export async function updateMember(
       rut?: string | null
       image?: string | null
     } = {}
-    if (input.name !== undefined) userData.name = input.name
-    if (input.phoneNumber !== undefined) userData.phone_no = input.phoneNumber
-    if (input.rut !== undefined) userData.rut = input.rut
-    if (input.pictureUrl !== undefined) userData.image = input.pictureUrl
+    if (input.name !== undefined) {
+      userData.name = input.name
+    }
+    if (input.phoneNumber !== undefined) {
+      userData.phone_no = input.phoneNumber
+    }
+    if (input.rut !== undefined) {
+      userData.rut = input.rut
+    }
+    if (input.pictureUrl !== undefined) {
+      userData.image = input.pictureUrl
+    }
 
     if (Object.keys(userData).length > 0) {
       await tx.user.update({
@@ -384,10 +403,15 @@ export async function updateMember(
       includeInNotificationsWhenAssigned?: boolean
       isActive?: boolean
     } = {}
-    if (input.roleId !== undefined) memberData.roleId = input.roleId
-    if (input.includeInNotificationsWhenAssigned !== undefined)
+    if (input.roleId !== undefined) {
+      memberData.roleId = input.roleId
+    }
+    if (input.includeInNotificationsWhenAssigned !== undefined) {
       memberData.includeInNotificationsWhenAssigned = input.includeInNotificationsWhenAssigned
-    if (input.isActive !== undefined) memberData.isActive = input.isActive
+    }
+    if (input.isActive !== undefined) {
+      memberData.isActive = input.isActive
+    }
 
     if (Object.keys(memberData).length > 0) {
       await tx.member.update({
@@ -398,7 +422,9 @@ export async function updateMember(
   })
 
   const updated = await getMemberById(businessId, memberId)
-  if (!updated) throw new MemberNotFoundError()
+  if (!updated) {
+    throw new MemberNotFoundError()
+  }
   return updated
 }
 
@@ -410,7 +436,9 @@ export async function removeMember(businessId: string, memberId: string): Promis
     where: { id: memberId, businessId },
     select: { id: true, user: { select: { isOwner: true } } },
   })
-  if (!member) throw new MemberNotFoundError()
+  if (!member) {
+    throw new MemberNotFoundError()
+  }
 
   // Safety guard: never allow removing the business owner via this endpoint
   if (member.user.isOwner) {

@@ -19,9 +19,7 @@ export const ClientProfileUpdateEmail = ({
 }: ClientProfileUpdateEmailProps) => {
   const appName = process.env.APP_NAME ?? 'Kelly'
 
-  const title = isUpdate
-    ? 'Your profile has been updated'
-    : "You've been added as a client"
+  const title = isUpdate ? 'Your profile has been updated' : "You've been added as a client"
 
   const message = isUpdate
     ? `${businessName} has updated your client profile in their ${appName} account. If you have any questions, please contact them directly.`

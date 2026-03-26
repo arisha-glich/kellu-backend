@@ -101,13 +101,7 @@ export function EmailLayout({ children, preview, logoUrl, headerTitle }: EmailLa
           {/* Header: company logo when provided, else platform logo, else header text (e.g. business name) */}
           <Section style={header}>
             {showLogo ? (
-              <Img
-                src={effectiveLogoUrl}
-                alt={headerLabel}
-                width="150"
-                height="40"
-                style={logo}
-              />
+              <Img src={effectiveLogoUrl} alt={headerLabel} width="150" height="40" style={logo} />
             ) : (
               <Text style={headerTextStyle}>{headerLabel}</Text>
             )}

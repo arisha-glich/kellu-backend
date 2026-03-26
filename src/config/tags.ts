@@ -10,6 +10,7 @@ export const TAGS = {
   roles: 'Roles',
   settings: 'Settings',
   reminders: 'Reminders',
+  notifications: 'Notifications',
   auditLogs: 'Audit Logs',
   business: 'Business',
   insights: 'Insights',

@@ -68,14 +68,28 @@ export interface ClientDetail {
 }
 
 function formatLastActivity(d: Date | null): string | null {
-  if (!d) return null
+  if (!d) {
+    return null
+  }
   const sec = Math.floor((Date.now() - d.getTime()) / 1000)
-  if (sec < 60) return 'Just now'
-  if (sec < 3600) return `${Math.floor(sec / 60)} minutes ago`
-  if (sec < 86400) return `${Math.floor(sec / 3600)} hours ago`
-  if (sec < 604800) return `${Math.floor(sec / 86400)} days ago`
-  if (sec < 2592000) return `${Math.floor(sec / 86400)} days ago`
-  if (sec < 31536000) return `${Math.floor(sec / 2592000)} months ago`
+  if (sec < 60) {
+    return 'Just now'
+  }
+  if (sec < 3600) {
+    return `${Math.floor(sec / 60)} minutes ago`
+  }
+  if (sec < 86400) {
+    return `${Math.floor(sec / 3600)} hours ago`
+  }
+  if (sec < 604800) {
+    return `${Math.floor(sec / 86400)} days ago`
+  }
+  if (sec < 2592000) {
+    return `${Math.floor(sec / 86400)} days ago`
+  }
+  if (sec < 31536000) {
+    return `${Math.floor(sec / 2592000)} months ago`
+  }
   return `${Math.floor(sec / 31536000)} years ago`
 }
 
@@ -84,7 +98,9 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
     where: { id: businessId },
     select: { id: true },
   })
-  if (!business) throw new BusinessNotFoundError()
+  if (!business) {
+    throw new BusinessNotFoundError()
+  }
 }
 
 export async function createClient(businessId: string, data: CreateClientInput) {
@@ -123,20 +139,10 @@ export async function createClient(businessId: string, data: CreateClientInput) 
   return mapToClientDetail(client)
 }
 
-export async function getClients(
-  businessId: string,
-  filters: ClientListFilters = {}
-) {
+export async function getClients(businessId: string, filters: ClientListFilters = {}) {
   await ensureBusinessExists(businessId)
 
-  const {
-    search,
-    status,
-    sortBy = 'createdAt',
-    order = 'desc',
-    page = 1,
-    limit = 10,
-  } = filters
+  const { search, status, sortBy = 'createdAt', order = 'desc', page = 1, limit = 10 } = filters
 
   const skip = (page - 1) * limit
 
@@ -255,7 +261,9 @@ export async function getClientById(businessId: string, clientId: string) {
     where: { id: clientId, businessId },
   })
 
-  if (!client) throw new ClientNotFoundError()
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
   return mapToClientDetail(client)
 }
 
@@ -264,21 +272,21 @@ export async function getClientByClientId(clientId: string) {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
   })
-  if (!client) throw new ClientNotFoundError()
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
   return mapToClientDetail(client)
 }
 
-export async function updateClient(
-  businessId: string,
-  clientId: string,
-  data: UpdateClientInput
-) {
+export async function updateClient(businessId: string, clientId: string, data: UpdateClientInput) {
   await ensureBusinessExists(businessId)
 
   const existing = await prisma.client.findFirst({
     where: { id: clientId, businessId },
   })
-  if (!existing) throw new ClientNotFoundError()
+  if (!existing) {
+    throw new ClientNotFoundError()
+  }
 
   const client = await prisma.client.update({
     where: { id: clientId },
@@ -318,7 +326,9 @@ export async function updateClientByClientId(clientId: string, data: UpdateClien
   const existing = await prisma.client.findUnique({
     where: { id: clientId },
   })
-  if (!existing) throw new ClientNotFoundError()
+  if (!existing) {
+    throw new ClientNotFoundError()
+  }
 
   const client = await prisma.client.update({
     where: { id: clientId },
@@ -359,7 +369,9 @@ export async function deleteClient(businessId: string, clientId: string) {
   const existing = await prisma.client.findFirst({
     where: { id: clientId, businessId },
   })
-  if (!existing) throw new ClientNotFoundError()
+  if (!existing) {
+    throw new ClientNotFoundError()
+  }
 
   await prisma.client.delete({
     where: { id: clientId },
@@ -371,7 +383,9 @@ export async function deleteClientByClientId(clientId: string) {
   const existing = await prisma.client.findUnique({
     where: { id: clientId },
   })
-  if (!existing) throw new ClientNotFoundError()
+  if (!existing) {
+    throw new ClientNotFoundError()
+  }
   await prisma.client.delete({
     where: { id: clientId },
   })

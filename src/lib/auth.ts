@@ -1,8 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { customSession, openAPI } from 'better-auth/plugins'
-import { UserRole } from '~/generated/prisma'
 import { ORIGINS } from '~/config/origins'
+import { UserRole } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 
 export const auth = betterAuth({
@@ -13,25 +13,25 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
-  user:{
-    additionalFields:{
-      role:{
+  user: {
+    additionalFields: {
+      role: {
         type: 'string',
-        required:false,
-        default:UserRole.BUSINESS_OWNER,
-        input:false,
-      }
-    }
+        required: false,
+        default: UserRole.BUSINESS_OWNER,
+        input: false,
+      },
+    },
   },
   plugins: [
-    customSession(async ({user})=>{
+    customSession(async ({ user }) => {
       const dbUser = await prisma.user.findUnique({
-        where:{
-          id:user.id,
+        where: {
+          id: user.id,
         },
-        select:{
-          role:true,
-        }
+        select: {
+          role: true,
+        },
       })
       return {
         user: {
@@ -43,6 +43,5 @@ export const auth = betterAuth({
     openAPI({
       theme: 'kepler',
     }),
-  
   ],
 })

@@ -12,13 +12,18 @@ export const ClientParamsSchema = z.object({
 
 /** Params for get/update/delete – only clientId (no business id in path) */
 export const ClientOnlyParamsSchema = z.object({
-  clientId: z.string().openapi({ param: { name: 'clientId', in: 'path' }, description: 'Client ID' }),
+  clientId: z
+    .string()
+    .openapi({ param: { name: 'clientId', in: 'path' }, description: 'Client ID' }),
 })
 export const ClientListQuerySchema = z.object({
   search: z
     .string()
     .optional()
-    .openapi({ param: { name: 'search', in: 'query' }, description: 'Search by name, email, or phone' }),
+    .openapi({
+      param: { name: 'search', in: 'query' },
+      description: 'Search by name, email, or phone',
+    }),
   status: ClientStatusEnum.optional().openapi({
     param: { name: 'status', in: 'query' },
     description: 'Filter by status (ACTIVE, ARCHIVED, FOLLOW_UP, ALL)',
@@ -31,8 +36,14 @@ export const ClientListQuerySchema = z.object({
     .enum(['asc', 'desc'])
     .optional()
     .openapi({ param: { name: 'order', in: 'query' }, description: 'Sort order' }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 export const ClientListItemSchema = z.object({
@@ -86,7 +97,7 @@ export const CreateClientBodySchema = z
   })
   .transform(d => ({
     ...d,
-    email: d.email === '' ? null : d.email ?? null,
+    email: d.email === '' ? null : (d.email ?? null),
   }))
   .openapi({ description: 'Add Client form: Contact details + Details + Notes' })
 
@@ -134,7 +145,7 @@ export const CLIENT_ROUTES = {
     tags: ['Clients'],
     path: '/statistics',
     summary: 'Get client statistics (new clients last 30 days, total YTD)',
-    request: { },
+    request: {},
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ClientStatisticsSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
@@ -149,7 +160,7 @@ export const CLIENT_ROUTES = {
     tags: ['Clients'],
     path: '/lead-sources',
     summary: 'Get lead source options for dropdown',
-    request: { },
+    request: {},
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(LeadSourcesResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
