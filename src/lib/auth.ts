@@ -7,7 +7,19 @@ import prisma from '~/lib/prisma'
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://kellu-backend.onrender.com'
 
+function resolveAuthSecret(): string {
+  const fromEnv = Bun.env.BETTER_AUTH_SECRET?.trim()
+  if (fromEnv) return fromEnv
+  if (Bun.env.NODE_ENV === 'production') {
+    throw new Error(
+      'BETTER_AUTH_SECRET must be set in production (e.g. Render environment variables).',
+    )
+  }
+  return 'kellu-local-dev-only-better-auth-secret-min-32-chars'
+}
+
 export const auth = betterAuth({
+  secret: resolveAuthSecret(),
   emailAndPassword: {
     enabled: true,
   },
