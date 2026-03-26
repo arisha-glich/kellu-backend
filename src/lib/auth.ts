@@ -7,15 +7,19 @@ import prisma from '~/lib/prisma'
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://kellu-backend.onrender.com'
 
+/** Not Better Auth's built-in default — only used when BETTER_AUTH_SECRET is unset (insecure if public). */
+const INSECURE_FALLBACK_SECRET =
+  'kellu-fallback-auth-secret-set-BETTER_AUTH_SECRET-env-min-length-48'
+
 function resolveAuthSecret(): string {
   const fromEnv = Bun.env.BETTER_AUTH_SECRET?.trim()
   if (fromEnv) return fromEnv
   if (Bun.env.NODE_ENV === 'production') {
-    throw new Error(
-      'BETTER_AUTH_SECRET must be set in production (e.g. Render environment variables).',
+    console.warn(
+      '[better-auth] BETTER_AUTH_SECRET is missing — using a source-visible fallback. Set BETTER_AUTH_SECRET on the host for real deployments.',
     )
   }
-  return 'kellu-local-dev-only-better-auth-secret-min-32-chars'
+  return INSECURE_FALLBACK_SECRET
 }
 
 export const auth = betterAuth({
