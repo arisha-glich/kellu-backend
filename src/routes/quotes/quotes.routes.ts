@@ -82,6 +82,8 @@ export const SendQuoteBodySchema = z
 
 export const SendQuoteEmailBodySchema = z
   .object({
+    from: z.string().email().optional().nullable(),
+    replyTo: z.string().email().optional().nullable(),
     subject: z
       .string()
       .optional()
@@ -98,8 +100,46 @@ export const SendQuoteEmailBodySchema = z
       .optional()
       .nullable()
       .openapi({ description: 'Override recipient; defaults to client email' }),
+    sendMeCopy: z.boolean().optional().default(false),
+    sendViaWhatsapp: z.boolean().optional().default(false),
+    selectedAttachmentIds: z.array(z.string()).optional().default([]),
+    additionalAttachments: z
+      .array(
+        z.object({
+          filename: z.string().min(1),
+          contentBase64: z.string().min(1),
+          contentType: z.string().optional().nullable(),
+        })
+      )
+      .optional()
+      .default([]),
   })
-  .openapi({ description: 'Optional overrides for quote email (From/Reply-To come from Settings)' })
+  .openapi({
+    description:
+      'Quote email compose payload: sender fields, message, recipient, selectable attachments, and optional extra attachments',
+  })
+
+const QuoteEmailComposeAttachmentSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  filename: z.string(),
+  source: z.enum(['QUOTE_PDF', 'JOB_REPORT_PDF', 'WORK_ORDER_ATTACHMENT']),
+  sizeBytes: z.number().int().nullable(),
+  selectedByDefault: z.boolean(),
+})
+
+const QuoteEmailComposeResponseSchema = z.object({
+  quoteId: z.string(),
+  from: z.string(),
+  replyTo: z.string(),
+  to: z.string().nullable(),
+  subject: z.string(),
+  message: z.string(),
+  sendMeCopyDefault: z.boolean(),
+  sendViaWhatsappDefault: z.boolean(),
+  maxAdditionalAttachmentsBytes: z.number().int(),
+  attachments: z.array(QuoteEmailComposeAttachmentSchema),
+})
 
 // ─── Query ───────────────────────────────────────────────────────────────────
 
@@ -373,6 +413,21 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Quote email sent'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Client has no email'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getEmailCompose: createRoute({
+    method: 'get',
+    tags: ['Quotes'],
+    path: '/{quoteId}/email-compose',
+    summary: 'Get prefilled quote email compose data for Send Quote modal',
+    request: { params: QuoteParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteEmailComposeResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

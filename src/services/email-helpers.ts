@@ -334,6 +334,52 @@ export function sendBookingConfirmationEmail(params: SendBookingConfirmationPara
   })
 }
 
+export interface SendCustomerReminderEmailParams {
+  to: string
+  clientName: string
+  businessName: string
+  companyReplyTo: string
+  workOrderTitle: string
+  reminderDateTime: Date
+  note?: string | null
+}
+
+/**
+ * Send customer reminder email (Client → Their Customers).
+ * From: {businessName} <noresponder@...>, Reply-To: companyReplyTo.
+ */
+export function sendCustomerReminderEmail(params: SendCustomerReminderEmailParams): void {
+  const { to, clientName, businessName, companyReplyTo, workOrderTitle, reminderDateTime, note } =
+    params
+  const dateText = reminderDateTime.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const timeText = reminderDateTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+  const safeNote = (note ?? '').trim()
+  const noteHtml = safeNote.length > 0 ? `<p><strong>Note:</strong> ${safeNote}</p>` : ''
+
+  appEventEmitter.emitSendMail({
+    to,
+    subject: `Reminder: ${workOrderTitle} on ${dateText} ${timeText}`,
+    html: `
+      <p>Hi ${clientName},</p>
+      <p>This is a reminder for your upcoming service: <strong>${workOrderTitle}</strong>.</p>
+      <p><strong>When:</strong> ${dateText} at ${timeText}</p>
+      ${noteHtml}
+      <p>If you need to reschedule, please reply to this email.</p>
+      <p>Thanks,<br/>${businessName}</p>
+    `,
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+  })
+}
+
 /**
  * Register email listeners: base (mail:send) + template rendering (mail:send-template).
  */

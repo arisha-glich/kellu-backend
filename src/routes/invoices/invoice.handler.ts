@@ -10,10 +10,12 @@ import {
   ClientNotFoundError,
   createInvoice,
   getInvoiceById,
+  getInvoiceEmailComposeData,
   getInvoiceOverview,
   InvoiceNotFoundError,
   listInvoices,
   sendInvoice,
+  sendInvoiceEmail,
 } from '~/services/invoice.service'
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
@@ -253,6 +255,112 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
       }
       console.error('Error sending invoice:', error)
       return c.json({ message: 'Failed to send invoice' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  getEmailCompose: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'invoices', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view invoice email compose data' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { invoiceId } = c.req.valid('param')
+      const data = await getInvoiceEmailComposeData(businessId, invoiceId)
+      return c.json(
+        { message: 'Invoice email compose data retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof InvoiceNotFoundError) {
+        return c.json({ message: 'Invoice not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error fetching invoice email compose:', error)
+      return c.json(
+        { message: 'Failed to retrieve invoice email compose data' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  sendEmail: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'invoices', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to send invoice emails' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { invoiceId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+      const invoice = await sendInvoiceEmail(businessId, invoiceId, {
+        from: body.from ?? undefined,
+        replyTo: body.replyTo ?? undefined,
+        subject: body.subject ?? undefined,
+        message: body.message ?? undefined,
+        to: body.to ?? undefined,
+        sendMeCopy: body.sendMeCopy ?? false,
+        selectedAttachmentIds: body.selectedAttachmentIds ?? [],
+        additionalAttachments: body.additionalAttachments ?? [],
+        requesterEmail: user.email,
+        markInvoiceSent: body.markInvoiceSent ?? true,
+      })
+      return c.json(
+        { message: 'Invoice email sent successfully', success: true, data: invoice },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof InvoiceNotFoundError) {
+        return c.json({ message: 'Invoice not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof Error && error.message.includes('no email')) {
+        return c.json(
+          {
+            message: 'Client has no email address. Add an email to the client to send the invoice.',
+          },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      if (error instanceof Error && error.message === 'ATTACHMENTS_TOO_LARGE') {
+        return c.json(
+          { message: 'Total attachments exceed 10 MB limit' },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      if (error instanceof Error && error.message === 'ATTACHMENT_FETCH_FAILED') {
+        return c.json(
+          { message: 'Failed to download one or more attachment files' },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      console.error('Error sending invoice email:', error)
+      return c.json(
+        { message: 'Failed to send invoice email' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 }

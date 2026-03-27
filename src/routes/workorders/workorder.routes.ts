@@ -43,6 +43,15 @@ export const WorkOrderParamsSchema = z.object({
     .openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
 })
 
+export const WorkOrderAttachmentParamsSchema = z.object({
+  workOrderId: z
+    .string()
+    .openapi({ param: { name: 'workOrderId', in: 'path' }, description: 'Work order ID' }),
+  attachmentId: z
+    .string()
+    .openapi({ param: { name: 'attachmentId', in: 'path' }, description: 'Attachment ID' }),
+})
+
 /** Params for line-item sub-resource (workOrderId + lineItemId). */
 export const WorkOrderLineItemParamsSchema = z.object({
   workOrderId: z
@@ -159,9 +168,14 @@ export const CreateWorkOrderBodySchema = z
     assignedToId: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
+    internalNotes: z.string().optional().nullable(),
     quoteRequired: z.boolean().optional().default(false),
+    quoteClientMessage: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
+    invoiceClientMessage: z.string().optional().nullable(),
     invoiceTermsConditions: z.string().optional().nullable(),
+    applyQuoteTermsToFuture: z.boolean().optional().default(false),
+    applyInvoiceTermsToFuture: z.boolean().optional().default(false),
     discount: z.number().optional(),
     discountType: DiscountTypeEnum.optional().nullable(),
     taxPercent: z.number().optional().nullable(),
@@ -255,6 +269,16 @@ const PaymentSchema = z.object({
   note: z.string().nullable(),
 })
 
+const WorkOrderAttachmentSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  filename: z.string().nullable(),
+  type: z.string().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  workOrderId: z.string(),
+})
+
 export const WorkOrderDetailResponseSchema = z.object({
   id: z.string(),
   workOrderNumber: z.string().nullable(),
@@ -262,6 +286,8 @@ export const WorkOrderDetailResponseSchema = z.object({
   address: z.string(),
   instructions: z.string().nullable(),
   notes: z.string().nullable(),
+  quoteObservations: z.string().nullable(),
+  invoiceObservations: z.string().nullable(),
   isScheduleLater: z.boolean(),
   scheduledAt: z.coerce.date().nullable(),
   startTime: z.string().nullable(),
@@ -283,6 +309,7 @@ export const WorkOrderDetailResponseSchema = z.object({
   assignedTo: z.any().nullable(),
   lineItems: z.array(LineItemSchema),
   payments: z.array(PaymentSchema),
+  attachments: z.array(WorkOrderAttachmentSchema),
 })
 
 const AddToPriceListResponseSchema = z.object({
@@ -354,6 +381,89 @@ export const WorkOrderPriceListQuerySchema = z.object({
 const WorkOrderPriceListResponseSchema = z.object({
   data: z.array(PriceListItemSchemaInWorkorder),
   pagination: PaginationSchema,
+})
+
+const AddWorkOrderAttachmentsBodySchema = z.object({
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().min(1),
+        filename: z.string().optional().nullable(),
+        type: z.string().optional().nullable(),
+      })
+    )
+    .min(1)
+    .max(10),
+})
+
+const WorkOrderReminderSchema = z.object({
+  id: z.string(),
+  dateTime: z.coerce.date(),
+  note: z.string().nullable(),
+  channel: z.string(),
+  createdAt: z.coerce.date(),
+})
+
+const WorkOrderReminderOverviewSchema = z.object({
+  upcomingReminder: z
+    .object({
+      dateTime: z.coerce.date(),
+      note: z.string().nullable(),
+    })
+    .nullable(),
+  reminders: z.array(WorkOrderReminderSchema),
+})
+
+const CreateWorkOrderReminderBodySchema = z.object({
+  date: z.coerce.date(),
+  time: z.string().min(1),
+  note: z.string().optional().nullable(),
+})
+
+export const SendJobFollowUpEmailBodySchema = z
+  .object({
+    from: z.string().email().optional().nullable(),
+    replyTo: z.string().email().optional().nullable(),
+    subject: z.string().optional().nullable(),
+    message: z.string().optional().nullable(),
+    to: z.string().email().optional().nullable(),
+    sendMeCopy: z.boolean().optional().default(false),
+    selectedAttachmentIds: z.array(z.string()).optional().default([]),
+    additionalAttachments: z
+      .array(
+        z.object({
+          filename: z.string().min(1),
+          contentBase64: z.string().min(1),
+          contentType: z.string().optional().nullable(),
+        })
+      )
+      .optional()
+      .default([]),
+  })
+  .openapi({
+    description:
+      'Job follow-up email: sender fields, message, recipient, work order attachments, optional extra files (10 MB total)',
+  })
+
+const JobFollowUpEmailComposeAttachmentSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  filename: z.string(),
+  source: z.enum(['QUOTE_PDF', 'JOB_REPORT_PDF', 'WORK_ORDER_ATTACHMENT']),
+  sizeBytes: z.number().int().nullable(),
+  selectedByDefault: z.boolean(),
+})
+
+const JobFollowUpEmailComposeResponseSchema = z.object({
+  workOrderId: z.string(),
+  from: z.string(),
+  replyTo: z.string(),
+  to: z.string().nullable(),
+  subject: z.string(),
+  message: z.string(),
+  sendMeCopyDefault: z.boolean(),
+  maxAdditionalAttachmentsBytes: z.number().int(),
+  attachments: z.array(JobFollowUpEmailComposeAttachmentSchema),
 })
 
 export const WORK_ORDER_ROUTES = {
@@ -592,6 +702,150 @@ export const WORK_ORDER_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(
         zodResponseSchema(WorkOrderExpenseItemSchema),
         'Expense created'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  listAttachments: createRoute({
+    method: 'get',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/attachments',
+    summary: 'List work order attachments',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: z.array(WorkOrderAttachmentSchema) })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  addAttachments: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/attachments',
+    summary: 'Add attachments to work order (max 10 total)',
+    request: {
+      params: WorkOrderParamsSchema,
+      body: jsonContentRequired(AddWorkOrderAttachmentsBodySchema, 'Attachments payload'),
+    },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(z.object({ data: z.array(WorkOrderAttachmentSchema) })),
+        'Created'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Attachment limit exceeded or validation error'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  deleteAttachment: createRoute({
+    method: 'delete',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/attachments/{attachmentId}',
+    summary: 'Delete attachment from work order',
+    request: { params: WorkOrderAttachmentParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ deleted: z.boolean() })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or attachment not found'
+      ),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  listCustomerReminders: createRoute({
+    method: 'get',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/customer-reminders',
+    summary: 'List customer reminders for this work order',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: WorkOrderReminderOverviewSchema })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  createCustomerReminder: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/customer-reminders',
+    summary: 'Create customer reminder for this work order',
+    request: {
+      params: WorkOrderParamsSchema,
+      body: jsonContentRequired(CreateWorkOrderReminderBodySchema, 'Reminder payload'),
+    },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(z.object({ data: WorkOrderReminderOverviewSchema })),
+        'Created'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid date/time payload'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getJobFollowUpEmailCompose: createRoute({
+    method: 'get',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/job-follow-up-email-compose',
+    summary: 'Prefill data for “Email job follow-up” modal (from, reply-to, subject, attachments)',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(JobFollowUpEmailComposeResponseSchema),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  sendJobFollowUpEmail: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/send-job-follow-up-email',
+    summary: 'Send job follow-up email to the client (attachments + 10 MB cap)',
+    request: {
+      params: WorkOrderParamsSchema,
+      body: jsonContentRequired(SendJobFollowUpEmailBodySchema, 'Job follow-up email payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Validation or attachment error'
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),

@@ -13,8 +13,10 @@ const app = createApp()
 app.use(
   '*',
   cors({
-    origin: (origin) => {
-      if (!origin) return null
+    origin: origin => {
+      if (!origin) {
+        return null
+      }
       return ORIGINS.includes(origin) ? origin : null
     },
     allowHeaders: ['Content-Type', 'Authorization'],

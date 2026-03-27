@@ -584,7 +584,22 @@ const defaultQuoteEmailMessage = (clientName: string, businessName: string, titl
 export async function sendQuoteEmail(
   businessId: string,
   workOrderId: string,
-  options?: { subject?: string; message?: string; to?: string }
+  options?: {
+    from?: string
+    replyTo?: string
+    subject?: string
+    message?: string
+    to?: string
+    sendMeCopy?: boolean
+    sendViaWhatsapp?: boolean
+    selectedAttachmentIds?: string[]
+    additionalAttachments?: Array<{
+      filename: string
+      contentBase64: string
+      contentType?: string | null
+    }>
+    requesterEmail?: string
+  }
 ) {
   await ensureBusinessExists(businessId)
 
@@ -604,14 +619,86 @@ export async function sendQuoteEmail(
     throw new Error('Client has no email address. Add an email to the client to send the quote.')
   }
 
-  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
+  const companyReplyTo =
+    options?.replyTo?.trim() || wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const displayName = wo.business.name?.trim() || 'Company'
   // Use verified sender for From (Resend only allows verified domains); replies go to Reply-To
-  const fromHeader = clientToCustomerFrom(displayName)
+  const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
   const subject =
     options?.subject ??
     `Quote from ${displayName} - ${wo.title} ${wo.quoteCorrelative ?? ''}`.trim()
   const html = options?.message ?? defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
+
+  const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
+  const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
+  let totalBytes = 0
+  const maxBytes = 10 * 1024 * 1024
+  const pushAttachment = (filename: string, content: Buffer, contentType?: string) => {
+    totalBytes += content.byteLength
+    if (totalBytes > maxBytes) {
+      throw new Error('ATTACHMENTS_TOO_LARGE')
+    }
+    attachmentPayload.push({ filename, content, contentType })
+  }
+
+  const fetchUrlAsBuffer = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('ATTACHMENT_FETCH_FAILED')
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return Buffer.from(arrayBuffer)
+  }
+
+  const builtInAttachments: Array<{
+    id: string
+    filename: string
+    url: string
+    contentType: string
+  }> = []
+  if (wo.lastQuotePdfUrl) {
+    builtInAttachments.push({
+      id: 'quote_pdf',
+      filename: 'Quote.pdf',
+      url: wo.lastQuotePdfUrl,
+      contentType: 'application/pdf',
+    })
+  }
+  if (wo.lastJobReportPdfUrl) {
+    builtInAttachments.push({
+      id: 'work_order_summary_pdf',
+      filename: 'Work order summary.pdf',
+      url: wo.lastJobReportPdfUrl,
+      contentType: 'application/pdf',
+    })
+  }
+
+  for (const item of builtInAttachments) {
+    if (selectedIds.has(item.id)) {
+      const content = await fetchUrlAsBuffer(item.url)
+      pushAttachment(item.filename, content, item.contentType)
+    }
+  }
+
+  if (selectedIds.size > 0) {
+    const workOrderAttachments = await prisma.workOrderAttachment.findMany({
+      where: { workOrderId },
+      select: { id: true, url: true, filename: true, type: true },
+    })
+    for (const item of workOrderAttachments) {
+      const id = `woa_${item.id}`
+      if (!selectedIds.has(id)) {
+        continue
+      }
+      const content = await fetchUrlAsBuffer(item.url)
+      pushAttachment(item.filename ?? 'Attachment', content, item.type ?? undefined)
+    }
+  }
+
+  for (const item of options?.additionalAttachments ?? []) {
+    const content = Buffer.from(item.contentBase64, 'base64')
+    pushAttachment(item.filename, content, item.contentType ?? undefined)
+  }
 
   await emailService.send({
     to: toEmail,
@@ -619,9 +706,113 @@ export async function sendQuoteEmail(
     html,
     from: fromHeader,
     replyTo: companyReplyTo,
+    attachments: attachmentPayload,
   })
 
+  if (options?.sendMeCopy && options.requesterEmail?.trim()) {
+    await emailService.send({
+      to: options.requesterEmail.trim(),
+      subject: `[Copy] ${subject}`,
+      html,
+      from: fromHeader,
+      replyTo: companyReplyTo,
+      attachments: attachmentPayload,
+    })
+  }
+
+  if (options?.sendViaWhatsapp !== undefined) {
+    await prisma.workOrder.update({
+      where: { id: workOrderId },
+      data: {
+        quoteWhatsappStatus: options.sendViaWhatsapp ? 'PENDING' : null,
+      },
+    })
+  }
+
   return getQuoteById(businessId, workOrderId)
+}
+
+export async function getQuoteEmailComposeData(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId, quoteRequired: true },
+    include: {
+      client: { select: { id: true, name: true, email: true } },
+      business: {
+        include: {
+          settings: { select: { replyToEmail: true, sendQuoteWhatsappDefault: true } },
+        },
+      },
+    },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const displayName = wo.business.name?.trim() || 'Company'
+  const from = clientToCustomerFrom(displayName)
+  const replyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
+  const subject = `Quote from ${displayName} - ${wo.title} ${wo.quoteCorrelative ?? ''}`.trim()
+  const message = defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
+  const attachments: Array<{
+    id: string
+    label: string
+    filename: string
+    source: 'QUOTE_PDF' | 'JOB_REPORT_PDF' | 'WORK_ORDER_ATTACHMENT'
+    sizeBytes: number | null
+    selectedByDefault: boolean
+  }> = []
+
+  if (wo.lastQuotePdfUrl) {
+    attachments.push({
+      id: 'quote_pdf',
+      label: 'Quote.pdf',
+      filename: 'Quote.pdf',
+      source: 'QUOTE_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+  if (wo.lastJobReportPdfUrl) {
+    attachments.push({
+      id: 'work_order_summary_pdf',
+      label: 'Work order summary.pdf',
+      filename: 'Work order summary.pdf',
+      source: 'JOB_REPORT_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+
+  const workOrderAttachments = await prisma.workOrderAttachment.findMany({
+    where: { workOrderId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, filename: true },
+  })
+  for (const item of workOrderAttachments) {
+    attachments.push({
+      id: `woa_${item.id}`,
+      label: item.filename ?? 'Attachment',
+      filename: item.filename ?? 'Attachment',
+      source: 'WORK_ORDER_ATTACHMENT',
+      sizeBytes: null,
+      selectedByDefault: false,
+    })
+  }
+
+  return {
+    quoteId: wo.id,
+    from,
+    replyTo,
+    to: wo.client.email ?? null,
+    subject,
+    message,
+    sendMeCopyDefault: false,
+    sendViaWhatsappDefault: wo.business.settings?.sendQuoteWhatsappDefault ?? false,
+    maxAdditionalAttachmentsBytes: 10 * 1024 * 1024,
+    attachments,
+  }
 }
 
 /**

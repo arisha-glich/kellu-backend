@@ -8,7 +8,13 @@ import type { DiscountType, InvoiceStatus, JobStatus, QuoteStatus } from '~/gene
 import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
-import { sendBookingConfirmationEmail, sendWorkOrderCreatedEmail } from '~/services/email-helpers'
+import { emailService } from '~/services/email.service'
+import {
+  clientToCustomerFrom,
+  sendBookingConfirmationEmail,
+  sendCustomerReminderEmail,
+  sendWorkOrderCreatedEmail,
+} from '~/services/email-helpers'
 
 export class WorkOrderNotFoundError extends Error {
   constructor() {
@@ -51,7 +57,9 @@ export interface CreateWorkOrderInput {
   instructions?: string | null
   notes?: string | null
   quoteRequired?: boolean
+  quoteClientMessage?: string | null
   quoteTermsConditions?: string | null
+  invoiceClientMessage?: string | null
   invoiceTermsConditions?: string | null
   discount?: number
   discountType?: DiscountType | null
@@ -350,7 +358,9 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         endTime: input.endTime ?? null,
         assignedToId: input.assignedToId ?? null,
         quoteRequired: input.quoteRequired ?? false,
+        quoteObservations: input.quoteClientMessage ?? null,
         quoteTermsConditions: input.quoteTermsConditions ?? null,
+        invoiceObservations: input.invoiceClientMessage ?? null,
         invoiceTermsConditions: input.invoiceTermsConditions ?? null,
         quoteStatus: 'NOT_SENT',
         jobStatus,
@@ -476,8 +486,14 @@ export async function updateWorkOrder(
       ...(input.endTime !== undefined && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
       ...(input.quoteRequired !== undefined && { quoteRequired: input.quoteRequired }),
+      ...(input.quoteClientMessage !== undefined && {
+        quoteObservations: input.quoteClientMessage,
+      }),
       ...(input.quoteTermsConditions !== undefined && {
         quoteTermsConditions: input.quoteTermsConditions,
+      }),
+      ...(input.invoiceClientMessage !== undefined && {
+        invoiceObservations: input.invoiceClientMessage,
       }),
       ...(input.invoiceTermsConditions !== undefined && {
         invoiceTermsConditions: input.invoiceTermsConditions,
@@ -822,6 +838,421 @@ export async function registerPayment(
       })
     }
   })
+
+  return getWorkOrderById(businessId, workOrderId)
+}
+
+export async function listWorkOrderAttachments(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  return prisma.workOrderAttachment.findMany({
+    where: { workOrderId },
+    orderBy: { createdAt: 'asc' },
+  })
+}
+
+export async function addWorkOrderAttachments(
+  businessId: string,
+  workOrderId: string,
+  attachments: Array<{ url: string; filename?: string | null; type?: string | null }>
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  return prisma.$transaction(async tx => {
+    const existingCount = await tx.workOrderAttachment.count({ where: { workOrderId } })
+    if (existingCount + attachments.length > 10) {
+      throw new Error('MAX_ATTACHMENTS_EXCEEDED')
+    }
+
+    await tx.workOrderAttachment.createMany({
+      data: attachments.map(item => ({
+        workOrderId,
+        url: item.url,
+        filename: item.filename ?? null,
+        type: item.type ?? null,
+      })),
+    })
+
+    return tx.workOrderAttachment.findMany({
+      where: { workOrderId },
+      orderBy: { createdAt: 'asc' },
+    })
+  })
+}
+
+export async function deleteWorkOrderAttachment(
+  businessId: string,
+  workOrderId: string,
+  attachmentId: string
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const existing = await prisma.workOrderAttachment.findFirst({
+    where: { id: attachmentId, workOrderId },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new Error('ATTACHMENT_NOT_FOUND')
+  }
+
+  await prisma.workOrderAttachment.delete({ where: { id: attachmentId } })
+}
+
+export async function listWorkOrderCustomerReminders(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true, clientId: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const [client, reminderLogs] = await Promise.all([
+    prisma.client.findUnique({
+      where: { id: wo.clientId },
+      select: { reminderDate: true, reminderNote: true },
+    }),
+    prisma.reminderLog.findMany({
+      where: { businessId, workOrderId, reminderType: 'CLIENT_FOLLOW_UP' },
+      orderBy: { sentAt: 'desc' },
+    }),
+  ])
+
+  return {
+    upcomingReminder:
+      client?.reminderDate != null
+        ? {
+            dateTime: client.reminderDate,
+            note: client.reminderNote ?? null,
+          }
+        : null,
+    reminders: reminderLogs.map(item => ({
+      id: item.id,
+      dateTime: item.sentAt,
+      note: null,
+      channel: item.channel,
+      createdAt: item.createdAt,
+    })),
+  }
+}
+
+export async function createWorkOrderCustomerReminder(
+  businessId: string,
+  workOrderId: string,
+  data: { dateTime: Date; note?: string | null }
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true, clientId: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.client.update({
+      where: { id: wo.clientId },
+      data: {
+        reminderDate: data.dateTime,
+        reminderNote: data.note ?? null,
+        status: 'FOLLOW_UP',
+      },
+    })
+
+    await tx.reminderLog.create({
+      data: {
+        reminderType: 'CLIENT_FOLLOW_UP',
+        sentAt: data.dateTime,
+        channel: 'EMAIL',
+        entityType: 'WORK_ORDER',
+        entityId: workOrderId,
+        workOrderId,
+        clientId: wo.clientId,
+        businessId,
+      },
+    })
+  })
+
+  try {
+    const woForEmail = await prisma.workOrder.findFirst({
+      where: { id: workOrderId, businessId },
+      include: {
+        client: { select: { name: true, email: true } },
+        business: { include: { settings: { select: { replyToEmail: true } } } },
+      },
+    })
+    const clientEmail = woForEmail?.client?.email?.trim()
+    if (woForEmail && clientEmail) {
+      const companyReplyTo =
+        woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
+      sendCustomerReminderEmail({
+        to: clientEmail,
+        clientName: woForEmail.client.name,
+        businessName: woForEmail.business.name,
+        companyReplyTo,
+        workOrderTitle: woForEmail.title,
+        reminderDateTime: data.dateTime,
+        note: data.note ?? null,
+      })
+    }
+  } catch (error) {
+    console.error('[WORK_ORDER] Failed to send customer reminder email:', error)
+  }
+
+  return listWorkOrderCustomerReminders(businessId, workOrderId)
+}
+
+const defaultJobFollowUpEmailMessage = (clientName: string, businessName: string, title: string) =>
+  `<!DOCTYPE html><html><body style="font-family: sans-serif; line-height: 1.5;">` +
+  `<p>Hi ${clientName},</p>` +
+  `<p>Thank you for choosing <strong>${businessName}</strong> for work on <strong>${title}</strong>.</p>` +
+  `<p>We hope everything went well. If you have a moment, we would love to hear your feedback.</p>` +
+  `<p>Best regards,<br/>${businessName}</p>` +
+  `</body></html>`
+
+export async function getJobFollowUpEmailComposeData(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    include: {
+      client: { select: { id: true, name: true, email: true } },
+      business: {
+        include: {
+          settings: { select: { replyToEmail: true } },
+        },
+      },
+    },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const displayName = wo.business.name?.trim() || 'Company'
+  const from = clientToCustomerFrom(displayName)
+  const replyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
+  const subject = `Thank you – feedback for ${wo.title}`
+  const message = defaultJobFollowUpEmailMessage(wo.client.name, displayName, wo.title)
+
+  const attachments: Array<{
+    id: string
+    label: string
+    filename: string
+    source: 'QUOTE_PDF' | 'JOB_REPORT_PDF' | 'WORK_ORDER_ATTACHMENT'
+    sizeBytes: number | null
+    selectedByDefault: boolean
+  }> = []
+
+  if (wo.lastQuotePdfUrl) {
+    attachments.push({
+      id: 'quote_pdf',
+      label: 'Quote.pdf',
+      filename: 'Quote.pdf',
+      source: 'QUOTE_PDF',
+      sizeBytes: null,
+      selectedByDefault: false,
+    })
+  }
+  if (wo.lastJobReportPdfUrl) {
+    attachments.push({
+      id: 'work_order_summary_pdf',
+      label: 'Work order summary.pdf',
+      filename: 'Work order summary.pdf',
+      source: 'JOB_REPORT_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+
+  const workOrderAttachments = await prisma.workOrderAttachment.findMany({
+    where: { workOrderId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, filename: true },
+  })
+  for (const item of workOrderAttachments) {
+    attachments.push({
+      id: `woa_${item.id}`,
+      label: item.filename ?? 'Attachment',
+      filename: item.filename ?? 'Attachment',
+      source: 'WORK_ORDER_ATTACHMENT',
+      sizeBytes: null,
+      selectedByDefault: false,
+    })
+  }
+
+  return {
+    workOrderId: wo.id,
+    from,
+    replyTo,
+    to: wo.client.email ?? null,
+    subject,
+    message,
+    sendMeCopyDefault: false,
+    maxAdditionalAttachmentsBytes: 10 * 1024 * 1024,
+    attachments,
+  }
+}
+
+export async function sendJobFollowUpEmail(
+  businessId: string,
+  workOrderId: string,
+  options?: {
+    from?: string
+    replyTo?: string
+    subject?: string
+    message?: string
+    to?: string
+    sendMeCopy?: boolean
+    selectedAttachmentIds?: string[]
+    additionalAttachments?: Array<{
+      filename: string
+      contentBase64: string
+      contentType?: string | null
+    }>
+    requesterEmail?: string
+  }
+) {
+  await ensureBusinessExists(businessId)
+
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    include: {
+      client: { select: { id: true, name: true, email: true } },
+      business: { include: { settings: { select: { replyToEmail: true } } } },
+    },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const toEmail = (options?.to ?? wo.client.email)?.trim()
+  if (!toEmail) {
+    throw new Error(
+      'Client has no email address. Add an email to the client to send the follow-up.'
+    )
+  }
+
+  const companyReplyTo =
+    options?.replyTo?.trim() || wo.business.settings?.replyToEmail?.trim() || wo.business.email
+  const displayName = wo.business.name?.trim() || 'Company'
+  const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
+  const subject = options?.subject ?? `Thank you – feedback for ${wo.title}`
+  const html =
+    options?.message ?? defaultJobFollowUpEmailMessage(wo.client.name, displayName, wo.title)
+
+  const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
+  const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
+  let totalBytes = 0
+  const maxBytes = 10 * 1024 * 1024
+  const pushAttachment = (filename: string, content: Buffer, contentType?: string) => {
+    totalBytes += content.byteLength
+    if (totalBytes > maxBytes) {
+      throw new Error('ATTACHMENTS_TOO_LARGE')
+    }
+    attachmentPayload.push({ filename, content, contentType })
+  }
+
+  const fetchUrlAsBuffer = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('ATTACHMENT_FETCH_FAILED')
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return Buffer.from(arrayBuffer)
+  }
+
+  const builtInAttachments: Array<{
+    id: string
+    filename: string
+    url: string
+    contentType: string
+  }> = []
+  if (wo.lastQuotePdfUrl) {
+    builtInAttachments.push({
+      id: 'quote_pdf',
+      filename: 'Quote.pdf',
+      url: wo.lastQuotePdfUrl,
+      contentType: 'application/pdf',
+    })
+  }
+  if (wo.lastJobReportPdfUrl) {
+    builtInAttachments.push({
+      id: 'work_order_summary_pdf',
+      filename: 'Work order summary.pdf',
+      url: wo.lastJobReportPdfUrl,
+      contentType: 'application/pdf',
+    })
+  }
+
+  for (const item of builtInAttachments) {
+    if (selectedIds.has(item.id)) {
+      const content = await fetchUrlAsBuffer(item.url)
+      pushAttachment(item.filename, content, item.contentType)
+    }
+  }
+
+  if (selectedIds.size > 0) {
+    const workOrderAttachments = await prisma.workOrderAttachment.findMany({
+      where: { workOrderId },
+      select: { id: true, url: true, filename: true, type: true },
+    })
+    for (const item of workOrderAttachments) {
+      const id = `woa_${item.id}`
+      if (!selectedIds.has(id)) {
+        continue
+      }
+      const content = await fetchUrlAsBuffer(item.url)
+      pushAttachment(item.filename ?? 'Attachment', content, item.type ?? undefined)
+    }
+  }
+
+  for (const item of options?.additionalAttachments ?? []) {
+    const content = Buffer.from(item.contentBase64, 'base64')
+    pushAttachment(item.filename, content, item.contentType ?? undefined)
+  }
+
+  await emailService.send({
+    to: toEmail,
+    subject,
+    html,
+    from: fromHeader,
+    replyTo: companyReplyTo,
+    attachments: attachmentPayload,
+  })
+
+  if (options?.sendMeCopy && options.requesterEmail?.trim()) {
+    await emailService.send({
+      to: options.requesterEmail.trim(),
+      subject: `[Copy] ${subject}`,
+      html,
+      from: fromHeader,
+      replyTo: companyReplyTo,
+      attachments: attachmentPayload,
+    })
+  }
 
   return getWorkOrderById(businessId, workOrderId)
 }

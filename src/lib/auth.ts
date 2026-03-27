@@ -12,10 +12,12 @@ const INSECURE_FALLBACK_SECRET =
 
 function resolveAuthSecret(): string {
   const fromEnv = Bun.env.BETTER_AUTH_SECRET?.trim()
-  if (fromEnv) return fromEnv
+  if (fromEnv) {
+    return fromEnv
+  }
   if (Bun.env.NODE_ENV === 'production') {
     console.warn(
-      '[better-auth] BETTER_AUTH_SECRET is missing — using a source-visible fallback. Set BETTER_AUTH_SECRET on the host for real deployments.',
+      '[better-auth] BETTER_AUTH_SECRET is missing — using a source-visible fallback. Set BETTER_AUTH_SECRET on the host for real deployments.'
     )
   }
   return INSECURE_FALLBACK_SECRET

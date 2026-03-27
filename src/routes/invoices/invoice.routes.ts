@@ -95,6 +95,53 @@ export const InvoiceParamsSchema = z.object({
     .openapi({ param: { name: 'invoiceId', in: 'path' }, description: 'Invoice ID' }),
 })
 
+const InvoiceEmailComposeAttachmentSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  filename: z.string(),
+  source: z.enum(['INVOICE_PDF', 'QUOTE_PDF', 'JOB_REPORT_PDF', 'WORK_ORDER_ATTACHMENT']),
+  sizeBytes: z.number().int().nullable(),
+  selectedByDefault: z.boolean(),
+})
+
+const InvoiceEmailComposeResponseSchema = z.object({
+  invoiceId: z.string(),
+  from: z.string(),
+  replyTo: z.string(),
+  to: z.string().nullable(),
+  subject: z.string(),
+  message: z.string(),
+  sendMeCopyDefault: z.boolean(),
+  maxAdditionalAttachmentsBytes: z.number().int(),
+  attachments: z.array(InvoiceEmailComposeAttachmentSchema),
+})
+
+export const SendInvoiceEmailBodySchema = z
+  .object({
+    from: z.string().email().optional().nullable(),
+    replyTo: z.string().email().optional().nullable(),
+    subject: z.string().optional().nullable(),
+    message: z.string().optional().nullable(),
+    to: z.string().email().optional().nullable(),
+    sendMeCopy: z.boolean().optional().default(false),
+    selectedAttachmentIds: z.array(z.string()).optional().default([]),
+    additionalAttachments: z
+      .array(
+        z.object({
+          filename: z.string().min(1),
+          contentBase64: z.string().min(1),
+          contentType: z.string().optional().nullable(),
+        })
+      )
+      .optional()
+      .default([]),
+    markInvoiceSent: z.boolean().optional().default(true),
+  })
+  .openapi({
+    description:
+      'Email invoice modal: compose fields, selectable attachments, optional extra base64 files',
+  })
+
 const LineItemCreateSchema = z.object({
   name: z.string().min(1),
   itemType: z.enum(['SERVICE', 'PRODUCT']).optional().default('SERVICE'),
@@ -214,6 +261,44 @@ export const INVOICE_ROUTES = {
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(
         zodResponseSchema(),
         'Invoice already sent or invalid state'
+      ),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getEmailCompose: createRoute({
+    method: 'get',
+    tags: ['Invoices'],
+    path: '/{invoiceId}/email-compose',
+    summary: 'Get prefilled data for Email invoice modal (From, Reply-To, attachments, etc.)',
+    request: { params: InvoiceParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceEmailComposeResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Invoice not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  sendEmail: createRoute({
+    method: 'post',
+    tags: ['Invoices'],
+    path: '/{invoiceId}/send-email',
+    summary:
+      'Send invoice email (HTML + attachments). Optional: mark invoice as sent (NOT_SENT → AWAITING_PAYMENT).',
+    request: {
+      params: InvoiceParamsSchema,
+      body: jsonContentRequired(SendInvoiceEmailBodySchema, 'Invoice email payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceDetailSchema), 'Email sent'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Invoice not found'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'No client email or attachments too large'
       ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

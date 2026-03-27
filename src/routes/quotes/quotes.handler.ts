@@ -8,6 +8,7 @@ import {
   createQuote,
   deleteQuote,
   getQuote,
+  getQuoteEmailComposeData,
   getQuoteOverview,
   listQuotes,
   QuoteNoLineItemsError,
@@ -374,7 +375,21 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
 
       const { quoteId } = c.req.valid('param')
-      let body: { subject?: string; message?: string; to?: string } = {}
+      let body: {
+        from?: string
+        replyTo?: string
+        subject?: string
+        message?: string
+        to?: string
+        sendMeCopy?: boolean
+        sendViaWhatsapp?: boolean
+        selectedAttachmentIds?: string[]
+        additionalAttachments?: Array<{
+          filename: string
+          contentBase64: string
+          contentType?: string | null
+        }>
+      } = {}
       try {
         const raw = await c.req.json()
         if (raw && typeof raw === 'object') {
@@ -385,9 +400,16 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
 
       const quote = await sendQuoteEmail(businessId, quoteId, {
+        from: body.from ?? undefined,
+        replyTo: body.replyTo ?? undefined,
         subject: body.subject ?? undefined,
         message: body.message ?? undefined,
         to: body.to ?? undefined,
+        sendMeCopy: body.sendMeCopy ?? false,
+        sendViaWhatsapp: body.sendViaWhatsapp ?? false,
+        selectedAttachmentIds: body.selectedAttachmentIds ?? [],
+        additionalAttachments: body.additionalAttachments ?? [],
+        requesterEmail: user.email,
       })
       return c.json(
         { message: 'Quote email sent successfully', success: true, data: quote },
@@ -406,6 +428,37 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       console.error('Error sending quote email:', error)
       return c.json(
         { message: 'Failed to send quote email' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  getEmailCompose: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'read'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+      const { quoteId } = c.req.valid('param')
+      const data = await getQuoteEmailComposeData(businessId, quoteId)
+      return c.json(
+        { message: 'Quote email compose data retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error fetching quote email compose data:', error)
+      return c.json(
+        { message: 'Failed to fetch quote email compose data' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

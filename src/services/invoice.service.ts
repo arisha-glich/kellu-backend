@@ -8,6 +8,8 @@ import type { InvoiceStatus } from '~/generated/prisma'
 import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
+import { emailService } from '~/services/email.service'
+import { clientToCustomerFrom } from '~/services/email-helpers'
 
 export class InvoiceNotFoundError extends Error {
   constructor() {
@@ -405,6 +407,275 @@ export async function sendInvoice(businessId: string, invoiceId: string) {
       dueAt,
     },
   })
+
+  return getInvoiceById(businessId, invoiceId)
+}
+
+const defaultInvoiceEmailMessage = (clientName: string, businessName: string, title: string) =>
+  `<!DOCTYPE html><html><body style="font-family: sans-serif; line-height: 1.5;">` +
+  `<p>Hi ${clientName},</p>` +
+  `<p>Please find your invoice from <strong>${businessName}</strong> for <strong>${title}</strong>.</p>` +
+  `<p>If you have any questions, please reply to this email.</p>` +
+  `<p>Best regards,<br/>${businessName}</p>` +
+  `</body></html>`
+
+export type InvoiceEmailComposeAttachment = {
+  id: string
+  label: string
+  filename: string
+  source: 'INVOICE_PDF' | 'QUOTE_PDF' | 'JOB_REPORT_PDF' | 'WORK_ORDER_ATTACHMENT'
+  sizeBytes: number | null
+  selectedByDefault: boolean
+}
+
+/** Prefill data for "Email invoice" modal (Figma). */
+export async function getInvoiceEmailComposeData(businessId: string, invoiceId: string) {
+  await ensureBusinessExists(businessId)
+
+  const inv = await prisma.invoice.findFirst({
+    where: { id: invoiceId, businessId },
+    include: {
+      client: { select: { id: true, name: true, email: true } },
+      business: {
+        include: {
+          settings: { select: { replyToEmail: true } },
+        },
+      },
+      workOrder: {
+        select: {
+          id: true,
+          lastQuotePdfUrl: true,
+          lastJobReportPdfUrl: true,
+        },
+      },
+    },
+  })
+  if (!inv) {
+    throw new InvoiceNotFoundError()
+  }
+
+  const displayName = inv.business.name?.trim() || 'Company'
+  const from = clientToCustomerFrom(displayName)
+  const replyTo = inv.business.settings?.replyToEmail?.trim() || inv.business.email
+  const subject = `Invoice from ${displayName} - ${inv.title}`.trim()
+  const message = defaultInvoiceEmailMessage(inv.client.name, displayName, inv.title)
+
+  const attachments: InvoiceEmailComposeAttachment[] = []
+
+  if (inv.pdfUrl) {
+    attachments.push({
+      id: 'invoice_pdf',
+      label: 'Invoice.pdf',
+      filename: 'Invoice.pdf',
+      source: 'INVOICE_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+
+  if (inv.workOrder?.lastQuotePdfUrl) {
+    attachments.push({
+      id: 'quote_pdf',
+      label: 'Quote.pdf',
+      filename: 'Quote.pdf',
+      source: 'QUOTE_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+
+  if (inv.workOrder?.lastJobReportPdfUrl) {
+    attachments.push({
+      id: 'work_order_summary_pdf',
+      label: 'Work order summary.pdf',
+      filename: 'Work order summary.pdf',
+      source: 'JOB_REPORT_PDF',
+      sizeBytes: null,
+      selectedByDefault: true,
+    })
+  }
+
+  if (inv.workOrderId) {
+    const woa = await prisma.workOrderAttachment.findMany({
+      where: { workOrderId: inv.workOrderId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, filename: true },
+    })
+    for (const item of woa) {
+      attachments.push({
+        id: `woa_${item.id}`,
+        label: item.filename ?? 'Attachment',
+        filename: item.filename ?? 'Attachment',
+        source: 'WORK_ORDER_ATTACHMENT',
+        sizeBytes: null,
+        selectedByDefault: false,
+      })
+    }
+  }
+
+  return {
+    invoiceId: inv.id,
+    from,
+    replyTo,
+    to: inv.client.email ?? null,
+    subject,
+    message,
+    sendMeCopyDefault: false,
+    maxAdditionalAttachmentsBytes: 10 * 1024 * 1024,
+    attachments,
+  }
+}
+
+/**
+ * Send invoice email (modal "Send Email"). Attaches selected PDFs from invoice / linked work order.
+ * If invoice status is NOT_SENT, also marks invoice as sent (AWAITING_PAYMENT, sentAt, dueAt).
+ */
+export async function sendInvoiceEmail(
+  businessId: string,
+  invoiceId: string,
+  options?: {
+    from?: string
+    replyTo?: string
+    subject?: string
+    message?: string
+    to?: string
+    sendMeCopy?: boolean
+    selectedAttachmentIds?: string[]
+    additionalAttachments?: Array<{
+      filename: string
+      contentBase64: string
+      contentType?: string | null
+    }>
+    requesterEmail?: string
+    /** If false, only send email without updating NOT_SENT → AWAITING_PAYMENT. Default true. */
+    markInvoiceSent?: boolean
+  }
+) {
+  await ensureBusinessExists(businessId)
+
+  const inv = await prisma.invoice.findFirst({
+    where: { id: invoiceId, businessId },
+    include: {
+      client: { select: { id: true, name: true, email: true } },
+      business: { include: { settings: { select: { replyToEmail: true, invoiceDueDays: true } } } },
+      workOrder: {
+        select: {
+          id: true,
+          lastQuotePdfUrl: true,
+          lastJobReportPdfUrl: true,
+        },
+      },
+    },
+  })
+  if (!inv) {
+    throw new InvoiceNotFoundError()
+  }
+
+  const toEmail = (options?.to ?? inv.client.email)?.trim()
+  if (!toEmail) {
+    throw new Error('Client has no email address. Add an email to the client to send the invoice.')
+  }
+
+  const companyReplyTo =
+    options?.replyTo?.trim() || inv.business.settings?.replyToEmail?.trim() || inv.business.email
+  const displayName = inv.business.name?.trim() || 'Company'
+  const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
+  const subject = options?.subject ?? `Invoice from ${displayName} - ${inv.title}`.trim()
+  const html =
+    options?.message ?? defaultInvoiceEmailMessage(inv.client.name, displayName, inv.title)
+
+  const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
+  const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
+  let totalBytes = 0
+  const maxBytes = 10 * 1024 * 1024
+  const pushAttachment = (filename: string, content: Buffer, contentType?: string) => {
+    totalBytes += content.byteLength
+    if (totalBytes > maxBytes) {
+      throw new Error('ATTACHMENTS_TOO_LARGE')
+    }
+    attachmentPayload.push({ filename, content, contentType })
+  }
+
+  const fetchUrlAsBuffer = async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error('ATTACHMENT_FETCH_FAILED')
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return Buffer.from(arrayBuffer)
+  }
+
+  if (selectedIds.has('invoice_pdf') && inv.pdfUrl) {
+    const content = await fetchUrlAsBuffer(inv.pdfUrl)
+    pushAttachment('Invoice.pdf', content, 'application/pdf')
+  }
+
+  if (inv.workOrder) {
+    if (selectedIds.has('quote_pdf') && inv.workOrder.lastQuotePdfUrl) {
+      const content = await fetchUrlAsBuffer(inv.workOrder.lastQuotePdfUrl)
+      pushAttachment('Quote.pdf', content, 'application/pdf')
+    }
+    if (selectedIds.has('work_order_summary_pdf') && inv.workOrder.lastJobReportPdfUrl) {
+      const content = await fetchUrlAsBuffer(inv.workOrder.lastJobReportPdfUrl)
+      pushAttachment('Work order summary.pdf', content, 'application/pdf')
+    }
+  }
+
+  if (inv.workOrderId) {
+    const workOrderAttachments = await prisma.workOrderAttachment.findMany({
+      where: { workOrderId: inv.workOrderId },
+      select: { id: true, url: true, filename: true, type: true },
+    })
+    for (const item of workOrderAttachments) {
+      const id = `woa_${item.id}`
+      if (!selectedIds.has(id)) {
+        continue
+      }
+      const content = await fetchUrlAsBuffer(item.url)
+      pushAttachment(item.filename ?? 'Attachment', content, item.type ?? undefined)
+    }
+  }
+
+  for (const item of options?.additionalAttachments ?? []) {
+    const content = Buffer.from(item.contentBase64, 'base64')
+    pushAttachment(item.filename, content, item.contentType ?? undefined)
+  }
+
+  await emailService.send({
+    to: toEmail,
+    subject,
+    html,
+    from: fromHeader,
+    replyTo: companyReplyTo,
+    attachments: attachmentPayload,
+  })
+
+  if (options?.sendMeCopy && options.requesterEmail?.trim()) {
+    await emailService.send({
+      to: options.requesterEmail.trim(),
+      subject: `[Copy] ${subject}`,
+      html,
+      from: fromHeader,
+      replyTo: companyReplyTo,
+      attachments: attachmentPayload,
+    })
+  }
+
+  const markSent = options?.markInvoiceSent !== false
+  if (markSent && inv.status === 'NOT_SENT') {
+    const dueDays = inv.business.settings?.invoiceDueDays ?? 3
+    const sentAt = new Date()
+    const dueAt = new Date(sentAt)
+    dueAt.setDate(dueAt.getDate() + dueDays)
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: 'AWAITING_PAYMENT',
+        sentAt,
+        dueAt,
+      },
+    })
+  }
 
   return getInvoiceById(businessId, invoiceId)
 }
