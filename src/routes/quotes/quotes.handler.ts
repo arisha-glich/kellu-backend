@@ -375,40 +375,137 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
 
       const { quoteId } = c.req.valid('param')
-      let body: {
-        from?: string
-        replyTo?: string
-        subject?: string
-        message?: string
-        to?: string
-        sendMeCopy?: boolean
-        sendViaWhatsapp?: boolean
-        selectedAttachmentIds?: string[]
-        additionalAttachments?: Array<{
-          filename: string
-          contentBase64: string
-          contentType?: string | null
-        }>
-      } = {}
-      try {
-        const raw = await c.req.json()
-        if (raw && typeof raw === 'object') {
-          body = raw as { subject?: string; message?: string; to?: string }
+      const parseBoolean = (value: string | undefined) =>
+        Boolean(value && ['true', '1', 'yes', 'on'].includes(value.toLowerCase()))
+      const parseSelectedAttachmentIds = (raw: string | undefined) => {
+        if (!raw) {
+          return [] as string[]
         }
-      } catch {
-        // No body
+        try {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) {
+            return parsed.filter(
+              item => typeof item === 'string' && item.trim().length > 0
+            ) as string[]
+          }
+        } catch {
+          // Fallback to comma separated input.
+        }
+        return raw
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean)
+      }
+
+      const contentType = c.req.header('content-type') ?? ''
+      let from: string | undefined
+      let replyTo: string | undefined
+      let subject: string | undefined
+      let message: string | undefined
+      let to: string | undefined
+      let sendMeCopy = false
+      let sendViaWhatsapp = false
+      let selectedAttachmentIds: string[] = []
+      let additionalAttachments: Array<{
+        filename: string
+        content: Buffer
+        contentType?: string | null
+      }> = []
+
+      if (contentType.includes('multipart/form-data')) {
+        let formData: FormData
+        try {
+          formData = await c.req.raw.formData()
+        } catch {
+          return c.json(
+            {
+              message:
+                'Invalid multipart body. Ensure Content-Type is multipart/form-data with a valid boundary.',
+            },
+            HttpStatusCodes.BAD_REQUEST
+          )
+        }
+        const getOptionalString = (key: string) => {
+          const value = formData.get(key)
+          if (typeof value !== 'string') {
+            return undefined
+          }
+          const trimmed = value.trim()
+          return trimmed.length > 0 ? trimmed : undefined
+        }
+        from = getOptionalString('from')
+        replyTo = getOptionalString('replyTo')
+        subject = getOptionalString('subject')
+        message = getOptionalString('message')
+        to = getOptionalString('to')
+        sendMeCopy = parseBoolean(getOptionalString('sendMeCopy'))
+        sendViaWhatsapp = parseBoolean(getOptionalString('sendViaWhatsapp'))
+        selectedAttachmentIds = parseSelectedAttachmentIds(getOptionalString('selectedAttachmentIds'))
+        const binaryFiles = [
+          ...formData.getAll('additionalAttachments'),
+          ...formData.getAll('attachments'),
+        ].filter((item): item is File => item instanceof File)
+        additionalAttachments = await Promise.all(
+          binaryFiles.map(async file => ({
+            filename: file.name || 'attachment',
+            content: Buffer.from(await file.arrayBuffer()),
+            contentType: file.type || null,
+          }))
+        )
+      } else {
+        const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
+        const readOptionalString = (value: unknown) =>
+          typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+        from = readOptionalString(body.from)
+        replyTo = readOptionalString(body.replyTo)
+        subject = readOptionalString(body.subject)
+        message = readOptionalString(body.message)
+        to = readOptionalString(body.to)
+        sendMeCopy = parseBoolean(readOptionalString(body.sendMeCopy))
+        sendViaWhatsapp = parseBoolean(readOptionalString(body.sendViaWhatsapp))
+        selectedAttachmentIds = parseSelectedAttachmentIds(readOptionalString(body.selectedAttachmentIds))
+        const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
+          ? body.additionalAttachments
+          : []
+        const parsedAdditional: Array<{
+          filename: string
+          content: Buffer
+          contentType?: string | null
+        }> = []
+        for (const item of rawAdditional) {
+          if (typeof item !== 'object' || item === null) {
+            continue
+          }
+          const attachment = item as {
+            filename?: unknown
+            contentBase64?: unknown
+            contentType?: unknown
+          }
+          if (
+            typeof attachment.filename !== 'string' ||
+            typeof attachment.contentBase64 !== 'string'
+          ) {
+            continue
+          }
+          parsedAdditional.push({
+            filename: attachment.filename,
+            content: Buffer.from(attachment.contentBase64, 'base64'),
+            contentType: typeof attachment.contentType === 'string' ? attachment.contentType : null,
+          })
+        }
+        additionalAttachments = parsedAdditional
       }
 
       const quote = await sendQuoteEmail(businessId, quoteId, {
-        from: body.from ?? undefined,
-        replyTo: body.replyTo ?? undefined,
-        subject: body.subject ?? undefined,
-        message: body.message ?? undefined,
-        to: body.to ?? undefined,
-        sendMeCopy: body.sendMeCopy ?? false,
-        sendViaWhatsapp: body.sendViaWhatsapp ?? false,
-        selectedAttachmentIds: body.selectedAttachmentIds ?? [],
-        additionalAttachments: body.additionalAttachments ?? [],
+        from,
+        replyTo,
+        subject,
+        message,
+        to,
+        sendMeCopy,
+        sendViaWhatsapp,
+        selectedAttachmentIds,
+        additionalAttachments,
         requesterEmail: user.email,
       })
       return c.json(

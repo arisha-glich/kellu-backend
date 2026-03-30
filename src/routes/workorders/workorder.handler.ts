@@ -11,14 +11,14 @@ import { hasPermission } from '~/services/permission.service'
 import { listPriceListItems } from '~/services/price-list.service'
 import { updateCurrentBusinessSettings } from '~/services/settings.service'
 import {
+  addWorkOrderAttachments,
   addLineItemsToWorkOrder,
   addLineItemToPriceList,
-  addWorkOrderAttachments,
   ClientNotFoundError,
   createWorkOrder,
   createWorkOrderCustomerReminder,
-  deleteWorkOrder,
   deleteWorkOrderAttachment,
+  deleteWorkOrder,
   getJobFollowUpEmailComposeData,
   getWorkOrderById,
   getWorkOrderOverview,
@@ -233,9 +233,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       })
       if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture
-            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
-            : {}),
+          ...(body.applyQuoteTermsToFuture ? { quoteTermsConditions: body.quoteTermsConditions ?? null } : {}),
           ...(body.applyInvoiceTermsToFuture
             ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
             : {}),
@@ -322,9 +320,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       })
       if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture
-            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
-            : {}),
+          ...(body.applyQuoteTermsToFuture ? { quoteTermsConditions: body.quoteTermsConditions ?? null } : {}),
           ...(body.applyInvoiceTermsToFuture
             ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
             : {}),
@@ -668,11 +664,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       const { workOrderId } = c.req.valid('param')
       const attachments = await listWorkOrderAttachments(businessId, workOrderId)
       return c.json(
-        {
-          message: 'Attachments retrieved successfully',
-          success: true,
-          data: { data: attachments },
-        },
+        { message: 'Attachments retrieved successfully', success: true, data: { data: attachments } },
         HttpStatusCodes.OK
       )
     } catch (error) {
@@ -816,11 +808,10 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       const body = await c.req.valid('json')
 
       const date = new Date(body.date)
-      const [hours, minutes] =
-        body.time
-          .trim()
-          .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-          ?.slice(1) ?? []
+      const [hours, minutes] = body.time
+        .trim()
+        .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+        ?.slice(1) ?? []
 
       if (!hours || !minutes) {
         return c.json({ message: 'Invalid time format' }, HttpStatusCodes.BAD_REQUEST)
@@ -910,16 +901,139 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         )
       }
       const { workOrderId } = c.req.valid('param')
-      const body = c.req.valid('json')
+      const parseBoolean = (value: string | undefined) =>
+        Boolean(value && ['true', '1', 'yes', 'on'].includes(value.toLowerCase()))
+      const parseSelectedAttachmentIds = (raw: string | undefined) => {
+        if (!raw) {
+          return [] as string[]
+        }
+        try {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) {
+            return parsed.filter(
+              item => typeof item === 'string' && item.trim().length > 0
+            ) as string[]
+          }
+        } catch {
+          // Fallback to comma separated input.
+        }
+        return raw
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean)
+      }
+
+      const contentType = c.req.header('content-type') ?? ''
+      let from: string | undefined
+      let replyTo: string | undefined
+      let subject: string | undefined
+      let message: string | undefined
+      let to: string | undefined
+      let sendMeCopy = false
+      let selectedAttachmentIds: string[] = []
+      let additionalAttachments: Array<{
+        filename: string
+        content: Buffer
+        contentType?: string | null
+      }> = []
+
+      if (contentType.includes('multipart/form-data')) {
+        let formData: FormData
+        try {
+          formData = await c.req.raw.formData()
+        } catch {
+          return c.json(
+            {
+              message:
+                'Invalid multipart body. Ensure Content-Type is multipart/form-data with a valid boundary.',
+            },
+            HttpStatusCodes.BAD_REQUEST
+          )
+        }
+
+        const getOptionalString = (key: string) => {
+          const value = formData.get(key)
+          if (typeof value !== 'string') {
+            return undefined
+          }
+          const trimmed = value.trim()
+          return trimmed.length > 0 ? trimmed : undefined
+        }
+
+        from = getOptionalString('from')
+        replyTo = getOptionalString('replyTo')
+        subject = getOptionalString('subject')
+        message = getOptionalString('message')
+        to = getOptionalString('to')
+        sendMeCopy = parseBoolean(getOptionalString('sendMeCopy'))
+        selectedAttachmentIds = parseSelectedAttachmentIds(getOptionalString('selectedAttachmentIds'))
+
+        const binaryFiles = [
+          ...formData.getAll('additionalAttachments'),
+          ...formData.getAll('attachments'),
+        ].filter((item): item is File => item instanceof File)
+
+        additionalAttachments = await Promise.all(
+          binaryFiles.map(async file => ({
+            filename: file.name || 'attachment',
+            content: Buffer.from(await file.arrayBuffer()),
+            contentType: file.type || null,
+          }))
+        )
+      } else {
+        const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
+        const readOptionalString = (value: unknown) =>
+          typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+
+        from = readOptionalString(body.from)
+        replyTo = readOptionalString(body.replyTo)
+        subject = readOptionalString(body.subject)
+        message = readOptionalString(body.message)
+        to = readOptionalString(body.to)
+        sendMeCopy = parseBoolean(readOptionalString(body.sendMeCopy))
+        selectedAttachmentIds = parseSelectedAttachmentIds(readOptionalString(body.selectedAttachmentIds))
+
+        const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
+          ? body.additionalAttachments
+          : []
+        const parsedAdditional: Array<{
+          filename: string
+          content: Buffer
+          contentType?: string | null
+        }> = []
+        for (const item of rawAdditional) {
+          if (typeof item !== 'object' || item === null) {
+            continue
+          }
+          const attachment = item as {
+            filename?: unknown
+            contentBase64?: unknown
+            contentType?: unknown
+          }
+          if (
+            typeof attachment.filename !== 'string' ||
+            typeof attachment.contentBase64 !== 'string'
+          ) {
+            continue
+          }
+          parsedAdditional.push({
+            filename: attachment.filename,
+            content: Buffer.from(attachment.contentBase64, 'base64'),
+            contentType: typeof attachment.contentType === 'string' ? attachment.contentType : null,
+          })
+        }
+        additionalAttachments = parsedAdditional
+      }
+
       const wo = await sendJobFollowUpEmail(businessId, workOrderId, {
-        from: body.from ?? undefined,
-        replyTo: body.replyTo ?? undefined,
-        subject: body.subject ?? undefined,
-        message: body.message ?? undefined,
-        to: body.to ?? undefined,
-        sendMeCopy: body.sendMeCopy ?? false,
-        selectedAttachmentIds: body.selectedAttachmentIds ?? [],
-        additionalAttachments: body.additionalAttachments ?? [],
+        from,
+        replyTo,
+        subject,
+        message,
+        to,
+        sendMeCopy,
+        selectedAttachmentIds,
+        additionalAttachments,
         requesterEmail: user.email,
       })
       return c.json(

@@ -288,10 +288,9 @@ export const INVOICE_ROUTES = {
     tags: ['Invoices'],
     path: '/{invoiceId}/send-email',
     summary:
-      'Send invoice email (HTML + attachments). Optional: mark invoice as sent (NOT_SENT → AWAITING_PAYMENT).',
+      'Send invoice email using multipart/form-data (binary attachments). Optional: mark invoice as sent.',
     request: {
       params: InvoiceParamsSchema,
-      body: jsonContentRequired(SendInvoiceEmailBodySchema, 'Invoice email payload'),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceDetailSchema), 'Email sent'),

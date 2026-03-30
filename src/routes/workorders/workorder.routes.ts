@@ -384,16 +384,13 @@ const WorkOrderPriceListResponseSchema = z.object({
 })
 
 const AddWorkOrderAttachmentsBodySchema = z.object({
-  attachments: z
-    .array(
-      z.object({
-        url: z.string().min(1),
-        filename: z.string().optional().nullable(),
-        type: z.string().optional().nullable(),
-      })
-    )
-    .min(1)
-    .max(10),
+  attachments: z.array(
+    z.object({
+      url: z.string().min(1),
+      filename: z.string().optional().nullable(),
+      type: z.string().optional().nullable(),
+    })
+  ).min(1).max(10),
 })
 
 const WorkOrderReminderSchema = z.object({
@@ -419,31 +416,6 @@ const CreateWorkOrderReminderBodySchema = z.object({
   time: z.string().min(1),
   note: z.string().optional().nullable(),
 })
-
-export const SendJobFollowUpEmailBodySchema = z
-  .object({
-    from: z.string().email().optional().nullable(),
-    replyTo: z.string().email().optional().nullable(),
-    subject: z.string().optional().nullable(),
-    message: z.string().optional().nullable(),
-    to: z.string().email().optional().nullable(),
-    sendMeCopy: z.boolean().optional().default(false),
-    selectedAttachmentIds: z.array(z.string()).optional().default([]),
-    additionalAttachments: z
-      .array(
-        z.object({
-          filename: z.string().min(1),
-          contentBase64: z.string().min(1),
-          contentType: z.string().optional().nullable(),
-        })
-      )
-      .optional()
-      .default([]),
-  })
-  .openapi({
-    description:
-      'Job follow-up email: sender fields, message, recipient, work order attachments, optional extra files (10 MB total)',
-  })
 
 const JobFollowUpEmailComposeAttachmentSchema = z.object({
   id: z.string(),
@@ -836,17 +808,13 @@ export const WORK_ORDER_ROUTES = {
     method: 'post',
     tags: ['Workorders'],
     path: '/{workOrderId}/send-job-follow-up-email',
-    summary: 'Send job follow-up email to the client (attachments + 10 MB cap)',
+    summary: 'Send job follow-up email to the client using multipart/form-data (attachments + 10 MB cap)',
     request: {
       params: WorkOrderParamsSchema,
-      body: jsonContentRequired(SendJobFollowUpEmailBodySchema, 'Job follow-up email payload'),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
-        zodResponseSchema(),
-        'Validation or attachment error'
-      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation or attachment error'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

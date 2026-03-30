@@ -543,7 +543,7 @@ export async function sendInvoiceEmail(
     selectedAttachmentIds?: string[]
     additionalAttachments?: Array<{
       filename: string
-      contentBase64: string
+      content: Buffer
       contentType?: string | null
     }>
     requesterEmail?: string
@@ -637,8 +637,7 @@ export async function sendInvoiceEmail(
   }
 
   for (const item of options?.additionalAttachments ?? []) {
-    const content = Buffer.from(item.contentBase64, 'base64')
-    pushAttachment(item.filename, content, item.contentType ?? undefined)
+    pushAttachment(item.filename, item.content, item.contentType ?? undefined)
   }
 
   await emailService.send({

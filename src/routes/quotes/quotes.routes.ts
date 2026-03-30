@@ -404,10 +404,9 @@ export const QUOTE_ROUTES = {
     tags: ['Quotes'],
     path: '/{quoteId}/send-email',
     summary:
-      'Send (or resend) quote email to client. From/Reply-To from Settings; optional subject/message/to.',
+      'Send (or resend) quote email to client using multipart/form-data (supports binary attachments).',
     request: {
       params: QuoteParamsSchema,
-      body: jsonContent(SendQuoteEmailBodySchema.optional(), 'Optional subject, message, to'),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Quote email sent'),
