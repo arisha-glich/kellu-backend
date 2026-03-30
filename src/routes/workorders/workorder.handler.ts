@@ -11,14 +11,14 @@ import { hasPermission } from '~/services/permission.service'
 import { listPriceListItems } from '~/services/price-list.service'
 import { updateCurrentBusinessSettings } from '~/services/settings.service'
 import {
-  addWorkOrderAttachments,
   addLineItemsToWorkOrder,
   addLineItemToPriceList,
+  addWorkOrderAttachments,
   ClientNotFoundError,
   createWorkOrder,
   createWorkOrderCustomerReminder,
-  deleteWorkOrderAttachment,
   deleteWorkOrder,
+  deleteWorkOrderAttachment,
   getJobFollowUpEmailComposeData,
   getWorkOrderById,
   getWorkOrderOverview,
@@ -233,7 +233,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       })
       if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture ? { quoteTermsConditions: body.quoteTermsConditions ?? null } : {}),
+          ...(body.applyQuoteTermsToFuture
+            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
+            : {}),
           ...(body.applyInvoiceTermsToFuture
             ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
             : {}),
@@ -320,7 +322,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       })
       if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture ? { quoteTermsConditions: body.quoteTermsConditions ?? null } : {}),
+          ...(body.applyQuoteTermsToFuture
+            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
+            : {}),
           ...(body.applyInvoiceTermsToFuture
             ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
             : {}),
@@ -664,7 +668,11 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       const { workOrderId } = c.req.valid('param')
       const attachments = await listWorkOrderAttachments(businessId, workOrderId)
       return c.json(
-        { message: 'Attachments retrieved successfully', success: true, data: { data: attachments } },
+        {
+          message: 'Attachments retrieved successfully',
+          success: true,
+          data: { data: attachments },
+        },
         HttpStatusCodes.OK
       )
     } catch (error) {
@@ -808,10 +816,11 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       const body = await c.req.valid('json')
 
       const date = new Date(body.date)
-      const [hours, minutes] = body.time
-        .trim()
-        .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-        ?.slice(1) ?? []
+      const [hours, minutes] =
+        body.time
+          .trim()
+          .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+          ?.slice(1) ?? []
 
       if (!hours || !minutes) {
         return c.json({ message: 'Invalid time format' }, HttpStatusCodes.BAD_REQUEST)
@@ -966,7 +975,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         message = getOptionalString('message')
         to = getOptionalString('to')
         sendMeCopy = parseBoolean(getOptionalString('sendMeCopy'))
-        selectedAttachmentIds = parseSelectedAttachmentIds(getOptionalString('selectedAttachmentIds'))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          getOptionalString('selectedAttachmentIds')
+        )
 
         const binaryFiles = [
           ...formData.getAll('additionalAttachments'),
@@ -981,7 +992,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
           }))
         )
       } else {
-        const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
+        const body = await c.req.json().catch(() => ({}) as Record<string, unknown>)
         const readOptionalString = (value: unknown) =>
           typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 
@@ -991,7 +1002,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         message = readOptionalString(body.message)
         to = readOptionalString(body.to)
         sendMeCopy = parseBoolean(readOptionalString(body.sendMeCopy))
-        selectedAttachmentIds = parseSelectedAttachmentIds(readOptionalString(body.selectedAttachmentIds))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          readOptionalString(body.selectedAttachmentIds)
+        )
 
         const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
           ? body.additionalAttachments

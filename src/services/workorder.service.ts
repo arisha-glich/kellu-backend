@@ -8,13 +8,13 @@ import type { DiscountType, InvoiceStatus, JobStatus, QuoteStatus } from '~/gene
 import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
+import { emailService } from '~/services/email.service'
 import {
   clientToCustomerFrom,
   sendBookingConfirmationEmail,
   sendCustomerReminderEmail,
   sendWorkOrderCreatedEmail,
 } from '~/services/email-helpers'
-import { emailService } from '~/services/email.service'
 
 export class WorkOrderNotFoundError extends Error {
   constructor() {
@@ -486,7 +486,9 @@ export async function updateWorkOrder(
       ...(input.endTime !== undefined && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
       ...(input.quoteRequired !== undefined && { quoteRequired: input.quoteRequired }),
-      ...(input.quoteClientMessage !== undefined && { quoteObservations: input.quoteClientMessage }),
+      ...(input.quoteClientMessage !== undefined && {
+        quoteObservations: input.quoteClientMessage,
+      }),
       ...(input.quoteTermsConditions !== undefined && {
         quoteTermsConditions: input.quoteTermsConditions,
       }),
@@ -1004,7 +1006,8 @@ export async function createWorkOrderCustomerReminder(
     })
     const clientEmail = woForEmail?.client?.email?.trim()
     if (woForEmail && clientEmail) {
-      const companyReplyTo = woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
+      const companyReplyTo =
+        woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
       sendCustomerReminderEmail({
         to: clientEmail,
         clientName: woForEmail.client.name,
@@ -1022,11 +1025,7 @@ export async function createWorkOrderCustomerReminder(
   return listWorkOrderCustomerReminders(businessId, workOrderId)
 }
 
-const defaultJobFollowUpEmailMessage = (
-  clientName: string,
-  businessName: string,
-  title: string
-) =>
+const defaultJobFollowUpEmailMessage = (clientName: string, businessName: string, title: string) =>
   `<!DOCTYPE html><html><body style="font-family: sans-serif; line-height: 1.5;">` +
   `<p>Hi ${clientName},</p>` +
   `<p>Thank you for choosing <strong>${businessName}</strong> for work on <strong>${title}</strong>.</p>` +
@@ -1151,14 +1150,16 @@ export async function sendJobFollowUpEmail(
 
   const toEmail = (options?.to ?? wo.client.email)?.trim()
   if (!toEmail) {
-    throw new Error('Client has no email address. Add an email to the client to send the follow-up.')
+    throw new Error(
+      'Client has no email address. Add an email to the client to send the follow-up.'
+    )
   }
 
-  const companyReplyTo = options?.replyTo?.trim() || wo.business.settings?.replyToEmail?.trim() || wo.business.email
+  const companyReplyTo =
+    options?.replyTo?.trim() || wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const displayName = wo.business.name?.trim() || 'Company'
   const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
-  const subject =
-    options?.subject ?? `Thank you – feedback for ${wo.title}`
+  const subject = options?.subject ?? `Thank you – feedback for ${wo.title}`
   const html =
     options?.message ?? defaultJobFollowUpEmailMessage(wo.client.name, displayName, wo.title)
 
@@ -1183,7 +1184,12 @@ export async function sendJobFollowUpEmail(
     return Buffer.from(arrayBuffer)
   }
 
-  const builtInAttachments: Array<{ id: string; filename: string; url: string; contentType: string }> = []
+  const builtInAttachments: Array<{
+    id: string
+    filename: string
+    url: string
+    contentType: string
+  }> = []
   if (wo.lastQuotePdfUrl) {
     builtInAttachments.push({
       id: 'quote_pdf',

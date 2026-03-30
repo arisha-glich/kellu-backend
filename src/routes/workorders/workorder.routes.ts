@@ -384,13 +384,16 @@ const WorkOrderPriceListResponseSchema = z.object({
 })
 
 const AddWorkOrderAttachmentsBodySchema = z.object({
-  attachments: z.array(
-    z.object({
-      url: z.string().min(1),
-      filename: z.string().optional().nullable(),
-      type: z.string().optional().nullable(),
-    })
-  ).min(1).max(10),
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().min(1),
+        filename: z.string().optional().nullable(),
+        type: z.string().optional().nullable(),
+      })
+    )
+    .min(1)
+    .max(10),
 })
 
 const WorkOrderReminderSchema = z.object({
@@ -808,13 +811,17 @@ export const WORK_ORDER_ROUTES = {
     method: 'post',
     tags: ['Workorders'],
     path: '/{workOrderId}/send-job-follow-up-email',
-    summary: 'Send job follow-up email to the client using multipart/form-data (attachments + 10 MB cap)',
+    summary:
+      'Send job follow-up email to the client using multipart/form-data (attachments + 10 MB cap)',
     request: {
       params: WorkOrderParamsSchema,
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation or attachment error'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'Validation or attachment error'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

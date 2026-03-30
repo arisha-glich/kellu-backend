@@ -57,6 +57,26 @@ export function validatePermissions(
   }
 }
 
+async function assertPermissionsAllowedForBusinessCustomRoles(
+  permissions: Array<{ resource: string; action: string }>
+): Promise<void> {
+  if (permissions.length === 0) {
+    return
+  }
+  const blocked = await prisma.permission.findMany({
+    where: {
+      lockedForCustomRoles: true,
+      OR: permissions.map(p => ({ resource: p.resource, action: p.action })),
+    },
+    select: { resource: true, action: true },
+  })
+  if (blocked.length > 0) {
+    throw new InvalidPermissionError(
+      `These permissions are platform-locked and cannot be assigned to custom business roles: ${blocked.map(b => `${b.resource}:${b.action}`).join(', ')}`
+    )
+  }
+}
+
 export interface CreateRoleInput {
   name: string
   displayName?: string
@@ -113,6 +133,7 @@ export async function getRoleById(businessId: string, roleId: string) {
 export async function createRole(businessId: string, input: CreateRoleInput) {
   await ensureBusinessExists(businessId)
   validatePermissions(input.permissions)
+  await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
 
   const resolvedPermissions = await Promise.all(
     input.permissions.map(async p =>
@@ -179,6 +200,7 @@ export async function updateRole(
 
   if (input.permissions) {
     validatePermissions(input.permissions)
+    await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
   }
 
   // Step 1: Upsert all permissions OUTSIDE the transaction (no timeout risk)
@@ -254,6 +276,55 @@ export async function deleteRole(businessId: string, roleId: string): Promise<vo
   }
 
   await prisma.role.delete({ where: { id: roleId } })
+}
+
+/**
+ * Platform admin: replace permissions on any business role (including system roles).
+ * Ignores lockedForCustomRoles — used for governance / incident response.
+ */
+export async function replaceRolePermissionsAsAdmin(
+  businessId: string,
+  roleId: string,
+  permissions: Array<{ resource: string; action: string }>
+) {
+  await ensureBusinessExists(businessId)
+  const existing = await prisma.role.findFirst({
+    where: { id: roleId, businessId },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new RoleNotFoundError()
+  }
+  validatePermissions(permissions)
+
+  const resolvedPermissions = await Promise.all(
+    permissions.map(p =>
+      prisma.permission.upsert({
+        where: { resource_action: { resource: p.resource, action: p.action } },
+        update: {},
+        create: { resource: p.resource, action: p.action },
+      })
+    )
+  )
+
+  return prisma.$transaction(async tx => {
+    await tx.rolePermission.deleteMany({ where: { roleId } })
+    if (resolvedPermissions.length > 0) {
+      await tx.rolePermission.createMany({
+        data: resolvedPermissions.map(p => ({
+          roleId,
+          permissionId: p.id,
+        })),
+      })
+    }
+    return tx.role.findUnique({
+      where: { id: roleId },
+      include: {
+        permissions: { include: { permission: true } },
+        _count: { select: { members: true } },
+      },
+    })
+  })
 }
 
 /**

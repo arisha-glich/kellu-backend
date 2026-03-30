@@ -440,7 +440,9 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         to = getOptionalString('to')
         sendMeCopy = parseBoolean(getOptionalString('sendMeCopy'))
         sendViaWhatsapp = parseBoolean(getOptionalString('sendViaWhatsapp'))
-        selectedAttachmentIds = parseSelectedAttachmentIds(getOptionalString('selectedAttachmentIds'))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          getOptionalString('selectedAttachmentIds')
+        )
         const binaryFiles = [
           ...formData.getAll('additionalAttachments'),
           ...formData.getAll('attachments'),
@@ -453,7 +455,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           }))
         )
       } else {
-        const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
+        const body = await c.req.json().catch(() => ({}) as Record<string, unknown>)
         const readOptionalString = (value: unknown) =>
           typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
         from = readOptionalString(body.from)
@@ -463,7 +465,9 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         to = readOptionalString(body.to)
         sendMeCopy = parseBoolean(readOptionalString(body.sendMeCopy))
         sendViaWhatsapp = parseBoolean(readOptionalString(body.sendViaWhatsapp))
-        selectedAttachmentIds = parseSelectedAttachmentIds(readOptionalString(body.selectedAttachmentIds))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          readOptionalString(body.selectedAttachmentIds)
+        )
         const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
           ? body.additionalAttachments
           : []

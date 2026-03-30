@@ -378,9 +378,13 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         sendMeCopy = parseBoolean(getOptionalString('sendMeCopy'))
         markInvoiceSent = !(
           getOptionalString('markInvoiceSent') &&
-          ['false', '0', 'no', 'off'].includes((getOptionalString('markInvoiceSent') ?? '').toLowerCase())
+          ['false', '0', 'no', 'off'].includes(
+            (getOptionalString('markInvoiceSent') ?? '').toLowerCase()
+          )
         )
-        selectedAttachmentIds = parseSelectedAttachmentIds(getOptionalString('selectedAttachmentIds'))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          getOptionalString('selectedAttachmentIds')
+        )
         const binaryFiles = [
           ...formData.getAll('additionalAttachments'),
           ...formData.getAll('attachments'),
@@ -393,7 +397,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
           }))
         )
       } else {
-        const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
+        const body = await c.req.json().catch(() => ({}) as Record<string, unknown>)
         const readOptionalString = (value: unknown) =>
           typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
         from = readOptionalString(body.from)
@@ -404,7 +408,9 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         sendMeCopy = parseBoolean(readOptionalString(body.sendMeCopy))
         const markRaw = readOptionalString(body.markInvoiceSent)
         markInvoiceSent = !(markRaw && ['false', '0', 'no', 'off'].includes(markRaw.toLowerCase()))
-        selectedAttachmentIds = parseSelectedAttachmentIds(readOptionalString(body.selectedAttachmentIds))
+        selectedAttachmentIds = parseSelectedAttachmentIds(
+          readOptionalString(body.selectedAttachmentIds)
+        )
         const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
           ? body.additionalAttachments
           : []
