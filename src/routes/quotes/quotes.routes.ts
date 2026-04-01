@@ -80,6 +80,22 @@ export const SendQuoteBodySchema = z
   })
   .openapi({ description: 'Send quote to client' })
 
+export const ClientQuoteRespondQuerySchema = z.object({
+  action: z.enum(['approve', 'reject']).openapi({
+    param: { name: 'action', in: 'query' },
+    description: 'Client response action',
+  }),
+  token: z.string().min(10).openapi({
+    param: { name: 'token', in: 'query' },
+    description: 'Secure quote action token',
+  }),
+})
+
+export const ClientQuoteRejectBodySchema = z.object({
+  token: z.string().min(10),
+  reason: z.string().min(3, 'Rejection reason is required'),
+})
+
 export const SendQuoteEmailBodySchema = z
   .object({
     from: z.string().email().optional().nullable(),
@@ -201,6 +217,8 @@ const QuoteDetailSchema = z.object({
   quoteConvertedAt: z.coerce.date().nullable(),
   quoteExpiresAt: z.coerce.date().nullable(),
   quoteCorrelative: z.string().nullable(),
+  quoteClientRespondedAt: z.coerce.date().nullable(),
+  quoteClientRejectionReason: z.string().nullable(),
   quoteObservations: z.string().nullable(),
   quoteTermsConditions: z.string().nullable(),
   lastQuotePdfUrl: z.string().nullable(),
@@ -461,6 +479,45 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Terminal state'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  clientRespondGet: createRoute({
+    method: 'get',
+    tags: ['Quotes'],
+    path: '/client/respond',
+    summary: 'Client quote response action page (approve/reject)',
+    request: { query: ClientQuoteRespondQuerySchema },
+    responses: {
+      [HttpStatusCodes.OK]: {
+        description: 'HTML response page',
+      },
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid request'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  clientRespondPost: createRoute({
+    method: 'post',
+    tags: ['Quotes'],
+    path: '/client/respond/reject',
+    summary: 'Client rejects quote with reason',
+    request: {
+      body: jsonContentRequired(ClientQuoteRejectBodySchema, 'Client rejection reason payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(
+          z.object({
+            quoteId: z.string(),
+            quoteCorrelative: z.string().nullable(),
+            status: z.literal('REJECTED'),
+          })
+        ),
+        'Rejected'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid payload'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),

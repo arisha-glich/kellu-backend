@@ -6,7 +6,12 @@ import type { auth } from '~/lib/auth'
 
 export interface AppBindings {
   Variables: {
-    user: (typeof auth.$Infer.Session.user & { role: UserRole }) | null
+    user:
+      | (typeof auth.$Infer.Session.user & {
+          role: UserRole
+          permissions?: Array<{ resource: string; action: string }>
+        })
+      | null
     session: typeof auth.$Infer.Session.session | null
   }
 }

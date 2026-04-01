@@ -7,6 +7,7 @@
 
 import type { JobStatus, QuoteStatus } from '~/generated/prisma'
 import { Prisma } from '~/generated/prisma'
+import { renderEmailTemplate } from '~/lib/email-render'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
@@ -32,6 +33,11 @@ export class QuoteNoLineItemsError extends Error {
     super('QUOTE_NO_LINE_ITEMS')
   }
 }
+
+const BACKEND_PUBLIC_URL =
+  Bun.env.BACKEND_PUBLIC_URL?.trim() ||
+  Bun.env.BETTER_AUTH_URL?.trim() ||
+  `http://localhost:${Bun.env.PORT ?? Bun.env.PORT_NO ?? 8080}`
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -567,14 +573,97 @@ export async function sendQuote(
   return getQuoteById(businessId, workOrderId)
 }
 
-/** Default HTML body when no message is provided. */
-const defaultQuoteEmailMessage = (clientName: string, businessName: string, title: string) =>
-  `<!DOCTYPE html><html><body style="font-family: sans-serif; line-height: 1.5;">` +
-  `<p>Dear ${clientName},</p>` +
-  `<p>Please find your quote from <strong>${businessName}</strong> for <strong>${title}</strong>.</p>` +
-  `<p>If you have any questions, please reply to this email.</p>` +
-  `<p>Best regards,<br/>${businessName}</p>` +
-  `</body></html>`
+function formatQuoteDate(d: Date | null | undefined): string {
+  if (!d) {
+    return 'To be confirmed'
+  }
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function normalizeTimeDisplay(value: string | null | undefined): string | null {
+  if (value == null || String(value).trim() === '') {
+    return null
+  }
+  const s = String(value).trim()
+  const date = new Date(s)
+  if (!Number.isNaN(date.getTime()) && s.includes('T')) {
+    return date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(s)) {
+    return s.length === 5 ? s : s.slice(0, 5)
+  }
+  return s
+}
+
+function formatQuoteTimeRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  scheduledAt?: Date | null
+): string {
+  const startNorm = normalizeTimeDisplay(start)
+  const endNorm = normalizeTimeDisplay(end)
+  if (startNorm && endNorm) {
+    return `${startNorm} - ${endNorm}`
+  }
+  if (startNorm || endNorm) {
+    return startNorm ?? endNorm ?? 'To be confirmed'
+  }
+  if (scheduledAt) {
+    return scheduledAt.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+  return 'To be confirmed'
+}
+
+function formatMoney(value: unknown): string {
+  if (value == null) {
+    return ''
+  }
+  return `$${Number(value).toFixed(2)}`
+}
+
+function summarizeQuoteLineItems(
+  lineItems: Array<{ name: string; quantity: number; price: unknown }>
+): string {
+  return lineItems
+    .map(
+      li =>
+        `${li.name} x ${li.quantity} @ ${formatMoney(li.price)} = ${formatMoney(Number(li.quantity) * Number(li.price ?? 0))}`
+    )
+    .join('\n')
+}
+
+function buildClientQuoteActionUrl(token: string, action: 'approve' | 'reject'): string {
+  const base = BACKEND_PUBLIC_URL.replace(/\/$/, '')
+  return `${base}/api/quotes/client/respond?action=${action}&token=${encodeURIComponent(token)}`
+}
+
+function appendQuoteActionButtons(
+  html: string,
+  approveUrl: string,
+  rejectUrl: string
+): string {
+  const buttons = `
+  <div style="margin-top:24px;text-align:center;">
+    <a href="${approveUrl}" style="display:inline-block;background:#10b981;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700;margin-right:8px;">Approve Quote</a>
+    <a href="${rejectUrl}" style="display:inline-block;background:#ef4444;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700;">Reject Quote</a>
+  </div>`
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${buttons}</body>`)
+  }
+  return `${html}${buttons}`
+}
 
 /**
  * Send quote email to client (for first send or resend).
@@ -607,6 +696,8 @@ export async function sendQuoteEmail(
     where: { id: workOrderId, businessId, quoteRequired: true },
     include: {
       client: { select: { id: true, name: true, email: true } },
+      assignedTo: { include: { user: { select: { name: true } } } },
+      lineItems: { select: { name: true, quantity: true, price: true } },
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
@@ -622,12 +713,39 @@ export async function sendQuoteEmail(
   const companyReplyTo =
     options?.replyTo?.trim() || wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const displayName = wo.business.name?.trim() || 'Company'
+  const actionToken = wo.quoteClientActionToken ?? crypto.randomUUID().replace(/-/g, '')
+  if (!wo.quoteClientActionToken) {
+    await prisma.workOrder.update({
+      where: { id: wo.id },
+      data: { quoteClientActionToken: actionToken },
+    })
+  }
   // Use verified sender for From (Resend only allows verified domains); replies go to Reply-To
   const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
   const subject =
     options?.subject ??
     `Quote from ${displayName} - ${wo.title} ${wo.quoteCorrelative ?? ''}`.trim()
-  const html = options?.message ?? defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
+  const approveUrl = buildClientQuoteActionUrl(actionToken, 'approve')
+  const rejectUrl = buildClientQuoteActionUrl(actionToken, 'reject')
+  const htmlBase =
+    options?.message ??
+    (await renderEmailTemplate('quote-created', {
+      clientName: wo.client.name,
+      businessName: displayName,
+      quoteNumber: wo.workOrderNumber ?? `#${wo.id}`,
+      quoteReference: wo.quoteCorrelative ?? undefined,
+      title: wo.title,
+      address: wo.address ?? 'To be confirmed',
+      date: formatQuoteDate(wo.scheduledAt),
+      timeRange: formatQuoteTimeRange(wo.startTime, wo.endTime, wo.scheduledAt),
+      assignedTeamMemberName: wo.assignedTo?.user?.name ?? 'Our team',
+      lineItemsSummary: summarizeQuoteLineItems(wo.lineItems),
+      total: formatMoney(wo.total),
+      logoUrl: wo.business.logoUrl ?? undefined,
+      approveUrl,
+      rejectUrl,
+    }))
+  const html = options?.message ? appendQuoteActionButtons(htmlBase, approveUrl, rejectUrl) : htmlBase
 
   const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
   const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
@@ -738,6 +856,8 @@ export async function getQuoteEmailComposeData(businessId: string, workOrderId: 
     where: { id: workOrderId, businessId, quoteRequired: true },
     include: {
       client: { select: { id: true, name: true, email: true } },
+      assignedTo: { include: { user: { select: { name: true } } } },
+      lineItems: { select: { name: true, quantity: true, price: true } },
       business: {
         include: {
           settings: { select: { replyToEmail: true, sendQuoteWhatsappDefault: true } },
@@ -750,10 +870,32 @@ export async function getQuoteEmailComposeData(businessId: string, workOrderId: 
   }
 
   const displayName = wo.business.name?.trim() || 'Company'
+  const actionToken = wo.quoteClientActionToken ?? crypto.randomUUID().replace(/-/g, '')
+  if (!wo.quoteClientActionToken) {
+    await prisma.workOrder.update({
+      where: { id: wo.id },
+      data: { quoteClientActionToken: actionToken },
+    })
+  }
   const from = clientToCustomerFrom(displayName)
   const replyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
   const subject = `Quote from ${displayName} - ${wo.title} ${wo.quoteCorrelative ?? ''}`.trim()
-  const message = defaultQuoteEmailMessage(wo.client.name, displayName, wo.title)
+  const message = await renderEmailTemplate('quote-created', {
+    clientName: wo.client.name,
+    businessName: displayName,
+    quoteNumber: wo.workOrderNumber ?? `#${wo.id}`,
+    quoteReference: wo.quoteCorrelative ?? undefined,
+    title: wo.title,
+    address: wo.address ?? 'To be confirmed',
+    date: formatQuoteDate(wo.scheduledAt),
+    timeRange: formatQuoteTimeRange(wo.startTime, wo.endTime, wo.scheduledAt),
+    assignedTeamMemberName: wo.assignedTo?.user?.name ?? 'Our team',
+    lineItemsSummary: summarizeQuoteLineItems(wo.lineItems),
+    total: formatMoney(wo.total),
+    logoUrl: wo.business.logoUrl ?? undefined,
+    approveUrl: buildClientQuoteActionUrl(actionToken, 'approve'),
+    rejectUrl: buildClientQuoteActionUrl(actionToken, 'reject'),
+  })
   const attachments: Array<{
     id: string
     label: string
@@ -812,6 +954,54 @@ export async function getQuoteEmailComposeData(businessId: string, workOrderId: 
     maxAdditionalAttachmentsBytes: 10 * 1024 * 1024,
     attachments,
   }
+}
+
+export async function clientApproveQuoteByToken(token: string) {
+  const wo = await prisma.workOrder.findFirst({
+    where: { quoteClientActionToken: token, quoteRequired: true },
+    select: { id: true, businessId: true, quoteStatus: true, quoteCorrelative: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+  const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
+  if (terminalStates.includes(wo.quoteStatus)) {
+    throw new QuoteTerminalStateError()
+  }
+  await prisma.workOrder.update({
+    where: { id: wo.id },
+    data: {
+      quoteStatus: 'APPROVED',
+      quoteApprovedAt: new Date(),
+      quoteClientRespondedAt: new Date(),
+      quoteClientRejectionReason: null,
+    },
+  })
+  return wo
+}
+
+export async function clientRejectQuoteByToken(token: string, reason: string) {
+  const wo = await prisma.workOrder.findFirst({
+    where: { quoteClientActionToken: token, quoteRequired: true },
+    select: { id: true, businessId: true, quoteStatus: true, quoteCorrelative: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+  const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
+  if (terminalStates.includes(wo.quoteStatus)) {
+    throw new QuoteTerminalStateError()
+  }
+  await prisma.workOrder.update({
+    where: { id: wo.id },
+    data: {
+      quoteStatus: 'REJECTED',
+      quoteRejectedAt: new Date(),
+      quoteClientRespondedAt: new Date(),
+      quoteClientRejectionReason: reason.trim(),
+    },
+  })
+  return wo
 }
 
 /**

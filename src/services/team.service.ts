@@ -77,6 +77,8 @@ export interface AddMemberInput {
   password: string
   /** Optional description included in the invitation email (e.g. role summary, what the member can do). */
   emailDescription?: string | null
+  /** Portal type used for invitation email redirect target. */
+  portalType?: 'business' | 'admin'
 }
 
 export interface UpdateMemberInput {
@@ -330,6 +332,7 @@ export async function addMember(
       password: input.password,
       description: input.emailDescription ?? undefined,
       permissions,
+      portalType: input.portalType ?? 'business',
     })
   } catch (err) {
     console.error('Failed to send team member invitation email:', err)

@@ -3,6 +3,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { customSession, openAPI } from 'better-auth/plugins'
 import { ORIGINS } from '~/config/origins'
 import { UserRole } from '~/generated/prisma'
+import { statement } from '~/lib/permission'
 import prisma from '~/lib/prisma'
 
 const PRODUCTION_BACKEND_ORIGIN = 'https://api.kellu.co'
@@ -21,6 +22,72 @@ function resolveAuthSecret(): string {
     )
   }
   return INSECURE_FALLBACK_SECRET
+}
+
+type PermissionPair = { resource: string; action: string }
+
+function allPermissionsFromStatement(): PermissionPair[] {
+  return Object.entries(statement).flatMap(([resource, actions]) =>
+    (actions as readonly string[]).map(action => ({ resource, action }))
+  )
+}
+
+function sanitizePermissionsForSession(
+  role: UserRole,
+  isOwner: boolean,
+  permissions: PermissionPair[]
+): PermissionPair[] {
+  // Business owners should not receive platform-level user/session permissions in session payload.
+  if (role === UserRole.BUSINESS_OWNER && isOwner) {
+    return permissions.filter(
+      p =>
+        p.resource !== 'user' &&
+        p.resource !== 'users' &&
+        p.resource !== 'session' &&
+        p.resource !== 'sessions'
+    )
+  }
+  return permissions
+}
+
+async function resolveUserPermissions(userId: string, isOwner: boolean): Promise<PermissionPair[]> {
+  if (isOwner) {
+    const allPermissions = await prisma.permission.findMany({
+      select: { resource: true, action: true },
+      orderBy: [{ resource: 'asc' }, { action: 'asc' }],
+    })
+    if (allPermissions.length > 0) {
+      return allPermissions
+    }
+    // Fallback for environments where permission catalog is not seeded yet.
+    return allPermissionsFromStatement()
+  }
+
+  const membership = await prisma.member.findFirst({
+    where: { userId, isActive: true },
+    select: {
+      role: {
+        select: {
+          permissions: {
+            select: {
+              permission: {
+                select: { resource: true, action: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!membership) {
+    return []
+  }
+
+  return membership.role.permissions.map(rp => ({
+    resource: rp.permission.resource,
+    action: rp.permission.action,
+  }))
 }
 
 export const auth = betterAuth({
@@ -58,18 +125,33 @@ export const auth = betterAuth({
         default: UserRole.BUSINESS_OWNER,
         input: false,
       },
+      isOwner: {
+        type: 'boolean',
+        required: false,
+        default: false,
+        input: false,
+      },
     },
   },
   plugins: [
     customSession(async ({ user }) => {
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
-        select: { role: true },
+        select: { role: true, isOwner: true },
       })
+      const role = (dbUser?.role as UserRole | undefined) ?? UserRole.BUSINESS_OWNER
+      const isOwner = dbUser?.isOwner ?? false
+      const permissions = sanitizePermissionsForSession(
+        role,
+        isOwner,
+        role === UserRole.SUPER_ADMIN || isOwner ? await resolveUserPermissions(user.id, true) : await resolveUserPermissions(user.id, false)
+      )
       return {
         user: {
           ...user,
-          role: dbUser?.role as UserRole,
+          role,
+          isOwner,
+          permissions,
         },
       }
     }),

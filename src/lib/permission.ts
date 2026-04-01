@@ -55,7 +55,7 @@ export const businessOwner = ac.newRole({
   priceList: ['create', 'read', 'update', 'delete'],
   invoices: ['create', 'read', 'update', 'delete'],
   clients: ['create', 'read', 'update', 'delete'],
-  users: ['create', 'read', 'update', 'delete'],
+  users: ['read'],
   roles: ['create', 'read', 'update', 'delete'],
   settings: ['read', 'update'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],

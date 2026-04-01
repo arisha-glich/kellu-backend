@@ -5,6 +5,8 @@ import { createUserNotification, sendUserOperationEmail } from '~/services/notif
 import { hasPermission } from '~/services/permission.service'
 import {
   approveQuote,
+  clientApproveQuoteByToken,
+  clientRejectQuoteByToken,
   createQuote,
   deleteQuote,
   getQuote,
@@ -141,6 +143,13 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         quoteTermsConditions: body.quoteTermsConditions,
         lineItems: body.lineItems,
       })
+      try {
+        await sendQuoteEmail(businessId, quote.id, {
+          requesterEmail: user.email,
+        })
+      } catch (emailError) {
+        console.error('Quote auto-email on create failed:', emailError)
+      }
       try {
         await createUserNotification({
           userId: user.id,
@@ -619,6 +628,104 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)
       }
       console.error('Error rejecting quote:', error)
+      return c.json({ message: 'Failed to reject quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+  clientRespondGet: async c => {
+    const { action, token } = c.req.valid('query')
+    const approvedRedirectUrl =
+      Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/approved-quote'
+    const rejectedRedirectUrl =
+      Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/rejected-quote'
+    if (action === 'approve') {
+      try {
+        await clientApproveQuoteByToken(token)
+        return c.redirect(approvedRedirectUrl)
+      } catch (error) {
+        if (error instanceof QuoteTerminalStateError) {
+          return c.redirect(`${rejectedRedirectUrl.replace(/\/$/, '')}/?quoteAction=already-responded`)
+        }
+        if (error instanceof WorkOrderNotFoundError) {
+          return c.redirect(`${approvedRedirectUrl.replace(/\/$/, '')}/?quoteAction=not-found`)
+        }
+        console.error('Error approving quote by client token:', error)
+        return c.redirect(`${approvedRedirectUrl.replace(/\/$/, '')}/?quoteAction=error`)
+      }
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reject Quote</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #f8fafc; padding: 24px; color: #111827; }
+      .card { max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; }
+      h1 { margin-top: 0; }
+      textarea { width: 100%; min-height: 120px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+      button { margin-top: 12px; background: #ef4444; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+      .note { color: #6b7280; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Reject Quote</h1>
+      <p>Please tell us why you are rejecting this quote.</p>
+      <form id="rejectForm">
+        <textarea id="reason" name="reason" placeholder="Enter rejection reason..." required minlength="3"></textarea>
+        <button type="submit">Submit rejection</button>
+      </form>
+      <p class="note">This reason will be shared with the business team.</p>
+      <div id="result"></div>
+    </div>
+    <script>
+      const form = document.getElementById('rejectForm');
+      const result = document.getElementById('result');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const reason = document.getElementById('reason').value;
+        const res = await fetch('/api/quotes/client/respond/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: ${JSON.stringify(token)}, reason }),
+        });
+        if (res.ok) {
+          result.innerHTML = '<p style="color:#047857;"><strong>Your quote has been rejected successfully.</strong></p>';
+          form.style.display = 'none';
+        } else {
+          result.innerHTML = '<p style="color:#b91c1c;"><strong>Could not submit rejection. Please try again.</strong></p>';
+        }
+      });
+    </script>
+  </body>
+</html>`
+    return c.html(html, HttpStatusCodes.OK)
+  },
+  clientRespondPost: async c => {
+    try {
+      const { token, reason } = c.req.valid('json')
+      const quote = await clientRejectQuoteByToken(token, reason)
+      return c.json(
+        {
+          message: 'Quote rejected successfully',
+          success: true,
+          data: {
+            quoteId: quote.id,
+            quoteCorrelative: quote.quoteCorrelative ?? null,
+            status: 'REJECTED' as const,
+          },
+        },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof QuoteTerminalStateError) {
+        return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)
+      }
+      console.error('Error rejecting quote by client token:', error)
       return c.json({ message: 'Failed to reject quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },

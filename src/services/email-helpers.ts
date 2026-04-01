@@ -22,6 +22,13 @@ export function getDashboardLoginUrl(): string {
   return `${base}/login?redirect=${encodeURIComponent('/dashboard')}`
 }
 
+/** Build login URL that redirects to admin dashboard after sign-in. */
+export function getAdminDashboardLoginUrl(): string {
+  const base = FRONTEND_URL.replace(/\/$/, '')
+  const adminPath = process.env.ADMIN_DASHBOARD_PATH ?? '/admin'
+  return `${base}/login?redirect=${encodeURIComponent(adminPath)}`
+}
+
 const NO_REPLY_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'noresponder@notificaciones.kellu.co'
 const KELLU_FROM_NAME = process.env.RESEND_KELLU_FROM_NAME ?? 'Kellu'
 const KELLU_REPLY_TO = process.env.RESEND_KELLU_REPLY_TO ?? 'equipo@kellu.co'
@@ -222,14 +229,17 @@ export interface SendTeamMemberInvitationParams {
   description?: string
   /** Role permissions for display in email (e.g. [{ resource: 'workorders', action: 'read' }]). */
   permissions?: Array<{ resource: string; action: string }>
+  /** Which portal this member should use after login. */
+  portalType?: 'business' | 'admin'
 }
 
 export async function sendTeamMemberInvitationEmail(
   params: SendTeamMemberInvitationParams
 ): Promise<void> {
-  const { to, memberName, businessName, roleName, email, password, description, permissions } =
-    params
-  const loginUrl = getDashboardLoginUrl()
+  const { to, memberName, businessName, roleName, email, password, description, permissions } = params
+  const portalType = params.portalType ?? 'business'
+  const loginUrl = portalType === 'admin' ? getAdminDashboardLoginUrl() : getDashboardLoginUrl()
+  const portalLabel = portalType === 'admin' ? 'admin dashboard' : 'business dashboard'
 
   const subject = (emailSubjects as Record<string, string>)['add-team-member']
   const html = await renderEmailTemplate('add-team-member' as never, {
@@ -239,6 +249,7 @@ export async function sendTeamMemberInvitationEmail(
     email,
     password,
     loginUrl,
+    portalLabel,
     description: description ?? undefined,
     permissions: permissions ?? [],
   })

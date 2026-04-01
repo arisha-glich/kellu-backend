@@ -10,6 +10,7 @@ export interface AddTeamMemberEmailProps {
   email: string
   password: string
   loginUrl: string
+  portalLabel?: string
   description?: string
   /** Permissions for the role (e.g. [{ resource: 'workorders', action: 'read' }]). */
   permissions?: Array<{ resource: string; action: string }>
@@ -45,6 +46,7 @@ export const AddTeamMemberEmail = ({
   email,
   password,
   loginUrl,
+  portalLabel = 'business dashboard',
   description,
   permissions = [],
 }: AddTeamMemberEmailProps) => {
@@ -81,7 +83,7 @@ export const AddTeamMemberEmail = ({
         ) : null}
 
         <Text style={{ ...emailStyles.text, marginTop: '16px' }}>
-          Use the credentials below to log in to the business dashboard:
+          Use the credentials below to log in to the {portalLabel}:
         </Text>
 
         <Section style={credentialBox}>
@@ -95,7 +97,7 @@ export const AddTeamMemberEmail = ({
 
         <Section style={emailStyles.buttonContainer}>
           <Button href={loginUrl} style={emailStyles.button}>
-            Log in to the business dashboard
+            Log in to the {portalLabel}
           </Button>
         </Section>
 

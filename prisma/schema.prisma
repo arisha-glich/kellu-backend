@@ -362,6 +362,9 @@ model WorkOrder {
   quoteExpiresAt       DateTime?
   lastQuotePdfUrl      String?
   quoteCorrelative     String?
+  quoteClientActionToken String?
+  quoteClientRespondedAt DateTime?
+  quoteClientRejectionReason String? @db.Text
   quoteWhatsappStatus  String?
   quoteObservations    String?     @db.Text
   quoteTermsConditions String?     @db.Text

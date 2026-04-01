@@ -6,6 +6,7 @@ import { AddTeamMemberEmail } from '../emails/admin/add.team-member'
 import { BookingConfirmationEmail } from '../emails/booking-confirmation'
 import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
+import { QuoteCreatedEmail } from '../emails/quote-created'
 import { SettingsUpdatedEmail } from '../emails/settings-updated'
 import { TaskCreatedEmail } from '../emails/task-created'
 import { WelcomeEmail } from '../emails/welcome'
@@ -25,6 +26,7 @@ export type EmailTemplate =
   | 'email-verification'
   | 'client-profile-update'
   | 'booking-confirmation'
+  | 'quote-created'
   | 'work-order-created'
   | 'task-created'
   | 'settings-updated'
@@ -36,6 +38,7 @@ export const emailSubjects: Record<EmailTemplate, string> = {
   'email-verification': 'Verify your email address',
   'client-profile-update': `${APP_NAME} - Update to your client profile`,
   'booking-confirmation': 'Booking Confirmation',
+  'quote-created': 'Your quote is ready',
   'work-order-created': 'New work order created',
   'task-created': 'New task assigned',
   'settings-updated': 'Your company settings have been updated',
@@ -67,6 +70,7 @@ export async function renderEmailTemplate(
         email,
         password,
         loginUrl,
+        portalLabel,
         description,
         permissions,
       } = data
@@ -78,6 +82,7 @@ export async function renderEmailTemplate(
           email={email}
           password={password}
           loginUrl={loginUrl}
+          portalLabel={portalLabel}
           description={description}
           permissions={Array.isArray(permissions) ? permissions : []}
         />
@@ -121,6 +126,42 @@ export async function renderEmailTemplate(
           assignedTeamMemberName={assignedTeamMemberName}
           businessName={businessName}
           logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'quote-created': {
+      const {
+        clientName,
+        businessName,
+        quoteNumber,
+        quoteReference,
+        title,
+        address,
+        date,
+        timeRange,
+        assignedTeamMemberName,
+        lineItemsSummary,
+        total,
+        logoUrl,
+          approveUrl,
+          rejectUrl,
+      } = data
+      return render(
+        <QuoteCreatedEmail
+          clientName={clientName}
+          businessName={businessName}
+          quoteNumber={quoteNumber}
+          quoteReference={quoteReference}
+          title={title}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          assignedTeamMemberName={assignedTeamMemberName}
+          lineItemsSummary={lineItemsSummary ?? ''}
+          total={total}
+          logoUrl={logoUrl}
+          approveUrl={approveUrl}
+          rejectUrl={rejectUrl}
         />
       )
     }

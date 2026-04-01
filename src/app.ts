@@ -3,6 +3,8 @@ import clientRouter from '~/routes/clients'
 import expenseRouter from '~/routes/expenses'
 import insightsRouter from '~/routes/insights'
 import invoiceRouter from '~/routes/invoices'
+import adminRoleRouter from '~/routes/admin/roles'
+import adminTeamMemberRouter from '~/routes/admin/team-members'
 import notificationRouter from '~/routes/notifications'
 import priceListRouter from '~/routes/pricelistitems'
 import quoteRouter from '~/routes/quotes'
@@ -28,6 +30,8 @@ export function registerRoutes(app: AppOpenAPI) {
     .route('/api/expenses', expenseRouter)
     .route('/api/roles', roleRouter)
     .route('/api/team', teamRouter)
+    .route('/api/admin/roles', adminRoleRouter)
+    .route('/api/admin/team', adminTeamMemberRouter)
     .route('/api/quotes', quoteRouter)
     .route('/api/tasks', taskRouter)
     .route('/api/schedule', scheduleRouter)

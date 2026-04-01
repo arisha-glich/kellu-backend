@@ -97,6 +97,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         includeInNotificationsWhenAssigned: body.includeInNotificationsWhenAssigned,
         password: body.password,
         emailDescription: body.emailDescription,
+        portalType: 'business',
       })
       return c.json(
         { message: 'Team member added successfully', success: true, data: member },
