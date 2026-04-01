@@ -131,29 +131,73 @@ export const auth = betterAuth({
         default: false,
         input: false,
       },
+      adminPortalTeamMember: {
+        type: 'boolean',
+        required: false,
+        default: false,
+        input: false,
+      },
     },
   },
   plugins: [
     customSession(async ({ user }) => {
+      const { adminPortalTeamMember: _strippedFromSession, ...userWithoutPortalTeamFlag } = user as typeof user & {
+        adminPortalTeamMember?: boolean
+      }
+
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
-        select: { role: true, isOwner: true },
+        select: { role: true, isOwner: true, adminPortalTeamMember: true },
       })
-      const role = (dbUser?.role as UserRole | undefined) ?? UserRole.BUSINESS_OWNER
-      const isOwner = dbUser?.isOwner ?? false
+      const dbRole = (dbUser?.role as UserRole | undefined) ?? UserRole.BUSINESS_OWNER
+      const dbIsOwner = dbUser?.isOwner ?? false
+      const adminPortalTeamMember = dbUser?.adminPortalTeamMember ?? false
+
+      const activeMembership = await prisma.member.findFirst({
+        where: { userId: user.id, isActive: true },
+        select: { id: true },
+      })
+
+      const isPrimarySuperAdmin =
+        dbRole === UserRole.SUPER_ADMIN && !adminPortalTeamMember
+      const isAdminPortalTeamMember = adminPortalTeamMember && !!activeMembership
+
+      const sessionRole =
+        isPrimarySuperAdmin || isAdminPortalTeamMember
+          ? UserRole.SUPER_ADMIN
+          : UserRole.BUSINESS_OWNER
+
+      const useFullPermissionCatalog = isPrimarySuperAdmin || dbIsOwner
+
       const permissions = sanitizePermissionsForSession(
-        role,
-        isOwner,
-        role === UserRole.SUPER_ADMIN || isOwner ? await resolveUserPermissions(user.id, true) : await resolveUserPermissions(user.id, false)
+        dbRole,
+        dbIsOwner,
+        useFullPermissionCatalog
+          ? await resolveUserPermissions(user.id, true)
+          : await resolveUserPermissions(user.id, false)
       )
-      return {
-        user: {
-          ...user,
-          role,
-          isOwner,
+
+      let sessionUser: Record<string, unknown>
+
+      if (isPrimarySuperAdmin || isAdminPortalTeamMember) {
+        sessionUser = {
+          ...userWithoutPortalTeamFlag,
+          role: sessionRole,
           permissions,
-        },
+          isAdmin: isPrimarySuperAdmin,
+          isOwner: undefined,
+        }
+      } else {
+        sessionUser = {
+          ...userWithoutPortalTeamFlag,
+          role: UserRole.BUSINESS_OWNER,
+          permissions,
+          isOwner: dbIsOwner,
+          isAdmin: undefined,
+        }
       }
+
+      return { user: sessionUser }
     }),
     openAPI({ theme: 'kepler' }),
   ],

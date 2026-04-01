@@ -1,4 +1,5 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { hasAdminPortalAccess } from '~/lib/portal-access'
 import { resolveAdminBusinessScope } from '~/routes/admin/_helpers'
 import type { ADMIN_ROLE_ROUTES } from '~/routes/admin/roles/admin-role.routes'
 import {
@@ -13,12 +14,19 @@ import {
   updateRole,
   getRoleById,
 } from '~/services/role.service'
+import { RolePortalScope } from '~/generated/prisma'
 import type { HandlerMapFromRoutes } from '~/types'
+
+const FORBIDDEN_ADMIN_PORTAL_ONLY =
+  'This endpoint is only for admin portal accounts. Business users must use /api/roles.'
 
 export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> = {
   getPermissionMatrix: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     return c.json(
       { message: 'Permission matrix retrieved', success: true, data: getPermissionMatrix() },
       HttpStatusCodes.OK
@@ -27,6 +35,9 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
   getPermissionActions: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     return c.json(
       { message: 'Permission actions retrieved', success: true, data: getAllActions() },
       HttpStatusCodes.OK
@@ -35,19 +46,25 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
   list: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     const businessId = await resolveAdminBusinessScope(c, user)
     if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-    const roles = await listRoles(businessId)
+    const roles = await listRoles(businessId, RolePortalScope.ADMIN_PORTAL)
     return c.json({ message: 'Roles retrieved successfully', success: true, data: roles }, HttpStatusCodes.OK)
   },
   getById: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { roleId } = c.req.valid('param')
-      const role = await getRoleById(businessId, roleId)
+      const role = await getRoleById(businessId, roleId, RolePortalScope.ADMIN_PORTAL)
       return c.json({ message: 'Role retrieved successfully', success: true, data: role }, HttpStatusCodes.OK)
     } catch (error) {
       if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
@@ -57,16 +74,23 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
   create: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const body = c.req.valid('json')
-      const role = await createRole(businessId, {
-        name: body.name,
-        displayName: body.displayName ?? undefined,
-        description: body.description ?? undefined,
-        permissions: body.permissions,
-      })
+      const role = await createRole(
+        businessId,
+        {
+          name: body.name,
+          displayName: body.displayName ?? undefined,
+          description: body.description ?? undefined,
+          permissions: body.permissions,
+        },
+        RolePortalScope.ADMIN_PORTAL
+      )
       return c.json({ message: 'Role created successfully', success: true, data: role }, HttpStatusCodes.CREATED)
     } catch (error) {
       if (error instanceof InvalidPermissionError) return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
@@ -76,17 +100,25 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
   update: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { roleId } = c.req.valid('param')
       const body = c.req.valid('json')
-      const role = await updateRole(businessId, roleId, {
-        name: body.name ?? undefined,
-        displayName: body.displayName ?? undefined,
-        description: body.description ?? undefined,
-        permissions: body.permissions ?? undefined,
-      })
+      const role = await updateRole(
+        businessId,
+        roleId,
+        {
+          name: body.name ?? undefined,
+          displayName: body.displayName ?? undefined,
+          description: body.description ?? undefined,
+          permissions: body.permissions ?? undefined,
+        },
+        RolePortalScope.ADMIN_PORTAL
+      )
       return c.json({ message: 'Role updated successfully', success: true, data: role }, HttpStatusCodes.OK)
     } catch (error) {
       if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
@@ -97,11 +129,14 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
   delete: async c => {
     const user = c.get('user')
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { roleId } = c.req.valid('param')
-      await deleteRole(businessId, roleId)
+      await deleteRole(businessId, roleId, RolePortalScope.ADMIN_PORTAL)
       return c.json({ message: 'Role deleted successfully', success: true, data: { deleted: true } }, HttpStatusCodes.OK)
     } catch (error) {
       if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)

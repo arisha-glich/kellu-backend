@@ -67,6 +67,7 @@ export const ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.array(RoleResponseSchema)), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -80,6 +81,7 @@ export const ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PermissionMatrixSchema), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
     },
   }),
 
@@ -91,6 +93,7 @@ export const ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PermissionActionsSchema), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
     },
   }),
 
@@ -104,6 +107,7 @@ export const ROLE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(RoleResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -118,7 +122,9 @@ export const ROLE_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(RoleResponseSchema), 'Created'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid permissions'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.CONFLICT]: jsonContent(zodResponseSchema(), 'Role name already exists'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -140,6 +146,7 @@ export const ROLE_ROUTES = {
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -161,6 +168,7 @@ export const ROLE_ROUTES = {
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Business portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),

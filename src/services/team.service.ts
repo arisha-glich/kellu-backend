@@ -5,13 +5,13 @@
  *
  * isOwner flag:
  *   - true  = actual business owner (UserRole.BUSINESS_OWNER, has Business record)
- *   - false = team member         (UserRole.BUSINESS_OWNER enum, but isOwner = false)
- * Both share the same UserRole enum value so they can log in the same way,
- * but isOwner distinguishes them at query level without adding a third enum value.
+ *   - false = team member         (UserRole.BUSINESS_OWNER, isOwner = false)
+ * adminPortalTeamMember:
+ *   - true = invited via admin portal; session shows role SUPER_ADMIN with isAdmin false (see auth customSession).
  */
 
 import { hashPassword } from 'better-auth/crypto'
-import { UserRole } from '~/generated/prisma'
+import { RolePortalScope, UserRole } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { sendTeamMemberInvitationEmail } from '~/services/email-helpers'
 
@@ -89,6 +89,8 @@ export interface UpdateMemberInput {
   pictureUrl?: string | null
   includeInNotificationsWhenAssigned?: boolean
   isActive?: boolean
+  /** Required when updating roleId: which portal’s roles are valid (default business). */
+  portalType?: 'business' | 'admin'
 }
 
 async function ensureBusinessExists(businessId: string): Promise<void> {
@@ -168,9 +170,13 @@ export async function addMember(
   input: AddMemberInput
 ): Promise<MemberWithUserAndRole> {
   await ensureBusinessExists(businessId)
+  const markAdminPortalTeam = input.portalType === 'admin'
+  const rolePortalScope = markAdminPortalTeam
+    ? RolePortalScope.ADMIN_PORTAL
+    : RolePortalScope.BUSINESS_PORTAL
 
   const role = await prisma.role.findFirst({
-    where: { id: input.roleId, businessId },
+    where: { id: input.roleId, businessId, portalScope: rolePortalScope },
     select: { id: true },
   })
   if (!role) {
@@ -185,7 +191,7 @@ export async function addMember(
 
   if (existingUser) {
     // Block: super admins cannot be added as team members
-    if (existingUser.role === UserRole.SUPER_ADMIN) {
+    if (input.portalType !== 'admin' && existingUser.role === UserRole.SUPER_ADMIN) {
       throw new InvalidOperationError('Cannot add a super admin as a team member')
     }
 
@@ -240,7 +246,14 @@ export async function addMember(
         },
       },
     })
-    return member as MemberWithUserAndRole
+    if (markAdminPortalTeam) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { adminPortalTeamMember: true },
+      })
+    }
+    const reloaded = await getMemberById(businessId, member.id)
+    return reloaded as MemberWithUserAndRole
   }
 
   // New user — create User + Account + Member inside a transaction
@@ -254,8 +267,9 @@ export async function addMember(
         phone_no: input.phoneNumber,
         rut: input.rut ?? null,
         image: input.pictureUrl ?? null,
-        role: UserRole.BUSINESS_OWNER, // same enum — allows login through the same auth flow
+        role: UserRole.BUSINESS_OWNER,
         isOwner: false, // ✅ distinguishes them from an actual business owner
+        adminPortalTeamMember: markAdminPortalTeam,
       },
     })
 
@@ -363,8 +377,10 @@ export async function updateMember(
   }
 
   if (input.roleId !== undefined) {
+    const rolePortalScope =
+      input.portalType === 'admin' ? RolePortalScope.ADMIN_PORTAL : RolePortalScope.BUSINESS_PORTAL
     const role = await prisma.role.findFirst({
-      where: { id: input.roleId, businessId },
+      where: { id: input.roleId, businessId, portalScope: rolePortalScope },
       select: { id: true },
     })
     if (!role) {

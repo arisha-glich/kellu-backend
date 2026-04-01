@@ -118,6 +118,12 @@ enum TaskStatus {
   COMPLETED
 }
 
+/// Roles created from the business app vs admin portal (same tenant, isolated lists).
+enum RolePortalScope {
+  BUSINESS_PORTAL
+  ADMIN_PORTAL
+}
+
 // ─────────────────────────────────────────────
 // USER
 // ─────────────────────────────────────────────
@@ -141,6 +147,8 @@ model User {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   role              UserRole  @default(BUSINESS_OWNER)
+  /// True when the user was invited via the admin portal team API (session exposes SUPER_ADMIN + isAdmin false; DB role stays BUSINESS_OWNER).
+  adminPortalTeamMember Boolean @default(false)
   isActive          Boolean   @default(true)
   lastLoginAt       DateTime?
 
@@ -253,6 +261,7 @@ model Role {
   displayName String?
   description String?
   isSystem    Boolean  @default(false)
+  portalScope RolePortalScope @default(BUSINESS_PORTAL)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   businessId  String
@@ -262,7 +271,7 @@ model Role {
   members         Member[]
   teamInvitations TeamInvitation[]
 
-  @@unique([businessId, name])
+  @@unique([businessId, name, portalScope])
 }
 
 model Permission {

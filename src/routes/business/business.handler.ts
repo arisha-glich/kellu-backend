@@ -1,5 +1,4 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
-import { UserRole } from '~/generated/prisma'
 import type { BUSINESS_ROUTES } from '~/routes/business/business.routes'
 import {
   BusinessNotFoundError,
@@ -61,7 +60,7 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
   createBusiness: async c => {
     const user = c.get('user')
     console.log(user)
-    if (!user || user.role !== UserRole.SUPER_ADMIN) {
+    if (!user || !user.isAdmin) {
       return c.json(
         { message: 'only super admins can create businesses' },
         HttpStatusCodes.UNAUTHORIZED
@@ -123,7 +122,7 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
 
   updateBusinessCommission: async c => {
     const user = c.get('user')
-    if (!user || user.role !== UserRole.SUPER_ADMIN) {
+    if (!user || !user.isAdmin) {
       return c.json(
         { message: 'only super admins can update business commission' },
         HttpStatusCodes.UNAUTHORIZED

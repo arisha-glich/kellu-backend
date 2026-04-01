@@ -141,6 +141,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         pictureUrl: body.pictureUrl,
         includeInNotificationsWhenAssigned: body.includeInNotificationsWhenAssigned,
         isActive: body.isActive,
+        portalType: 'business',
       })
       return c.json(
         { message: 'Team member updated successfully', success: true, data: member },

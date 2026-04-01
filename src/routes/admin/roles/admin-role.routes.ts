@@ -17,6 +17,7 @@ export const ADMIN_ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
     },
   }),
   getPermissionActions: createRoute({
@@ -27,6 +28,7 @@ export const ADMIN_ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
     },
   }),
   list: createRoute({
@@ -37,6 +39,7 @@ export const ADMIN_ROLE_ROUTES = {
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -51,6 +54,7 @@ export const ADMIN_ROLE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -64,6 +68,7 @@ export const ADMIN_ROLE_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(), 'Created'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid permissions'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
@@ -82,6 +87,7 @@ export const ADMIN_ROLE_ROUTES = {
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid request'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -96,6 +102,7 @@ export const ADMIN_ROLE_ROUTES = {
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Role in use'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Role not found'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Admin portal only'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),

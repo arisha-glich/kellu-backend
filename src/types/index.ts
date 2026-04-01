@@ -10,6 +10,8 @@ export interface AppBindings {
       | (typeof auth.$Infer.Session.user & {
           role: UserRole
           permissions?: Array<{ resource: string; action: string }>
+          /** Primary platform admin only (not admin-portal team members). */
+          isAdmin?: boolean
         })
       | null
     session: typeof auth.$Infer.Session.session | null

@@ -3,6 +3,7 @@
  * Business owners manage custom roles; system roles are seeded automatically.
  */
 
+import { RolePortalScope } from '~/generated/prisma'
 import { statement } from '~/lib/permission'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
@@ -98,11 +99,11 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
   }
 }
 
-/** List all roles for a business (including system roles). */
-export async function listRoles(businessId: string) {
+/** List all roles for a business (including system roles) for one portal scope. */
+export async function listRoles(businessId: string, portalScope: RolePortalScope) {
   await ensureBusinessExists(businessId)
   return prisma.role.findMany({
-    where: { businessId },
+    where: { businessId, portalScope },
     include: {
       permissions: {
         include: { permission: true },
@@ -114,10 +115,10 @@ export async function listRoles(businessId: string) {
 }
 
 /** Get a single role with its permissions. */
-export async function getRoleById(businessId: string, roleId: string) {
+export async function getRoleById(businessId: string, roleId: string, portalScope: RolePortalScope) {
   await ensureBusinessExists(businessId)
   const role = await prisma.role.findFirst({
-    where: { id: roleId, businessId },
+    where: { id: roleId, businessId, portalScope },
     include: {
       permissions: { include: { permission: true } },
       _count: { select: { members: true } },
@@ -130,10 +131,16 @@ export async function getRoleById(businessId: string, roleId: string) {
 }
 
 /** Create a custom role with permissions. System roles cannot be created here. */
-export async function createRole(businessId: string, input: CreateRoleInput) {
+export async function createRole(
+  businessId: string,
+  input: CreateRoleInput,
+  portalScope: RolePortalScope
+) {
   await ensureBusinessExists(businessId)
   validatePermissions(input.permissions)
-  await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
+  if (portalScope === RolePortalScope.BUSINESS_PORTAL) {
+    await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
+  }
 
   const resolvedPermissions = await Promise.all(
     input.permissions.map(async p =>
@@ -153,6 +160,7 @@ export async function createRole(businessId: string, input: CreateRoleInput) {
         displayName: input.displayName ?? null,
         description: input.description ?? null,
         isSystem: false,
+        portalScope,
       },
     })
 
@@ -180,12 +188,14 @@ export async function updateRole(
 
   roleId: string,
 
-  input: UpdateRoleInput
+  input: UpdateRoleInput,
+
+  portalScope: RolePortalScope
 ) {
   await ensureBusinessExists(businessId)
 
   const existing = await prisma.role.findFirst({
-    where: { id: roleId, businessId },
+    where: { id: roleId, businessId, portalScope },
 
     select: { id: true, isSystem: true },
   })
@@ -200,7 +210,9 @@ export async function updateRole(
 
   if (input.permissions) {
     validatePermissions(input.permissions)
-    await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
+    if (portalScope === RolePortalScope.BUSINESS_PORTAL) {
+      await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
+    }
   }
 
   // Step 1: Upsert all permissions OUTSIDE the transaction (no timeout risk)
@@ -259,10 +271,14 @@ export async function updateRole(
 }
 
 /** Delete a custom role. Fails if members are assigned to it. */
-export async function deleteRole(businessId: string, roleId: string): Promise<void> {
+export async function deleteRole(
+  businessId: string,
+  roleId: string,
+  portalScope: RolePortalScope
+): Promise<void> {
   await ensureBusinessExists(businessId)
   const role = await prisma.role.findFirst({
-    where: { id: roleId, businessId },
+    where: { id: roleId, businessId, portalScope },
     select: { id: true, isSystem: true, _count: { select: { members: true } } },
   })
   if (!role) {
@@ -285,11 +301,12 @@ export async function deleteRole(businessId: string, roleId: string): Promise<vo
 export async function replaceRolePermissionsAsAdmin(
   businessId: string,
   roleId: string,
-  permissions: Array<{ resource: string; action: string }>
+  permissions: Array<{ resource: string; action: string }>,
+  portalScope: RolePortalScope
 ) {
   await ensureBusinessExists(businessId)
   const existing = await prisma.role.findFirst({
-    where: { id: roleId, businessId },
+    where: { id: roleId, businessId, portalScope },
     select: { id: true },
   })
   if (!existing) {
@@ -397,7 +414,13 @@ export async function seedSystemRoles(businessId: string): Promise<void> {
   for (const roleData of systemRoles) {
     // Skip if already exists
     const exists = await prisma.role.findUnique({
-      where: { businessId_name: { businessId, name: roleData.name } },
+      where: {
+        businessId_name_portalScope: {
+          businessId,
+          name: roleData.name,
+          portalScope: RolePortalScope.BUSINESS_PORTAL,
+        },
+      },
       select: { id: true },
     })
     if (exists) {
@@ -411,6 +434,7 @@ export async function seedSystemRoles(businessId: string): Promise<void> {
         displayName: roleData.displayName,
         description: roleData.description,
         isSystem: true,
+        portalScope: RolePortalScope.BUSINESS_PORTAL,
       },
     })
 

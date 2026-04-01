@@ -82,6 +82,7 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         pictureUrl: body.pictureUrl,
         includeInNotificationsWhenAssigned: body.includeInNotificationsWhenAssigned,
         isActive: body.isActive,
+        portalType: 'admin',
       })
       return c.json({ message: 'Team member updated successfully', success: true, data: member }, HttpStatusCodes.OK)
     } catch (error) {

@@ -1,3 +1,4 @@
+import { UserRole } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { getBusinessIdByUserId } from '~/services/business.service'
 
@@ -10,7 +11,14 @@ export async function resolveAdminBusinessScope(
     return explicitBusinessId
   }
 
-  if (user.role === 'SUPER_ADMIN') {
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { role: true, adminPortalTeamMember: true },
+  })
+  const isPrimarySuperAdmin =
+    dbUser?.role === UserRole.SUPER_ADMIN && !dbUser?.adminPortalTeamMember
+
+  if (isPrimarySuperAdmin) {
     const anyBusiness = await prisma.business.findFirst({
       orderBy: { createdAt: 'asc' },
       select: { id: true },

@@ -1,5 +1,4 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
-import { UserRole } from '~/generated/prisma'
 import type { CLIENT_ROUTES } from '~/routes/clients/client.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
@@ -12,6 +11,7 @@ import {
   getLeadSources,
   updateClientByClientId,
 } from '~/services/client.service'
+import { resolvePortalAccess } from '~/lib/portal-access'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
@@ -133,7 +133,14 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
 
   create: async c => {
     const user = c.get('user')
-    if (!user || user.role !== UserRole.BUSINESS_OWNER) {
+    if (!user) {
+      return c.json(
+        { message: 'only business owners can create clients' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
+    }
+    const { businessPortalAccess } = await resolvePortalAccess(user.id)
+    if (!businessPortalAccess) {
       return c.json(
         { message: 'only business owners can create clients' },
         HttpStatusCodes.UNAUTHORIZED
