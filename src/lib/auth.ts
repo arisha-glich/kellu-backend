@@ -50,16 +50,10 @@ function sanitizePermissionsForSession(
   return permissions
 }
 
-async function resolveUserPermissions(userId: string, isOwner: boolean): Promise<PermissionPair[]> {
-  if (isOwner) {
-    const allPermissions = await prisma.permission.findMany({
-      select: { resource: true, action: true },
-      orderBy: [{ resource: 'asc' }, { action: 'asc' }],
-    })
-    if (allPermissions.length > 0) {
-      return allPermissions
-    }
-    // Fallback for environments where permission catalog is not seeded yet.
+async function resolveUserPermissions(userId: string, fullCatalog: boolean): Promise<PermissionPair[]> {
+  if (fullCatalog) {
+    // Always derive from `statement`: the Permission table is lazily populated (only pairs
+    // referenced by roles) so findMany() is incomplete — owners/super-admins need the full matrix.
     return allPermissionsFromStatement()
   }
 

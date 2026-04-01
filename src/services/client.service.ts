@@ -395,6 +395,7 @@ export function getLeadSources(): { value: string; label: string }[] {
   return [
     { value: 'Website', label: 'Website' },
     { value: 'SocialMedia', label: 'Social Media' },
-    { value: 'All', label: 'All' },
+    { value: 'Referral', label: 'Referral' },
+    { value: 'Other', label: 'Other' },
   ]
 }

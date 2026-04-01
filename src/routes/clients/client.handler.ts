@@ -40,7 +40,7 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       const limit = query.limit ? Number.parseInt(query.limit, 10) : 10
       const result = await getClients(businessId, {
         search: query.search,
-        status: query.status,
+        status: query.status === 'ALL' ? undefined : query.status,
         sortBy: query.sortBy,
         order: query.order,
         page,

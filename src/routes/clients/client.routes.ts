@@ -3,8 +3,11 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
-const ClientStatusEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP', 'ALL'])
-const LeadSourceEnum = z.enum(['Website', 'SocialMedia', 'All'])
+/** List filter only — maps to no status filter when ALL */
+const ClientStatusFilterEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP', 'ALL'])
+const ClientStatusOnlyEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP'])
+/** Matches Prisma `LeadSource` (no UI-only values like All) */
+const LeadSourcePrismaEnum = z.enum(['Website', 'SocialMedia', 'Referral', 'Other'])
 
 export const ClientParamsSchema = z.object({
   id: z.string().openapi({ param: { name: 'id', in: 'path' }, description: 'Business ID' }),
@@ -24,7 +27,7 @@ export const ClientListQuerySchema = z.object({
       param: { name: 'search', in: 'query' },
       description: 'Search by name, email, or phone',
     }),
-  status: ClientStatusEnum.optional().openapi({
+  status: ClientStatusFilterEnum.optional().openapi({
     param: { name: 'status', in: 'query' },
     description: 'Filter by status (ACTIVE, ARCHIVED, FOLLOW_UP, ALL)',
   }),
@@ -92,7 +95,7 @@ export const CreateClientBodySchema = z
     phone: z.string().min(1, 'Phone is required'),
     email: z.string().email().optional().nullable().or(z.literal('')),
     documentNumber: z.string().optional().nullable(),
-    leadSource: LeadSourceEnum.optional().default('Website'),
+    leadSource: LeadSourcePrismaEnum.optional().default('Website'),
     notes: z.string().optional().nullable(),
   })
   .transform(d => ({
@@ -107,9 +110,9 @@ export const UpdateClientBodySchema = z
     phone: z.string().min(1).optional(),
     email: z.string().email().optional().nullable().or(z.literal('')),
     documentNumber: z.string().optional().nullable(),
-    leadSource: LeadSourceEnum.optional(),
+    leadSource: LeadSourcePrismaEnum.optional(),
     notes: z.string().optional().nullable(),
-    status: ClientStatusEnum.optional(),
+    status: ClientStatusOnlyEnum.optional(),
   })
   .transform(d => ({
     ...d,

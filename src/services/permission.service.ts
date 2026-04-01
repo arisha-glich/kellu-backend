@@ -79,6 +79,18 @@ export async function hasPermission(
     }
   }
 
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { ownerId: true },
+  })
+  if (!business) {
+    return false
+  }
+  // Actual business owner — full access; often has no Member row.
+  if (business.ownerId === userId) {
+    return true
+  }
+
   const member = await prisma.member.findFirst({
     where: {
       userId,
@@ -86,9 +98,6 @@ export async function hasPermission(
       isActive: true,
     },
     select: {
-      business: {
-        select: { ownerId: true },
-      },
       role: {
         select: {
           permissions: {
@@ -103,18 +112,15 @@ export async function hasPermission(
     },
   })
 
-  if (!member) return false
-
-  // ✅ Owner check
-  if (member.business.ownerId === userId) {
-    return true
+  if (!member) {
+    return false
   }
 
-  // ✅ Safety check
-  if (!member.role) return false
+  if (!member.role) {
+    return false
+  }
 
-  // ✅ Permission check
   return member.role.permissions.some(
-    (rp) => rp.permission.resource === resource && rp.permission.action === action
+    rp => rp.permission.resource === resource && rp.permission.action === action
   )
 }
