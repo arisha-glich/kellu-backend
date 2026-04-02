@@ -3,6 +3,7 @@
  */
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { RolePortalScope } from '~/generated/prisma'
 import type { TEAM_ROUTES } from '~/routes/team/team.routes'
 import { getBusinessIdByUserId } from '~/services/business.service'
 import {
@@ -28,7 +29,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
       if (!businessId) {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
-      const data = await listMembers(businessId)
+      const data = await listMembers(businessId, RolePortalScope.BUSINESS_PORTAL)
       return c.json(
         { message: 'Team members retrieved successfully', success: true, data: { data } },
         HttpStatusCodes.OK
@@ -56,7 +57,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       const { memberId } = c.req.valid('param')
-      const member = await getMemberById(businessId, memberId)
+      const member = await getMemberById(businessId, memberId, RolePortalScope.BUSINESS_PORTAL)
       if (!member) {
         return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
       }
@@ -176,7 +177,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
       }
       const { memberId } = c.req.valid('param')
-      await removeMember(businessId, memberId)
+      await removeMember(businessId, memberId, RolePortalScope.BUSINESS_PORTAL)
       return c.json(
         { message: 'Team member removed successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

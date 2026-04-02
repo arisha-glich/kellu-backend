@@ -1,4 +1,5 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { RolePortalScope } from '~/generated/prisma'
 import { resolveAdminBusinessScope } from '~/routes/admin/_helpers'
 import type { ADMIN_TEAM_MEMBER_ROUTES } from '~/routes/admin/team-members/admin-team-member.routes'
 import {
@@ -19,7 +20,7 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
     if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     const businessId = await resolveAdminBusinessScope(c, user)
     if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-    const data = await listMembers(businessId)
+    const data = await listMembers(businessId, RolePortalScope.ADMIN_PORTAL)
     return c.json(
       { message: 'Team members retrieved successfully', success: true, data: { data } },
       HttpStatusCodes.OK
@@ -32,7 +33,7 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { memberId } = c.req.valid('param')
-      const member = await getMemberById(businessId, memberId)
+      const member = await getMemberById(businessId, memberId, RolePortalScope.ADMIN_PORTAL)
       if (!member) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
       return c.json({ message: 'Member retrieved successfully', success: true, data: member }, HttpStatusCodes.OK)
     } catch (error) {
@@ -98,7 +99,7 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
       const businessId = await resolveAdminBusinessScope(c, user)
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { memberId } = c.req.valid('param')
-      await removeMember(businessId, memberId)
+      await removeMember(businessId, memberId, RolePortalScope.ADMIN_PORTAL)
       return c.json(
         { message: 'Team member removed successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

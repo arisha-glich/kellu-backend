@@ -637,19 +637,34 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/approved-quote'
     const rejectedRedirectUrl =
       Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/rejected-quote'
+    const withClientParams = (baseUrl: string, params: Record<string, string>) => {
+      const url = new URL(baseUrl)
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value)
+      }
+      return url.toString()
+    }
     if (action === 'approve') {
       try {
-        await clientApproveQuoteByToken(token)
-        return c.redirect(approvedRedirectUrl)
+        const quote = await clientApproveQuoteByToken(token)
+        return c.redirect(
+          withClientParams(approvedRedirectUrl, {
+            quoteAction: 'approved',
+            quoteId: quote.id,
+            clientId: quote.clientId,
+          })
+        )
       } catch (error) {
         if (error instanceof QuoteTerminalStateError) {
-          return c.redirect(`${rejectedRedirectUrl.replace(/\/$/, '')}/?quoteAction=already-responded`)
+          return c.redirect(
+            withClientParams(rejectedRedirectUrl, { quoteAction: 'already-responded' })
+          )
         }
         if (error instanceof WorkOrderNotFoundError) {
-          return c.redirect(`${approvedRedirectUrl.replace(/\/$/, '')}/?quoteAction=not-found`)
+          return c.redirect(withClientParams(approvedRedirectUrl, { quoteAction: 'not-found' }))
         }
         console.error('Error approving quote by client token:', error)
-        return c.redirect(`${approvedRedirectUrl.replace(/\/$/, '')}/?quoteAction=error`)
+        return c.redirect(withClientParams(approvedRedirectUrl, { quoteAction: 'error' }))
       }
     }
 
@@ -691,8 +706,12 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           body: JSON.stringify({ token: ${JSON.stringify(token)}, reason }),
         });
         if (res.ok) {
-          result.innerHTML = '<p style="color:#047857;"><strong>Your quote has been rejected successfully.</strong></p>';
-          form.style.display = 'none';
+          const data = await res.json();
+          const redirectUrl = new URL(${JSON.stringify(rejectedRedirectUrl)});
+          redirectUrl.searchParams.set('quoteAction', 'rejected');
+          redirectUrl.searchParams.set('quoteId', data?.data?.quoteId ?? '');
+          redirectUrl.searchParams.set('clientId', data?.data?.clientId ?? '');
+          window.location.href = redirectUrl.toString();
         } else {
           result.innerHTML = '<p style="color:#b91c1c;"><strong>Could not submit rejection. Please try again.</strong></p>';
         }
@@ -712,6 +731,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           success: true,
           data: {
             quoteId: quote.id,
+            clientId: quote.clientId,
             quoteCorrelative: quote.quoteCorrelative ?? null,
             status: 'REJECTED' as const,
           },

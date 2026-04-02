@@ -10,7 +10,7 @@
  * - updateItemSchedule()         → extend/modify time block
  */
 
-import type { Prisma } from '~/generated/prisma'
+import { type Prisma, RolePortalScope } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 
@@ -253,7 +253,11 @@ export async function getTeamMembersForSchedule(
   await ensureBusinessExists(businessId)
 
   const members = await prisma.member.findMany({
-    where: { businessId, isActive: true },
+    where: {
+      businessId,
+      isActive: true,
+      role: { portalScope: RolePortalScope.BUSINESS_PORTAL },
+    },
     include: {
       user: { select: { name: true } },
     },
@@ -297,6 +301,7 @@ export async function getDailySchedule(
     where: {
       businessId,
       isActive: true,
+      role: { portalScope: RolePortalScope.BUSINESS_PORTAL },
       ...(teamMemberId ? { id: teamMemberId } : {}),
     },
     include: { user: { select: { name: true } } },

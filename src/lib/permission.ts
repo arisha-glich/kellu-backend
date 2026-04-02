@@ -7,6 +7,8 @@ import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access'
  */
 export const statement = {
   ...defaultStatements,
+  /** Platform admin: companies / tenants (session uses full CRUD for admin portal users). */
+  business: ['create', 'read', 'update', 'delete'],
   workorders: ['create', 'read', 'update', 'delete'],
   quotes: ['create', 'read', 'update'],
   tasks: ['create', 'read', 'update', 'delete'],
@@ -16,7 +18,7 @@ export const statement = {
   clients: ['create', 'read', 'update', 'delete'],
   users: ['create', 'read', 'update', 'delete'],
   roles: ['create', 'read', 'update', 'delete'],
-  settings: ['read', 'update'],
+  settings: ['create', 'read', 'update', 'delete'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
   reports: ['read'],
 } as const
@@ -29,6 +31,7 @@ export const ac = createAccessControl(statement)
  */
 export const superAdmin = ac.newRole({
   ...adminAc.statements,
+  business: ['create', 'read', 'update', 'delete'],
   workorders: ['create', 'read', 'update', 'delete'],
   quotes: ['create', 'read', 'update'],
   tasks: ['create', 'read', 'update', 'delete'],
@@ -38,7 +41,7 @@ export const superAdmin = ac.newRole({
   clients: ['create', 'read', 'update', 'delete'],
   users: ['create', 'read', 'update', 'delete'],
   roles: ['create', 'read', 'update', 'delete'],
-  settings: ['read', 'update'],
+  settings: ['create', 'read', 'update', 'delete'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
   reports: ['read'],
 })
@@ -106,3 +109,76 @@ export const ROLES = {
 } as const
 
 export type RoleName = (typeof ROLES)[keyof typeof ROLES]
+
+/** Session + API matrix for primary SUPER_ADMIN and admin-portal team members. */
+export const ADMIN_PORTAL_BUSINESS_RESOURCE = 'business'
+
+/** All actions from `statement` for these resources (business + platform admin surfaces). */
+const ADMIN_PORTAL_FULL_CRUD_RESOURCES = new Set([
+  ADMIN_PORTAL_BUSINESS_RESOURCE,
+  'user',
+  'users',
+  'session',
+  'sessions',
+  'settings',
+])
+
+/** Non-destructive / view actions allowed on every other resource for admin portal. */
+const ADMIN_PORTAL_READ_LIKE_ACTIONS = new Set(['read', 'get', 'list'])
+
+function statementActionsFor(resource: string): readonly string[] | undefined {
+  return (statement as Record<string, readonly string[]>)[resource]
+}
+
+export function adminPortalAllows(resource: string, action: string): boolean {
+  const defined = statementActionsFor(resource)
+  if (defined && ADMIN_PORTAL_FULL_CRUD_RESOURCES.has(resource)) {
+    return defined.includes(action)
+  }
+  return ADMIN_PORTAL_READ_LIKE_ACTIONS.has(action)
+}
+
+export type PermissionPair = { resource: string; action: string }
+
+/** Permissions exposed on the session for admin portal users. */
+export function buildAdminPortalSessionPermissions(): PermissionPair[] {
+  const pairs: PermissionPair[] = []
+  for (const [resource, actions] of Object.entries(statement)) {
+    for (const action of actions as readonly string[]) {
+      if (ADMIN_PORTAL_FULL_CRUD_RESOURCES.has(resource)) {
+        pairs.push({ resource, action })
+      } else if (ADMIN_PORTAL_READ_LIKE_ACTIONS.has(action)) {
+        pairs.push({ resource, action })
+      }
+    }
+  }
+  return pairs
+}
+
+export type PermissionMatrixRow = { resource: string; actions: string[] }
+
+/**
+ * Permission matrix for admin portal role UI (`GET /api/admin/roles/permissions/matrix`).
+ * Matches session / `adminPortalAllows`: full `statement` actions on business, user, users, session(s), settings; read-like only elsewhere.
+ */
+export function getAdminPortalPermissionMatrix(): PermissionMatrixRow[] {
+  return Object.entries(statement).map(([resource, actions]) => {
+    const acts = actions as readonly string[]
+    if (ADMIN_PORTAL_FULL_CRUD_RESOURCES.has(resource)) {
+      return { resource, actions: [...acts] }
+    }
+    const readOnly = acts.filter(a => ADMIN_PORTAL_READ_LIKE_ACTIONS.has(a))
+    return { resource, actions: readOnly }
+  })
+}
+
+/** Distinct actions referenced by `getAdminPortalPermissionMatrix` (admin role builder chips). */
+export function getAdminPortalPermissionActions(): string[] {
+  const set = new Set<string>()
+  for (const row of getAdminPortalPermissionMatrix()) {
+    for (const a of row.actions) {
+      set.add(a)
+    }
+  }
+  return Array.from(set).sort()
+}

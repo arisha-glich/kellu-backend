@@ -510,6 +510,7 @@ export const QUOTE_ROUTES = {
         zodResponseSchema(
           z.object({
             quoteId: z.string(),
+            clientId: z.string(),
             quoteCorrelative: z.string().nullable(),
             status: z.literal('REJECTED'),
           })

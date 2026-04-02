@@ -100,13 +100,17 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
   }
 }
 
-/** List team members for the business — excludes the business owner. */
-export async function listMembers(businessId: string): Promise<MemberWithUserAndRole[]> {
+/** List team members for the business — excludes the business owner; scoped by role portal. */
+export async function listMembers(
+  businessId: string,
+  rolePortalScope: RolePortalScope
+): Promise<MemberWithUserAndRole[]> {
   await ensureBusinessExists(businessId)
   const members = await prisma.member.findMany({
     where: {
       businessId,
       user: { isOwner: false }, // ✅ only team members, never the business owner
+      role: { portalScope: rolePortalScope },
     },
     include: {
       user: {
@@ -133,13 +137,19 @@ export async function listMembers(businessId: string): Promise<MemberWithUserAnd
   return members as MemberWithUserAndRole[]
 }
 
-/** Get a single member by ID (must belong to business). */
+/** Get a single member by ID (must belong to business and match portal role scope). */
 export async function getMemberById(
   businessId: string,
-  memberId: string
+  memberId: string,
+  rolePortalScope: RolePortalScope
 ): Promise<MemberWithUserAndRole | null> {
   const member = await prisma.member.findFirst({
-    where: { id: memberId, businessId },
+    where: {
+      id: memberId,
+      businessId,
+      user: { isOwner: false },
+      role: { portalScope: rolePortalScope },
+    },
     include: {
       user: {
         select: {
@@ -252,7 +262,7 @@ export async function addMember(
         data: { adminPortalTeamMember: true },
       })
     }
-    const reloaded = await getMemberById(businessId, member.id)
+    const reloaded = await getMemberById(businessId, member.id, rolePortalScope)
     return reloaded as MemberWithUserAndRole
   }
 
@@ -364,11 +374,15 @@ export async function updateMember(
 ): Promise<MemberWithUserAndRole> {
   await ensureBusinessExists(businessId)
 
+  const rolePortalScope =
+    input.portalType === 'admin' ? RolePortalScope.ADMIN_PORTAL : RolePortalScope.BUSINESS_PORTAL
+
   const member = await prisma.member.findFirst({
     where: {
       id: memberId,
       businessId,
       user: { isOwner: false }, // ✅ prevent updating the business owner through this endpoint
+      role: { portalScope: rolePortalScope },
     },
     include: { user: { select: { id: true } } },
   })
@@ -377,8 +391,6 @@ export async function updateMember(
   }
 
   if (input.roleId !== undefined) {
-    const rolePortalScope =
-      input.portalType === 'admin' ? RolePortalScope.ADMIN_PORTAL : RolePortalScope.BUSINESS_PORTAL
     const role = await prisma.role.findFirst({
       where: { id: input.roleId, businessId, portalScope: rolePortalScope },
       select: { id: true },
@@ -440,7 +452,7 @@ export async function updateMember(
     }
   })
 
-  const updated = await getMemberById(businessId, memberId)
+  const updated = await getMemberById(businessId, memberId, rolePortalScope)
   if (!updated) {
     throw new MemberNotFoundError()
   }
@@ -448,11 +460,19 @@ export async function updateMember(
 }
 
 /** Remove team member from business (deletes Member record; User account is preserved). */
-export async function removeMember(businessId: string, memberId: string): Promise<void> {
+export async function removeMember(
+  businessId: string,
+  memberId: string,
+  rolePortalScope: RolePortalScope
+): Promise<void> {
   await ensureBusinessExists(businessId)
 
   const member = await prisma.member.findFirst({
-    where: { id: memberId, businessId },
+    where: {
+      id: memberId,
+      businessId,
+      role: { portalScope: rolePortalScope },
+    },
     select: { id: true, user: { select: { isOwner: true } } },
   })
   if (!member) {

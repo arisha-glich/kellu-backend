@@ -959,7 +959,7 @@ export async function getQuoteEmailComposeData(businessId: string, workOrderId: 
 export async function clientApproveQuoteByToken(token: string) {
   const wo = await prisma.workOrder.findFirst({
     where: { quoteClientActionToken: token, quoteRequired: true },
-    select: { id: true, businessId: true, quoteStatus: true, quoteCorrelative: true },
+    select: { id: true, businessId: true, clientId: true, quoteStatus: true, quoteCorrelative: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()
@@ -983,7 +983,7 @@ export async function clientApproveQuoteByToken(token: string) {
 export async function clientRejectQuoteByToken(token: string, reason: string) {
   const wo = await prisma.workOrder.findFirst({
     where: { quoteClientActionToken: token, quoteRequired: true },
-    select: { id: true, businessId: true, quoteStatus: true, quoteCorrelative: true },
+    select: { id: true, businessId: true, clientId: true, quoteStatus: true, quoteCorrelative: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()

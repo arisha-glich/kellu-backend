@@ -4,7 +4,7 @@
  */
 
 import { RolePortalScope } from '~/generated/prisma'
-import { statement } from '~/lib/permission'
+import { adminPortalAllows, statement } from '~/lib/permission'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 
@@ -53,6 +53,22 @@ export function validatePermissions(
     if (!validActions.includes(p.action)) {
       throw new InvalidPermissionError(
         `Invalid action '${p.action}' for resource '${p.resource}'. Valid: ${validActions.join(', ')}`
+      )
+    }
+  }
+}
+
+function assertAdminPortalRolePermissions(
+  permissions: Array<{ resource: string; action: string }>,
+  portalScope: RolePortalScope
+): void {
+  if (portalScope !== RolePortalScope.ADMIN_PORTAL) {
+    return
+  }
+  for (const p of permissions) {
+    if (!adminPortalAllows(p.resource, p.action)) {
+      throw new InvalidPermissionError(
+        `Admin portal roles cannot include ${p.resource}:${p.action}`
       )
     }
   }
@@ -141,6 +157,7 @@ export async function createRole(
   if (portalScope === RolePortalScope.BUSINESS_PORTAL) {
     await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
   }
+  assertAdminPortalRolePermissions(input.permissions, portalScope)
 
   const resolvedPermissions = await Promise.all(
     input.permissions.map(async p =>
@@ -213,6 +230,7 @@ export async function updateRole(
     if (portalScope === RolePortalScope.BUSINESS_PORTAL) {
       await assertPermissionsAllowedForBusinessCustomRoles(input.permissions)
     }
+    assertAdminPortalRolePermissions(input.permissions, portalScope)
   }
 
   // Step 1: Upsert all permissions OUTSIDE the transaction (no timeout risk)
@@ -313,6 +331,7 @@ export async function replaceRolePermissionsAsAdmin(
     throw new RoleNotFoundError()
   }
   validatePermissions(permissions)
+  assertAdminPortalRolePermissions(permissions, portalScope)
 
   const resolvedPermissions = await Promise.all(
     permissions.map(p =>

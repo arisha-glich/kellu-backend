@@ -55,6 +55,7 @@
 
 
 import { UserRole } from '~/generated/prisma'
+import { adminPortalAllows } from '~/lib/permission'
 import prisma from '~/lib/prisma'
 
 export async function hasPermission(
@@ -63,19 +64,19 @@ export async function hasPermission(
   resource: string,
   action: string
 ): Promise<boolean> {
-  // ✅ Optional: SUPER_ADMIN check
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true, adminPortalTeamMember: true },
   })
 
+  // Primary SUPER_ADMIN with no Member row: business CRUD + read-only on business-scoped resources.
   if (user?.role === UserRole.SUPER_ADMIN && !user.adminPortalTeamMember) {
-    const actingAsTeamMember = await prisma.member.findFirst({
+    const anyMembership = await prisma.member.findFirst({
       where: { userId, isActive: true },
       select: { id: true },
     })
-    if (!actingAsTeamMember) {
-      return true
+    if (!anyMembership) {
+      return adminPortalAllows(resource, action)
     }
   }
 

@@ -1,12 +1,14 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { hasAdminPortalAccess } from '~/lib/portal-access'
+import {
+  getAdminPortalPermissionActions,
+  getAdminPortalPermissionMatrix,
+} from '~/lib/permission'
 import { resolveAdminBusinessScope } from '~/routes/admin/_helpers'
 import type { ADMIN_ROLE_ROUTES } from '~/routes/admin/roles/admin-role.routes'
 import {
   createRole,
   deleteRole,
-  getAllActions,
-  getPermissionMatrix,
   InvalidPermissionError,
   listRoles,
   RoleInUseError,
@@ -28,7 +30,11 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
     return c.json(
-      { message: 'Permission matrix retrieved', success: true, data: getPermissionMatrix() },
+      {
+        message: 'Permission matrix retrieved',
+        success: true,
+        data: getAdminPortalPermissionMatrix(),
+      },
       HttpStatusCodes.OK
     )
   },
@@ -39,7 +45,11 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
     return c.json(
-      { message: 'Permission actions retrieved', success: true, data: getAllActions() },
+      {
+        message: 'Permission actions retrieved',
+        success: true,
+        data: getAdminPortalPermissionActions(),
+      },
       HttpStatusCodes.OK
     )
   },
