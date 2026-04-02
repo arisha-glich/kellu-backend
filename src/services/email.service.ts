@@ -121,9 +121,16 @@ class EmailQueue {
     const fromEmail = options.from || process.env.RESEND_FROM_EMAIL || 'no-reply@kellu.co'
 
     const client = getResendClient()
+    const bccList = options.bcc
+      ? (Array.isArray(options.bcc) ? options.bcc : [options.bcc])
+          .map(e => e.trim().toLowerCase())
+          .filter(e => e.includes('@'))
+      : undefined
+
     const result = await client.emails.send({
       from: fromEmail,
       to: recipients,
+      ...(bccList?.length ? { bcc: bccList } : {}),
       replyTo: options.replyTo,
       subject: options.subject,
       html: options.html,
@@ -150,6 +157,7 @@ export interface SendEmailOptions {
   html: string
   from?: string
   replyTo?: string | string[]
+  bcc?: string | string[]
   attachments?: Array<{
     filename: string
     content: Buffer | string
@@ -158,7 +166,7 @@ export interface SendEmailOptions {
 }
 
 class EmailService {
-  async send({ to, subject, html, from, replyTo, attachments }: SendEmailOptions): Promise<void> {
+  async send({ to, subject, html, from, replyTo, bcc, attachments }: SendEmailOptions): Promise<void> {
     // Normalize recipients - ensure they're valid email addresses
     const recipients = (Array.isArray(to) ? to : [to])
       .map(email => {
@@ -197,6 +205,7 @@ class EmailService {
         html,
         from: fromEmail,
         replyTo,
+        bcc,
         attachments,
       })
 
@@ -235,6 +244,7 @@ export function registerEmailListeners(): void {
           html: eventData.html || '',
           from: eventData.from,
           replyTo: eventData.replyTo,
+          bcc: eventData.bcc,
           attachments: eventData.attachments,
         })
         .catch(error => {

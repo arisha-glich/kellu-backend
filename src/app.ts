@@ -6,6 +6,8 @@ import invoiceRouter from '~/routes/invoices'
 import adminRoleRouter from '~/routes/admin/roles'
 import adminTeamMemberRouter from '~/routes/admin/team-members'
 import adminAuditLogRouter from '~/routes/admin/audit-logs'
+import adminNotificationRouter from '~/routes/admin/notifications'
+import adminReportRouter from '~/routes/admin/reports'
 import notificationRouter from '~/routes/notifications'
 import priceListRouter from '~/routes/pricelistitems'
 import quoteRouter from '~/routes/quotes'
@@ -34,6 +36,8 @@ export function registerRoutes(app: AppOpenAPI) {
     .route('/api/admin/roles', adminRoleRouter)
     .route('/api/admin/team', adminTeamMemberRouter)
     .route('/api/admin/audit-logs', adminAuditLogRouter)
+    .route('/api/admin/notifications', adminNotificationRouter)
+    .route('/api/admin/reports', adminReportRouter)
     .route('/api/quotes', quoteRouter)
     .route('/api/tasks', taskRouter)
     .route('/api/schedule', scheduleRouter)

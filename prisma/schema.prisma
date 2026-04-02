@@ -819,8 +819,27 @@ model PlatformSettings {
   supportEmail        String?
   defaultQuoteTerms   String?  @db.Text
   defaultInvoiceTerms String?  @db.Text
+  /// When true, BCC platform copy address on business → customer emails (e.g. quote to client).
   clientEmailCopyEnabled Boolean @default(false)
+  /// BCC destination for client-facing emails sent by businesses (admin-configured).
+  clientEmailCopyTo   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// PLATFORM NOTIFICATION RULES (Admin portal)
+// ─────────────────────────────────────────────
+
+model PlatformNotificationRule {
+  id                 String   @id @default(cuid())
+  /// Stable key for code (e.g. NEW_BUSINESS_REGISTRATION, QUOTE_REJECTED_BY_CLIENT).
+  eventKey           String   @unique
+  eventName          String
+  triggerDescription String   @db.Text
+  isActive           Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

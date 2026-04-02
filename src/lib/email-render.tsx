@@ -7,6 +7,7 @@ import { BookingConfirmationEmail } from '../emails/booking-confirmation'
 import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
 import { QuoteCreatedEmail } from '../emails/quote-created'
+import { QuoteRejectedByClientEmail } from '../emails/quote-rejected-by-client'
 import { SettingsUpdatedEmail } from '../emails/settings-updated'
 import { TaskCreatedEmail } from '../emails/task-created'
 import { WelcomeEmail } from '../emails/welcome'
@@ -27,6 +28,7 @@ export type EmailTemplate =
   | 'client-profile-update'
   | 'booking-confirmation'
   | 'quote-created'
+  | 'quote-rejected-by-client'
   | 'work-order-created'
   | 'task-created'
   | 'settings-updated'
@@ -39,6 +41,7 @@ export const emailSubjects: Record<EmailTemplate, string> = {
   'client-profile-update': `${APP_NAME} - Update to your client profile`,
   'booking-confirmation': 'Booking Confirmation',
   'quote-created': 'Your quote is ready',
+  'quote-rejected-by-client': 'A client rejected your quote',
   'work-order-created': 'New work order created',
   'task-created': 'New task assigned',
   'settings-updated': 'Your company settings have been updated',
@@ -162,6 +165,30 @@ export async function renderEmailTemplate(
           logoUrl={logoUrl}
           approveUrl={approveUrl}
           rejectUrl={rejectUrl}
+        />
+      )
+    }
+    case 'quote-rejected-by-client': {
+      const {
+        businessName,
+        clientName,
+        quoteNumber,
+        quoteReference,
+        title,
+        rejectionReason,
+        logoUrl,
+        dashboardUrl,
+      } = data
+      return render(
+        <QuoteRejectedByClientEmail
+          businessName={businessName}
+          clientName={clientName}
+          quoteNumber={quoteNumber}
+          quoteReference={quoteReference}
+          title={title}
+          rejectionReason={rejectionReason}
+          logoUrl={logoUrl}
+          dashboardUrl={dashboardUrl}
         />
       )
     }

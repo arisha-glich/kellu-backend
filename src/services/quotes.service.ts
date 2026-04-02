@@ -12,6 +12,11 @@ import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
 import { clientToCustomerFrom } from '~/services/email-helpers'
+import {
+  isPlatformNotificationRuleActive,
+  PlatformNotificationEventKey,
+} from '~/services/platform-notification-rule.service'
+import { resolveClientEmailCopyBcc } from '~/services/platform-settings.service'
 import { ClientNotFoundError, WorkOrderNotFoundError } from '~/services/workorder.service'
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
@@ -665,6 +670,61 @@ function appendQuoteActionButtons(
   return `${html}${buttons}`
 }
 
+async function sendQuoteRejectedByClientNotification(params: {
+  workOrderId: string
+  rejectionReason: string
+}): Promise<void> {
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: params.workOrderId, quoteRequired: true },
+    include: {
+      client: { select: { name: true } },
+      business: {
+        include: {
+          settings: { select: { notificationEmail: true } },
+        },
+      },
+    },
+  })
+  if (!wo) {
+    return
+  }
+
+  const toEmail =
+    wo.business.settings?.notificationEmail?.trim() || wo.business.email?.trim()
+  if (!toEmail) {
+    console.warn('[quote] No business email for quote rejection notification', wo.id)
+    return
+  }
+
+  const displayName = wo.business.name?.trim() || 'Company'
+  const noReply = Bun.env.RESEND_FROM_EMAIL?.trim() || 'noresponder@notificaciones.kellu.co'
+  const kelluName = Bun.env.RESEND_KELLU_FROM_NAME?.trim() || 'Kellu'
+  const fromHeader = `${kelluName} <${noReply}>`
+  const replyTo = Bun.env.RESEND_KELLU_REPLY_TO?.trim() || 'equipo@kellu.co'
+  const base = (Bun.env.FRONTEND_URL?.trim() || 'http://localhost:3000').replace(/\/$/, '')
+  const dashboardUrl = `${base}/dashboard`
+
+  const html = await renderEmailTemplate('quote-rejected-by-client', {
+    businessName: displayName,
+    clientName: wo.client.name,
+    quoteNumber: wo.workOrderNumber ?? `#${wo.id}`,
+    quoteReference: wo.quoteCorrelative ?? undefined,
+    title: wo.title,
+    rejectionReason: params.rejectionReason,
+    logoUrl: wo.business.logoUrl ?? undefined,
+    dashboardUrl,
+  })
+
+  const subjectRef = wo.quoteCorrelative?.trim() || wo.title
+  await emailService.send({
+    to: toEmail,
+    subject: `Quote rejected by client — ${subjectRef}`,
+    html,
+    from: fromHeader,
+    replyTo,
+  })
+}
+
 /**
  * Send quote email to client (for first send or resend).
  * From: verified sender (Resend) with company name; Reply-To: company email from Settings.
@@ -817,12 +877,14 @@ export async function sendQuoteEmail(
     pushAttachment(item.filename, item.content, item.contentType ?? undefined)
   }
 
+  const platformBcc = await resolveClientEmailCopyBcc()
   await emailService.send({
     to: toEmail,
     subject,
     html,
     from: fromHeader,
     replyTo: companyReplyTo,
+    ...(platformBcc ? { bcc: platformBcc } : {}),
     attachments: attachmentPayload,
   })
 
@@ -1001,6 +1063,18 @@ export async function clientRejectQuoteByToken(token: string, reason: string) {
       quoteClientRejectionReason: reason.trim(),
     },
   })
+
+  try {
+    if (await isPlatformNotificationRuleActive(PlatformNotificationEventKey.QUOTE_REJECTED_BY_CLIENT)) {
+      await sendQuoteRejectedByClientNotification({
+        workOrderId: wo.id,
+        rejectionReason: reason.trim(),
+      })
+    }
+  } catch (err) {
+    console.error('[quote] Failed to notify business of client quote rejection:', err)
+  }
+
   return wo
 }
 

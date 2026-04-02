@@ -16,6 +16,7 @@ export interface MailEvent {
   from?: string
   /** Reply-To address (e.g. equipo@kellu.co or client's company email). */
   replyTo?: string | string[]
+  bcc?: string | string[]
   attachments?: Array<{
     filename: string
     content: Buffer | string
