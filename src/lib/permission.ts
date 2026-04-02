@@ -19,6 +19,7 @@ export const statement = {
   users: ['create', 'read', 'update', 'delete'],
   roles: ['create', 'read', 'update', 'delete'],
   settings: ['create', 'read', 'update', 'delete'],
+  auditLogs: ['read'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
   reports: ['read'],
 } as const
@@ -42,6 +43,7 @@ export const superAdmin = ac.newRole({
   users: ['create', 'read', 'update', 'delete'],
   roles: ['create', 'read', 'update', 'delete'],
   settings: ['create', 'read', 'update', 'delete'],
+  auditLogs: ['read'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
   reports: ['read'],
 })
@@ -62,6 +64,7 @@ export const businessOwner = ac.newRole({
   roles: ['create', 'read', 'update', 'delete'],
   settings: ['read', 'update'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
+  auditLogs: ['read'],
   reports: ['read'],
 })
 
@@ -81,6 +84,7 @@ export const admin = ac.newRole({
   roles: ['read'],
   settings: ['read', 'update'],
   reminderConfigs: ['create', 'read', 'update', 'delete'],
+  auditLogs: ['read'],
   reports: ['read'],
 })
 

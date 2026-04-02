@@ -13,12 +13,20 @@ import {
   RoleNotFoundError,
   updateRole,
 } from '~/services/role.service'
+import { createAuditLog } from '~/services/audit-log.service'
 import { hasBusinessPortalAccess } from '~/lib/portal-access'
 import type { HandlerMapFromRoutes } from '~/types'
 import { Prisma, RolePortalScope } from '~/generated/prisma'
 
 const FORBIDDEN_BUSINESS_PORTAL_ONLY =
   'This endpoint is only for business portal accounts. Admin users must use /api/admin/roles.'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
   list: async c => {
@@ -140,6 +148,23 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
         },
         RolePortalScope.BUSINESS_PORTAL
       )
+      if (role) {
+        const { ipAddress, userAgent } = getClientMeta(c)
+        await createAuditLog({
+          action: 'ROLE_CREATED',
+          module: 'roles',
+          entityId: role.id,
+          newValues: {
+            roleId: role.id,
+            name: role.name,
+            portalScope: 'BUSINESS_PORTAL',
+          },
+          userId: user.id,
+          businessId,
+          ipAddress,
+          userAgent,
+        })
+      }
       return c.json(
         { message: 'Role created successfully', success: true, data: role },
         HttpStatusCodes.CREATED
@@ -185,6 +210,23 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
         },
         RolePortalScope.BUSINESS_PORTAL
       )
+      if (role) {
+        const { ipAddress, userAgent } = getClientMeta(c)
+        await createAuditLog({
+          action: 'ROLE_UPDATED',
+          module: 'roles',
+          entityId: role.id,
+          newValues: {
+            roleId: role.id,
+            name: role.name,
+            portalScope: 'BUSINESS_PORTAL',
+          },
+          userId: user.id,
+          businessId,
+          ipAddress,
+          userAgent,
+        })
+      }
       return c.json(
         { message: 'Role updated successfully', success: true, data: role },
         HttpStatusCodes.OK
@@ -219,6 +261,20 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
       }
       const { roleId } = c.req.valid('param')
       await deleteRole(businessId, roleId, RolePortalScope.BUSINESS_PORTAL)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'ROLE_DELETED',
+        module: 'roles',
+        entityId: roleId,
+        oldValues: {
+          roleId,
+          portalScope: 'BUSINESS_PORTAL',
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Role deleted successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

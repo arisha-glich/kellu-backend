@@ -5,7 +5,15 @@ import {
   businessService,
   EmailAlreadyUsedError,
 } from '~/services/business.service'
+import { createAuditLog } from '~/services/audit-log.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
   getBusinesses: async c => {
@@ -78,6 +86,21 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         tempPassword: body.tempPassword,
         status: body.status,
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_CREATED',
+        module: 'business',
+        entityId: business.id,
+        newValues: {
+          id: business.id,
+          name: business.name,
+          status: business.status,
+        },
+        userId: user.id,
+        businessId: business.id,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Business created successfully', success: true, data: business },
         HttpStatusCodes.CREATED
@@ -107,6 +130,21 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         website: body.website,
         status: body.status,
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_UPDATED',
+        module: 'business',
+        entityId: id,
+        newValues: {
+          id: business.id,
+          name: business.name,
+          status: business.status,
+        },
+        userId: user.id,
+        businessId: id,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Business updated successfully', success: true, data: business },
         HttpStatusCodes.OK
@@ -134,6 +172,20 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
       const commission = await businessService.updateBusinessCommission(id, {
         commissionType: body.commissionType,
         commissionValue: body.commissionValue,
+      })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_COMMISSION_UPDATED',
+        module: 'business',
+        entityId: id,
+        newValues: {
+          commissionType: commission.commissionType,
+          commissionValue: commission.commissionValue,
+        },
+        userId: user.id,
+        businessId: id,
+        ipAddress,
+        userAgent,
       })
       return c.json(
         { message: 'Commission updated successfully', success: true, data: commission },
@@ -238,6 +290,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
       const { id } = c.req.valid('param')
       const { status } = await c.req.valid('json')
       const result = await businessService.toggleBusinessStatus(id, status)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_STATUS_TOGGLED',
+        module: 'business',
+        entityId: id,
+        newValues: { status: result.status },
+        userId: user.id,
+        businessId: id,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Business status updated successfully', success: true, data: result },
         HttpStatusCodes.OK
@@ -259,6 +322,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     try {
       const { id } = c.req.valid('param')
       const result = await businessService.suspendBusiness(id)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_SUSPENDED',
+        module: 'business',
+        entityId: id,
+        newValues: { status: result.status },
+        userId: user.id,
+        businessId: id,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Business suspended successfully', success: true, data: result },
         HttpStatusCodes.OK
@@ -283,6 +357,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     try {
       const { id } = c.req.valid('param')
       const result = await businessService.unsuspendBusiness(id)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'BUSINESS_UNSUSPENDED',
+        module: 'business',
+        entityId: id,
+        newValues: { status: result.status },
+        userId: user.id,
+        businessId: id,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Business unsuspended successfully', success: true, data: result },
         HttpStatusCodes.OK

@@ -1,3 +1,4 @@
+import { env } from 'node:process'
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { QUOTE_ROUTES } from '~/routes/quotes/quotes.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
@@ -633,38 +634,51 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
   },
   clientRespondGet: async c => {
     const { action, token } = c.req.valid('query')
-    const approvedRedirectUrl =
-      Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/approved-quote'
-    const rejectedRedirectUrl =
-      Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() || 'https://kelluproject.kellu.co/rejected-quote'
-    const withClientParams = (baseUrl: string, params: Record<string, string>) => {
-      const url = new URL(baseUrl)
+    const frontendDefault = (Bun.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+    const approvedBase =
+      Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() ||
+      `${frontendDefault}/quotes/accept-quote`
+    const rejectedBase =
+      Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() ||
+      `${frontendDefault}/quotes/reject-quote`
+
+    /** Frontend uses dynamic segments e.g. `/quotes/accept-quote/[quoteId]` — append id to env base. */
+    const quoteClientPageUrl = (
+      basePath: string,
+      quoteId: string | undefined,
+      params: Record<string, string>
+    ) => {
+      const base = basePath.replace(/\/$/, '')
+      const path = quoteId ? `${base}/${quoteId}` : base
+      const url = new URL(path)
       for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, value)
       }
       return url.toString()
     }
+
     if (action === 'approve') {
       try {
         const quote = await clientApproveQuoteByToken(token)
         return c.redirect(
-          withClientParams(approvedRedirectUrl, {
+          quoteClientPageUrl(approvedBase, quote.id, {
             quoteAction: 'approved',
-            quoteId: quote.id,
             clientId: quote.clientId,
           })
         )
       } catch (error) {
         if (error instanceof QuoteTerminalStateError) {
           return c.redirect(
-            withClientParams(rejectedRedirectUrl, { quoteAction: 'already-responded' })
+            quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' })
           )
         }
         if (error instanceof WorkOrderNotFoundError) {
-          return c.redirect(withClientParams(approvedRedirectUrl, { quoteAction: 'not-found' }))
+          return c.redirect(
+            quoteClientPageUrl(approvedBase, undefined, { quoteAction: 'not-found' })
+          )
         }
         console.error('Error approving quote by client token:', error)
-        return c.redirect(withClientParams(approvedRedirectUrl, { quoteAction: 'error' }))
+        return c.redirect(quoteClientPageUrl(approvedBase, undefined, { quoteAction: 'error' }))
       }
     }
 
@@ -707,10 +721,13 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         });
         if (res.ok) {
           const data = await res.json();
-          const redirectUrl = new URL(${JSON.stringify(rejectedRedirectUrl)});
+          const qid = data?.data?.quoteId ?? '';
+          const cid = data?.data?.clientId ?? '';
+          const base = ${JSON.stringify(rejectedBase.replace(/\/$/, ''))};
+          const path = qid ? base + '/' + qid : base;
+          const redirectUrl = new URL(path);
           redirectUrl.searchParams.set('quoteAction', 'rejected');
-          redirectUrl.searchParams.set('quoteId', data?.data?.quoteId ?? '');
-          redirectUrl.searchParams.set('clientId', data?.data?.clientId ?? '');
+          if (cid) redirectUrl.searchParams.set('clientId', cid);
           window.location.href = redirectUrl.toString();
         } else {
           result.innerHTML = '<p style="color:#b91c1c;"><strong>Could not submit rejection. Please try again.</strong></p>';

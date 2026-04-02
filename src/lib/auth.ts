@@ -245,7 +245,8 @@ function sanitizePermissionsForSession(
         p.resource !== 'user' &&
         p.resource !== 'users' &&
         p.resource !== 'session' &&
-        p.resource !== 'sessions'
+        p.resource !== 'sessions' &&
+        p.resource !== 'auditLogs'
     )
   }
   return permissions
