@@ -7,7 +7,7 @@ import { hasPermission } from '~/services/permission.service'
 import {
   approveQuote,
   clientApproveQuoteByToken,
-  clientRejectQuoteByToken,
+  clientRejectQuoteByQuoteId,
   createQuote,
   deleteQuote,
   getQuote,
@@ -15,6 +15,7 @@ import {
   getQuoteOverview,
   listQuotes,
   QuoteNoLineItemsError,
+  resolveClientRejectFormQuote,
   QuoteTerminalStateError,
   rejectQuote,
   sendQuote,
@@ -682,6 +683,15 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
     }
 
+    const rejectResolved = await resolveClientRejectFormQuote(token)
+    if (rejectResolved.ok === false) {
+      if (rejectResolved.kind === 'not_found') {
+        return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'not-found' }))
+      }
+      return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' }))
+    }
+    const rejectQuoteId = rejectResolved.quoteId
+
     const html = `<!DOCTYPE html>
 <html>
   <head>
@@ -717,7 +727,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         const res = await fetch('/api/quotes/client/respond/reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: ${JSON.stringify(token)}, reason }),
+          body: JSON.stringify({ quoteId: ${JSON.stringify(rejectQuoteId)}, reason }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -740,8 +750,8 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
   },
   clientRespondPost: async c => {
     try {
-      const { token, reason } = c.req.valid('json')
-      const quote = await clientRejectQuoteByToken(token, reason)
+      const { quoteId, reason } = c.req.valid('json')
+      const quote = await clientRejectQuoteByQuoteId(quoteId, reason)
       return c.json(
         {
           message: 'Quote rejected successfully',
@@ -762,7 +772,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (error instanceof QuoteTerminalStateError) {
         return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)
       }
-      console.error('Error rejecting quote by client token:', error)
+      console.error('Error rejecting quote by client quoteId:', error)
       return c.json({ message: 'Failed to reject quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },

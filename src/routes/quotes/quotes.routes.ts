@@ -92,7 +92,7 @@ export const ClientQuoteRespondQuerySchema = z.object({
 })
 
 export const ClientQuoteRejectBodySchema = z.object({
-  token: z.string().min(10),
+  quoteId: z.string().min(1).openapi({ description: 'Work order / quote id (same as quote record id)' }),
   reason: z.string().min(3, 'Rejection reason is required'),
 })
 
@@ -501,7 +501,7 @@ export const QUOTE_ROUTES = {
     method: 'post',
     tags: ['Quotes'],
     path: '/client/respond/reject',
-    summary: 'Client rejects quote with reason',
+    summary: 'Client rejects quote with reason (quoteId + reason; no token in body)',
     request: {
       body: jsonContentRequired(ClientQuoteRejectBodySchema, 'Client rejection reason payload'),
     },

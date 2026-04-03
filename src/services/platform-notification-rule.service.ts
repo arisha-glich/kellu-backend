@@ -2,13 +2,17 @@ import prisma from '~/lib/prisma'
 
 /** Machine keys referenced by application code for gating automations. */
 export const PlatformNotificationEventKey = {
-  NEW_BUSINESS_REGISTRATION: 'NEW_BUSINESS_REGISTRATION',
-  PAYMENT_RECEIVED: 'PAYMENT_RECEIVED',
-  JOB_COMPLETED: 'JOB_COMPLETED',
+  WORK_ORDER_COMPLETED: 'WORK_ORDER_COMPLETED',
   USER_INVITATION: 'USER_INVITATION',
-  FAILED_LOGIN_ALERT: 'FAILED_LOGIN_ALERT',
   QUOTE_REJECTED_BY_CLIENT: 'QUOTE_REJECTED_BY_CLIENT',
 } as const
+
+/** Removed from product; deleted from DB whenever defaults are ensured. */
+const DEPRECATED_EVENT_KEYS = [
+  'NEW_BUSINESS_REGISTRATION',
+  'PAYMENT_RECEIVED',
+  'FAILED_LOGIN_ALERT',
+] as const
 
 export type PlatformNotificationEventKeyType =
   (typeof PlatformNotificationEventKey)[keyof typeof PlatformNotificationEventKey]
@@ -21,51 +25,33 @@ const DEFAULT_RULES: Array<{
   sortOrder: number
 }> = [
   {
-    eventKey: PlatformNotificationEventKey.NEW_BUSINESS_REGISTRATION,
-    eventName: 'New Business Registration',
-    triggerDescription: 'On new business signup',
-    isActive: true,
-    sortOrder: 10,
-  },
-  {
-    eventKey: PlatformNotificationEventKey.PAYMENT_RECEIVED,
-    eventName: 'Payment Received',
-    triggerDescription: 'When invoice is paid',
-    isActive: true,
-    sortOrder: 20,
-  },
-  {
-    eventKey: PlatformNotificationEventKey.JOB_COMPLETED,
+    eventKey: PlatformNotificationEventKey.WORK_ORDER_COMPLETED,
     eventName: 'Job Completed',
     triggerDescription: 'When job status changes to completed',
     isActive: true,
-    sortOrder: 30,
+    sortOrder: 10,
   },
   {
     eventKey: PlatformNotificationEventKey.USER_INVITATION,
     eventName: 'User Invitation',
     triggerDescription: 'When new user is invited',
     isActive: false,
-    sortOrder: 40,
-  },
-  {
-    eventKey: PlatformNotificationEventKey.FAILED_LOGIN_ALERT,
-    eventName: 'Failed Login Alert',
-    triggerDescription: 'After 5 failed login attempts',
-    isActive: true,
-    sortOrder: 50,
+    sortOrder: 20,
   },
   {
     eventKey: PlatformNotificationEventKey.QUOTE_REJECTED_BY_CLIENT,
     eventName: 'Quote Rejected',
     triggerDescription: 'When a client rejects a quote (includes reason)',
     isActive: true,
-    sortOrder: 60,
+    sortOrder: 30,
   },
 ]
 
 /** Ensures built-in rows exist; does not overwrite existing name/active/sort. */
 export async function ensureDefaultPlatformNotificationRules(): Promise<void> {
+  await prisma.platformNotificationRule.deleteMany({
+    where: { eventKey: { in: [...DEPRECATED_EVENT_KEYS] } },
+  })
   for (const d of DEFAULT_RULES) {
     await prisma.platformNotificationRule.upsert({
       where: { eventKey: d.eventKey },

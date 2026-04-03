@@ -1042,9 +1042,29 @@ export async function clientApproveQuoteByToken(token: string) {
   return wo
 }
 
-export async function clientRejectQuoteByToken(token: string, reason: string) {
+/** Resolve work order id for the token-based reject HTML page (email link still uses token in query). */
+export async function resolveClientRejectFormQuote(token: string): Promise<
+  | { ok: true; quoteId: string }
+  | { ok: false; kind: 'not_found' | 'terminal' }
+> {
   const wo = await prisma.workOrder.findFirst({
     where: { quoteClientActionToken: token, quoteRequired: true },
+    select: { id: true, quoteStatus: true },
+  })
+  if (!wo) {
+    return { ok: false, kind: 'not_found' }
+  }
+  const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
+  if (terminalStates.includes(wo.quoteStatus)) {
+    return { ok: false, kind: 'terminal' }
+  }
+  return { ok: true, quoteId: wo.id }
+}
+
+/** Public reject API: body is `{ quoteId, reason }` only (no token). */
+export async function clientRejectQuoteByQuoteId(quoteId: string, reason: string) {
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: quoteId, quoteRequired: true },
     select: { id: true, businessId: true, clientId: true, quoteStatus: true, quoteCorrelative: true },
   })
   if (!wo) {

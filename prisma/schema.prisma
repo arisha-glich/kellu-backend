@@ -834,7 +834,7 @@ model PlatformSettings {
 
 model PlatformNotificationRule {
   id                 String   @id @default(cuid())
-  /// Stable key for code (e.g. NEW_BUSINESS_REGISTRATION, QUOTE_REJECTED_BY_CLIENT).
+  /// Stable key for code (e.g. QUOTE_REJECTED_BY_CLIENT, JOB_COMPLETED).
   eventKey           String   @unique
   eventName          String
   triggerDescription String   @db.Text
