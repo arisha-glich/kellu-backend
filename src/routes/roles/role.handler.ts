@@ -16,7 +16,7 @@ import {
 import { createAuditLog } from '~/services/audit-log.service'
 import { hasBusinessPortalAccess } from '~/lib/portal-access'
 import type { HandlerMapFromRoutes } from '~/types'
-import { Prisma, RolePortalScope } from '~/generated/prisma'
+import { Prisma, RolePortalScope, UserRole } from '~/generated/prisma'
 
 const FORBIDDEN_BUSINESS_PORTAL_ONLY =
   'This endpoint is only for business portal accounts. Admin users must use /api/admin/roles.'
@@ -65,13 +65,22 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
       return c.json({ message: FORBIDDEN_BUSINESS_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
     const matrix = getPermissionMatrix()
-    const filteredMatrix = matrix.filter(
+    let filteredMatrix = matrix.filter(
       item =>
         item.resource !== 'user' &&
         item.resource !== 'users' &&
         item.resource !== 'session' &&
         item.resource !== 'sessions'
     )
+
+    const sessionUser = user as typeof user & { isOwner?: boolean }
+    const isPrimaryBusinessOwner =
+      user.role === UserRole.BUSINESS_OWNER && sessionUser.isOwner === true
+    if (isPrimaryBusinessOwner) {
+      filteredMatrix = filteredMatrix.filter(item => item.resource !== 'business')
+      filteredMatrix = [{ resource: 'user', actions: ['read'] }, ...filteredMatrix]
+    }
+
     return c.json(
       { message: 'Permission matrix retrieved', success: true, data: filteredMatrix },
       HttpStatusCodes.OK

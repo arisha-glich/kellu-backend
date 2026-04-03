@@ -148,6 +148,7 @@ export interface InvoiceListItem {
   balance: number
   amountPaid: number
   client: { id: string; name: string; email: string | null; phone: string }
+  workOrder: { id: string; title: string; address: string | null } | null | undefined
 }
 
 /** List invoices (Invoice model) with optional search and status filter. */
@@ -186,6 +187,7 @@ export async function listInvoices(businessId: string, filters: InvoiceListFilte
       orderBy,
       include: {
         client: { select: { id: true, name: true, email: true, phone: true } },
+        workOrder: { select: { id: true, title: true, address: true } },
       },
     }),
     prisma.invoice.count({ where }),
@@ -202,6 +204,7 @@ export async function listInvoices(businessId: string, filters: InvoiceListFilte
     balance: toNum(inv.balance),
     amountPaid: toNum(inv.amountPaid),
     client: inv.client,
+    workOrder: inv.workOrder ?? null,
   }))
 
   return {

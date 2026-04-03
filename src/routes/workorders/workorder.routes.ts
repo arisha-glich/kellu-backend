@@ -162,6 +162,7 @@ export const CreateWorkOrderBodySchema = z
     clientId: z.string().min(1, 'Client is required'),
     address: z.string().min(1, 'Address is required'),
     isScheduleLater: z.boolean().optional().default(false),
+    isAnyTime: z.boolean().optional().default(false),
     scheduledAt: z.coerce.date().optional().nullable(),
     startTime: z.string().optional().nullable(),
     endTime: z.string().optional().nullable(),

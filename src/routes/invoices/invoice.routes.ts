@@ -63,6 +63,11 @@ const InvoiceListItemSchema = z.object({
     email: z.string().nullable(),
     phone: z.string(),
   }),
+  workOrder: z.object({
+    id: z.string(),
+    title: z.string(),
+    address: z.string().nullable(),
+  }),
 })
 
 const PaginationSchema = z.object({

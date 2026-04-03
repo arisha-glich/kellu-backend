@@ -1,4 +1,4 @@
-import { createAccessControl } from 'better-auth/plugins/access'
+import { createAccessControl, } from 'better-auth/plugins/access'
 import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access'
 
 /**
@@ -7,10 +7,12 @@ import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access'
  */
 export const statement = {
   ...defaultStatements,
+  /** Aligns with app-wide `read` checks; better-auth defaults use `get` / `list` only. */
+  user: [...defaultStatements.user, 'read'],
   /** Platform admin: companies / tenants (session uses full CRUD for admin portal users). */
   business: ['create', 'read', 'update', 'delete'],
   workorders: ['create', 'read', 'update', 'delete'],
-  quotes: ['create', 'read', 'update'],
+  quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
@@ -32,9 +34,10 @@ export const ac = createAccessControl(statement)
  */
 export const superAdmin = ac.newRole({
   ...adminAc.statements,
+  user: [...adminAc.statements.user, 'read'],
   business: ['create', 'read', 'update', 'delete'],
   workorders: ['create', 'read', 'update', 'delete'],
-  quotes: ['create', 'read', 'update'],
+  quotes: ['create', 'read', 'update','delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
@@ -54,7 +57,7 @@ export const superAdmin = ac.newRole({
  */
 export const businessOwner = ac.newRole({
   workorders: ['create', 'read', 'update', 'delete'],
-  quotes: ['create', 'read', 'update'],
+  quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
@@ -74,7 +77,7 @@ export const businessOwner = ac.newRole({
  */
 export const admin = ac.newRole({
   workorders: ['create', 'read', 'update', 'delete'],
-  quotes: ['create', 'read', 'update'],
+  quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
@@ -94,7 +97,7 @@ export const admin = ac.newRole({
  */
 export const technician = ac.newRole({
   workorders: ['read', 'update'], // read assigned, update status (on_my_way, in_progress, completed)
-  quotes: ['read'], // read assigned quotes
+  quotes: ['read', 'update'], // read assigned quotes
   tasks: ['read', 'update'], // read assigned tasks, update status
   expenses: ['create', 'read'], // can log expenses on their jobs
   clients: ['read'], // read-only client info on assigned jobs
@@ -143,6 +146,38 @@ export function adminPortalAllows(resource: string, action: string): boolean {
 }
 
 export type PermissionPair = { resource: string; action: string }
+
+/**
+ * Session `permissions` for primary business owners (`isOwner`): every resource/action in
+ * `statement`, except `user`, `users`, and `reports` are read-only there (only `read` is listed).
+ * Platform-style resources are omitted from the session list entirely (`business`, `session`, `sessions`).
+ * API access is unchanged (`hasPermission` still grants full access for `business.ownerId`).
+ */
+const BUSINESS_OWNER_SESSION_READ_ONLY_RESOURCES = new Set(['user', 'users', 'reports'])
+
+const BUSINESS_OWNER_SESSION_EXCLUDED_RESOURCES = new Set(['business', 'session', 'sessions'])
+
+export function buildBusinessOwnerSessionPermissions(): PermissionPair[] {
+  const pairs: PermissionPair[] = []
+  for (const [resource, actions] of Object.entries(statement)) {
+    if (BUSINESS_OWNER_SESSION_EXCLUDED_RESOURCES.has(resource)) {
+      continue
+    }
+    const acts = actions as readonly string[]
+    if (BUSINESS_OWNER_SESSION_READ_ONLY_RESOURCES.has(resource)) {
+      for (const action of acts) {
+        if (action === 'read') {
+          pairs.push({ resource, action })
+        }
+      }
+    } else {
+      for (const action of acts) {
+        pairs.push({ resource, action })
+      }
+    }
+  }
+  return pairs
+}
 
 /** Permissions exposed on the session for admin portal users. */
 export function buildAdminPortalSessionPermissions(): PermissionPair[] {

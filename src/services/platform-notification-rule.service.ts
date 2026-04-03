@@ -2,9 +2,15 @@ import prisma from '~/lib/prisma'
 
 /** Machine keys referenced by application code for gating automations. */
 export const PlatformNotificationEventKey = {
+  
   WORK_ORDER_COMPLETED: 'WORK_ORDER_COMPLETED',
   USER_INVITATION: 'USER_INVITATION',
   QUOTE_REJECTED_BY_CLIENT: 'QUOTE_REJECTED_BY_CLIENT',
+  QUOTE_APPROVED_BY_CLIENT: 'QUOTE_APPROVED_BY_CLIENT',
+  TASK_COMPLETED: 'TASK_COMPLETED',
+  BOOKING_CONFIRMATION: 'BOOKING_CONFIRMATION',
+
+
 } as const
 
 /** Removed from product; deleted from DB whenever defaults are ensured. */

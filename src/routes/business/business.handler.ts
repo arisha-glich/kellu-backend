@@ -93,7 +93,7 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         entityId: business.id,
         newValues: {
           id: business.id,
-          name: business.name,
+          name: business.companyName,
           status: business.status,
         },
         userId: user.id,
@@ -137,7 +137,7 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         entityId: id,
         newValues: {
           id: business.id,
-          name: business.name,
+          name: business.companyName,
           status: business.status,
         },
         userId: user.id,
