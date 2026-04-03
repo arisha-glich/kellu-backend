@@ -12,6 +12,7 @@ import {
   deleteQuote,
   getQuote,
   getQuoteEmailComposeData,
+  getQuoteRejectionReason,
   getQuoteOverview,
   listQuotes,
   QuoteNoLineItemsError,
@@ -86,6 +87,38 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       console.error('Error fetching quote overview:', error)
       return c.json(
         { message: 'Failed to retrieve overview' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  getRejectionReason: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'read'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+
+      const { quoteId } = c.req.valid('param')
+      const data = await getQuoteRejectionReason(businessId, quoteId)
+      return c.json(
+        { message: 'Rejection reason retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error fetching quote rejection reason:', error)
+      return c.json(
+        { message: 'Failed to retrieve rejection reason' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

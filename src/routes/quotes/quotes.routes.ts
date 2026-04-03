@@ -270,6 +270,14 @@ const QuoteListResponseSchema = z.object({
   pagination: PaginationSchema,
 })
 
+const QuoteRejectionReasonResponseSchema = z.object({
+  quoteId: z.string(),
+  quoteStatus: QuoteStatusEnum,
+  rejectionReason: z.string().nullable(),
+  quoteRejectedAt: z.coerce.date().nullable(),
+  quoteClientRespondedAt: z.coerce.date().nullable(),
+})
+
 const QuoteOverviewItemSchema = z.object({
   status: QuoteStatusEnum,
   count: z.number().int(),
@@ -302,6 +310,21 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.array(QuoteOverviewItemSchema)), 'OK'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getRejectionReason: createRoute({
+    method: 'get',
+    tags: ['Quotes'],
+    path: '/{quoteId}/rejection-reason',
+    summary: 'Get client rejection reason and related timestamps for a quote',
+    request: { params: QuoteParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteRejectionReasonResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),

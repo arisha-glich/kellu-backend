@@ -376,6 +376,31 @@ export async function getQuote(businessId: string, workOrderId: string) {
   return getQuoteById(businessId, workOrderId)
 }
 
+/** Client-facing rejection copy saved when the customer rejects via the public flow. */
+export async function getQuoteRejectionReason(businessId: string, quoteId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: quoteId, businessId, quoteRequired: true },
+    select: {
+      id: true,
+      quoteStatus: true,
+      quoteClientRejectionReason: true,
+      quoteRejectedAt: true,
+      quoteClientRespondedAt: true,
+    },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+  return {
+    quoteId: wo.id,
+    quoteStatus: wo.quoteStatus,
+    rejectionReason: wo.quoteClientRejectionReason,
+    quoteRejectedAt: wo.quoteRejectedAt,
+    quoteClientRespondedAt: wo.quoteClientRespondedAt,
+  }
+}
+
 /**
  * Update quote (work order) fields. quoteStatus is never editable via this — use actions (send, approve, reject, setAwaitingResponse).
  */
