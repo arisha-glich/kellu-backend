@@ -14,6 +14,8 @@ export interface WorkOrderCreatedEmailProps {
   assignedTeamMemberName: string
   lineItemsSummary: string
   total?: string
+  tax?: string
+  instructions?: string
   /** Company logo URL (Company Settings). Shown in header instead of platform logo. */
   logoUrl?: string | null
 }
@@ -37,6 +39,8 @@ export const WorkOrderCreatedEmail = ({
   assignedTeamMemberName,
   lineItemsSummary,
   total,
+  tax,
+  instructions,
   logoUrl,
 }: WorkOrderCreatedEmailProps) => {
   return (
@@ -69,11 +73,23 @@ export const WorkOrderCreatedEmail = ({
           <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
             <strong>Assigned team member:</strong> {assignedTeamMemberName}
           </Text>
+          {instructions?.trim() ? (
+            <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
+              <strong>Instructions:</strong>
+              <br />
+              <span style={{ whiteSpace: 'pre-wrap' }}>{instructions.trim()}</span>
+            </Text>
+          ) : null}
           {lineItemsSummary ? (
             <Text style={{ ...emailStyles.text, margin: '12px 0 8px' }}>
               <strong>Items:</strong>
               <br />
               <span style={{ whiteSpace: 'pre-wrap' }}>{lineItemsSummary}</span>
+            </Text>
+          ) : null}
+          {tax ? (
+            <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
+              <strong>Tax:</strong> {tax}
             </Text>
           ) : null}
           {total ? (

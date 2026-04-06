@@ -113,6 +113,10 @@ export interface SendWorkOrderCreatedEmailParams {
   subject?: string
   /** Company logo URL (Company Settings). Shown in email header. */
   companyLogoUrl?: string | null
+  /** Shown in the details box when set (trimmed non-empty). */
+  instructions?: string | null
+  /** Formatted tax amount, e.g. "$12.34". */
+  tax?: string | null
 }
 
 /**
@@ -136,6 +140,8 @@ export function sendWorkOrderCreatedEmail(params: SendWorkOrderCreatedEmailParam
     total,
     subject,
     companyLogoUrl,
+    instructions,
+    tax,
   } = params
   appEventEmitter.emit('mail:send-template', {
     to,
@@ -152,6 +158,8 @@ export function sendWorkOrderCreatedEmail(params: SendWorkOrderCreatedEmailParam
       lineItemsSummary,
       total,
       logoUrl: companyLogoUrl ?? undefined,
+      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+      ...(tax != null && tax !== '' ? { tax } : {}),
     },
     from: clientToCustomerFrom(businessName),
     replyTo: companyReplyTo,

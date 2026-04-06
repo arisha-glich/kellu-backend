@@ -204,6 +204,8 @@ export async function renderEmailTemplate(
         assignedTeamMemberName,
         lineItemsSummary,
         total,
+        tax,
+        instructions,
         logoUrl,
       } = data
       return render(
@@ -218,6 +220,8 @@ export async function renderEmailTemplate(
           assignedTeamMemberName={assignedTeamMemberName}
           lineItemsSummary={lineItemsSummary ?? ''}
           total={total}
+          tax={tax}
+          instructions={instructions}
           logoUrl={logoUrl}
         />
       )

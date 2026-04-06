@@ -61,6 +61,7 @@ export interface CreateQuoteInput {
   address: string
   assignedToId?: string | null
   instructions?: string | null
+  workOrderId?: string | null
   notes?: string | null
   quoteTermsConditions?: string | null
   lineItems?: Array<{
@@ -84,6 +85,7 @@ export interface UpdateQuoteInput {
   startTime?: string | null
   endTime?: string | null
   assignedToId?: string | null
+  workOrderId?: string | null
   instructions?: string | null
   notes?: string | null
   quoteTermsConditions?: string | null
@@ -230,6 +232,49 @@ async function recalculateQuoteFinancials(
 
 // ─── Service Functions ────────────────────────────────────────────────────────
 
+/** Slim row for GET /quotes — avoids repeating full work-order / invoice / job payloads. */
+function mapQuoteListRow(wo: {
+  id: string
+  workOrderNumber: string | null
+  title: string
+  address: string
+  createdAt: Date
+  updatedAt: Date
+  quoteStatus: QuoteStatus
+  quoteVersion: number
+  quoteSentAt: Date | null
+  quoteExpiresAt: Date | null
+  total: Prisma.Decimal | null
+  client: { id: string; name: string; email: string | null; phone: string }
+  assignedTo: { id: string; user: { name: string | null; email: string } } | null
+  lineItems: { id: string; name: string; quantity: number; price: Prisma.Decimal }[]
+}) {
+  const workOrderName = [wo.workOrderNumber, wo.title].filter(Boolean).join(' — ')
+  return {
+    id: wo.id,
+    workOrderId: wo.id,
+    workOrderNumber: wo.workOrderNumber,
+    workOrderName: workOrderName || wo.title,
+    title: wo.title,
+    address: wo.address,
+    createdAt: wo.createdAt,
+    updatedAt: wo.updatedAt,
+    quoteStatus: wo.quoteStatus,
+    quoteVersion: wo.quoteVersion,
+    quoteSentAt: wo.quoteSentAt,
+    quoteExpiresAt: wo.quoteExpiresAt,
+    total: wo.total,
+    client: wo.client,
+    assignedTo: wo.assignedTo,
+    lineItems: wo.lineItems.map(li => ({
+      id: li.id,
+      name: li.name,
+      quantity: li.quantity,
+      price: li.price,
+    })),
+  }
+}
+
 /**
  * List quotes (WorkOrders where quoteRequired = true) with search + filter.
  * Maps to the "Quotes" left-nav list view.
@@ -264,25 +309,36 @@ export async function listQuotes(businessId: string, filters: QuoteListFilters =
     ]
   }
 
-  const [items, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.workOrder.findMany({
       where,
       skip,
       take: limit,
       orderBy: { [sortBy]: order },
-      include: {
+      select: {
+        id: true,
+        workOrderNumber: true,
+        title: true,
+        address: true,
+        createdAt: true,
+        updatedAt: true,
+        quoteStatus: true,
+        quoteVersion: true,
+        quoteSentAt: true,
+        quoteExpiresAt: true,
+        total: true,
         client: { select: { id: true, name: true, email: true, phone: true } },
         assignedTo: {
           select: { id: true, user: { select: { name: true, email: true } } },
         },
-        lineItems: { select: { id: true, quantity: true, price: true } },
+        lineItems: { select: { id: true, name: true, quantity: true, price: true } },
       },
     }),
     prisma.workOrder.count({ where }),
   ])
 
   return {
-    data: items,
+    quotes: rows.map(mapQuoteListRow),
     pagination: {
       page,
       limit,
@@ -327,6 +383,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
         notes: input.notes ?? null,
         assignedToId: input.assignedToId ?? null,
         workOrderNumber,
+        ...(input.workOrderId != null && { workOrderId: input.workOrderId }),
 
         // Quote-specific defaults
         quoteRequired: true,

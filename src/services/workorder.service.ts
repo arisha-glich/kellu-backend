@@ -50,6 +50,8 @@ export interface CreateWorkOrderInput {
   clientId: string
   address: string
   isScheduleLater?: boolean
+  /** When true, job is shown in the schedule “anytime” bucket; start/end times are cleared. */
+  isAnyTime?: boolean
   scheduledAt?: Date | null
   startTime?: string | null
   endTime?: string | null
@@ -99,8 +101,10 @@ function deriveJobStatus(data: {
   scheduledAt?: Date | null
   startTime?: string | null
   assignedToId?: string | null
+  isAnyTime?: boolean
 }): JobStatus {
-  const hasSchedule = !!(data.scheduledAt ?? data.startTime)
+  const isAnyTime = data.isAnyTime ?? false
+  const hasSchedule = !!(data.scheduledAt ?? (!isAnyTime && data.startTime))
   if (!hasSchedule) {
     return 'UNSCHEDULED'
   }
@@ -335,10 +339,12 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
     throw new ClientNotFoundError()
   }
 
+  const isAnyTime = input.isAnyTime ?? false
   const jobStatus = deriveJobStatus({
     scheduledAt: input.scheduledAt,
     startTime: input.startTime,
     assignedToId: input.assignedToId,
+    isAnyTime,
   })
   const workOrderNumber = `#${await nextWorkOrderNumber(businessId)}`
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
@@ -353,9 +359,10 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         instructions: input.instructions ?? null,
         notes: input.notes ?? null,
         isScheduleLater: input.isScheduleLater ?? false,
+        isAnyTime,
         scheduledAt: input.scheduledAt ?? null,
-        startTime: input.startTime ?? null,
-        endTime: input.endTime ?? null,
+        startTime: isAnyTime ? null : (input.startTime ?? null),
+        endTime: isAnyTime ? null : (input.endTime ?? null),
         assignedToId: input.assignedToId ?? null,
         quoteRequired: input.quoteRequired ?? false,
         quoteObservations: input.quoteClientMessage ?? null,
@@ -421,6 +428,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
           .join('\n')
         const totalStr =
           woForEmail.total != null ? `$${Number(woForEmail.total).toFixed(2)}` : undefined
+        const taxStr = `$${Number(woForEmail.tax ?? 0).toFixed(2)}`
         sendWorkOrderCreatedEmail({
           to: woForEmail.client.email,
           clientName: woForEmail.client.name,
@@ -434,6 +442,8 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
           timeRange: timeRangeStr,
           assignedTeamMemberName: assignedName,
           lineItemsSummary,
+          tax: taxStr,
+          instructions: woForEmail.instructions,
           total: totalStr,
         })
       }
@@ -454,22 +464,43 @@ export async function updateWorkOrder(
   await ensureBusinessExists(businessId)
   const existing = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
-    select: { id: true },
+    select: {
+      id: true,
+      scheduledAt: true,
+      startTime: true,
+      assignedToId: true,
+      isAnyTime: true,
+    },
   })
   if (!existing) {
     throw new WorkOrderNotFoundError()
   }
 
-  const jobStatus =
+  const scheduleFieldsTouched =
     input.scheduledAt !== undefined ||
     input.startTime !== undefined ||
-    input.assignedToId !== undefined
-      ? deriveJobStatus({
-          scheduledAt: input.scheduledAt,
-          startTime: input.startTime,
-          assignedToId: input.assignedToId,
-        })
-      : undefined
+    input.endTime !== undefined ||
+    input.assignedToId !== undefined ||
+    input.isAnyTime !== undefined ||
+    input.isScheduleLater !== undefined
+
+  const mergedForStatus = {
+    scheduledAt:
+      input.scheduledAt !== undefined ? input.scheduledAt : existing.scheduledAt,
+    startTime: input.startTime !== undefined ? input.startTime : existing.startTime,
+    assignedToId:
+      input.assignedToId !== undefined ? input.assignedToId : existing.assignedToId,
+    isAnyTime: input.isAnyTime !== undefined ? input.isAnyTime : existing.isAnyTime,
+  }
+
+  const jobStatus = scheduleFieldsTouched
+    ? deriveJobStatus({
+        scheduledAt: mergedForStatus.scheduledAt,
+        startTime: mergedForStatus.startTime,
+        assignedToId: mergedForStatus.assignedToId,
+        isAnyTime: mergedForStatus.isAnyTime,
+      })
+    : undefined
 
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
@@ -481,9 +512,11 @@ export async function updateWorkOrder(
       ...(input.instructions !== undefined && { instructions: input.instructions }),
       ...(input.notes !== undefined && { notes: input.notes }),
       ...(input.isScheduleLater !== undefined && { isScheduleLater: input.isScheduleLater }),
+      ...(input.isAnyTime !== undefined && { isAnyTime: input.isAnyTime }),
+      ...(input.isAnyTime === true && { startTime: null, endTime: null }),
       ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt }),
-      ...(input.startTime !== undefined && { startTime: input.startTime }),
-      ...(input.endTime !== undefined && { endTime: input.endTime }),
+      ...(input.startTime !== undefined && input.isAnyTime !== true && { startTime: input.startTime }),
+      ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
       ...(input.quoteRequired !== undefined && { quoteRequired: input.quoteRequired }),
       ...(input.quoteClientMessage !== undefined && {

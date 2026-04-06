@@ -55,7 +55,11 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         limit,
       })
       return c.json(
-        { message: 'Quotes retrieved successfully', success: true, data: result },
+        {
+          message: 'Quotes retrieved successfully',
+          success: true,
+          data: { quotes: result.quotes, pagination: result.pagination },
+        },
         HttpStatusCodes.OK
       )
     } catch (error) {

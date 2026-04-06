@@ -34,6 +34,20 @@ import {
 } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
+/** Prefer assignedToId; if omitted, use assignedTo (member id). */
+function resolveWorkOrderAssigneeId(body: {
+  assignedToId?: string | null
+  assignedTo?: string | null
+}): string | null | undefined {
+  if (body.assignedToId !== undefined) {
+    return body.assignedToId
+  }
+  if (body.assignedTo !== undefined) {
+    return body.assignedTo
+  }
+  return undefined
+}
+
 export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> = {
   list: async c => {
     const user = c.get('user')
@@ -215,10 +229,11 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         clientId: body.clientId,
         address: body.address,
         isScheduleLater: body.isScheduleLater,
+        isAnyTime: body.isAnyTime,
         scheduledAt: body.scheduledAt,
         startTime: body.startTime,
         endTime: body.endTime,
-        assignedToId: body.assignedToId,
+        assignedToId: resolveWorkOrderAssigneeId(body) ?? null,
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         quoteRequired: body.quoteRequired,
@@ -258,6 +273,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
           userName: user.name,
           actionTitle: 'Work order created successfully',
           actionMessage: `Your work order "${workOrder.title}" was created successfully.`,
+          
         })
       } catch (notifyError) {
         console.error('Work order notification/email failed:', notifyError)
@@ -304,10 +320,11 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         clientId: body.clientId,
         address: body.address,
         isScheduleLater: body.isScheduleLater,
+        isAnyTime: body.isAnyTime,
         scheduledAt: body.scheduledAt,
         startTime: body.startTime,
         endTime: body.endTime,
-        assignedToId: body.assignedToId,
+        assignedToId: resolveWorkOrderAssigneeId(body),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         quoteRequired: body.quoteRequired,

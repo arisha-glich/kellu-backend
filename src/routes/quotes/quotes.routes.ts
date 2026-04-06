@@ -50,6 +50,7 @@ export const CreateQuoteBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
+    workOrderId:z.string().optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
   })
   .openapi({ description: 'Create quote — creates a WorkOrder with quoteRequired=true' })
@@ -68,6 +69,7 @@ export const UpdateQuoteBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
+    workOrderId:z.string().optional().nullable(),
     discount: z.number().min(0).optional(),
     discountType: z.enum(['PERCENTAGE', 'AMOUNT']).optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
@@ -202,6 +204,7 @@ const LineItemSchema = z.object({
 
 const QuoteDetailSchema = z.object({
   id: z.string(),
+  workOrderId: z.string(),
   workOrderNumber: z.string().nullable(),
   title: z.string(),
   address: z.string(),
@@ -243,19 +246,42 @@ const QuoteDetailSchema = z.object({
   lineItems: z.array(LineItemSchema),
 })
 
-const QuoteListItemSchema = QuoteDetailSchema.pick({
-  id: true,
-  workOrderNumber: true,
-  title: true,
-  address: true,
-  quoteStatus: true,
-  quoteVersion: true,
-  quoteSentAt: true,
-  quoteExpiresAt: true,
-  total: true,
-  createdAt: true,
-  client: true,
-  assignedTo: true,
+const QuoteListLineItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  quantity: z.number().int(),
+  price: z.union([z.number(), z.string()]),
+})
+
+const QuoteListItemSchema = z.object({
+  id: z.string(),
+  /** Same as id; use for routes keyed by work order id. */
+  workOrderId: z.string(),
+  workOrderNumber: z.string().nullable(),
+  /** e.g. "#3 — Window clean" */
+  workOrderName: z.string(),
+  title: z.string(),
+  address: z.string(),
+  quoteStatus: QuoteStatusEnum,
+  quoteVersion: z.number().int(),
+  quoteSentAt: z.coerce.date().nullable(),
+  quoteExpiresAt: z.coerce.date().nullable(),
+  total: z.union([z.number(), z.string()]).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  client: z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string().nullable(),
+    phone: z.string(),
+  }),
+  assignedTo: z
+    .object({
+      id: z.string(),
+      user: z.object({ name: z.string().nullable(), email: z.string() }),
+    })
+    .nullable(),
+  lineItems: z.array(QuoteListLineItemSchema),
 })
 
 const PaginationSchema = z.object({
@@ -265,8 +291,8 @@ const PaginationSchema = z.object({
   totalPages: z.number().int(),
 })
 
-const QuoteListResponseSchema = z.object({
-  data: z.array(QuoteListItemSchema),
+const QuoteListEnvelopeSchema = z.object({
+  quotes: z.array(QuoteListItemSchema),
   pagination: PaginationSchema,
 })
 
@@ -293,7 +319,7 @@ export const QUOTE_ROUTES = {
     summary: 'List quotes (WorkOrders with quoteRequired=true)',
     request: { query: QuoteListQuerySchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteListResponseSchema), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteListEnvelopeSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
