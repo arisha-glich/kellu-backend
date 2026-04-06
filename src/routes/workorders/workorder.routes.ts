@@ -8,14 +8,6 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
-const QuoteStatusEnum = z.enum([
-  'NOT_SENT',
-  'AWAITING_RESPONSE',
-  'APPROVED',
-  'CONVERTED',
-  'REJECTED',
-  'EXPIRED',
-])
 const JobStatusEnum = z.enum([
   'UNSCHEDULED',
   'UNASSIGNED',
@@ -82,10 +74,6 @@ export const WorkOrderListQuerySchema = z.object({
       param: { name: 'search', in: 'query' },
       description: 'Search by client name, title, or address',
     }),
-  quoteStatus: QuoteStatusEnum.optional().openapi({
-    param: { name: 'quoteStatus', in: 'query' },
-    description: 'Filter by quote status',
-  }),
   jobStatus: JobStatusEnum.optional().openapi({
     param: { name: 'jobStatus', in: 'query' },
     description: 'Filter by job status',
@@ -172,12 +160,8 @@ export const CreateWorkOrderBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),
-    quoteRequired: z.boolean().optional().default(false),
-    quoteClientMessage: z.string().optional().nullable(),
-    quoteTermsConditions: z.string().optional().nullable(),
     invoiceClientMessage: z.string().optional().nullable(),
     invoiceTermsConditions: z.string().optional().nullable(),
-    applyQuoteTermsToFuture: z.boolean().optional().default(false),
     applyInvoiceTermsToFuture: z.boolean().optional().default(false),
     discount: z.number().optional(),
     discountType: DiscountTypeEnum.optional().nullable(),
@@ -212,7 +196,6 @@ const WorkOrderListItemSchema = z.object({
   scheduledAt: z.coerce.date().nullable(),
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
-  quoteStatus: QuoteStatusEnum,
   jobStatus: JobStatusEnum,
   invoiceStatus: InvoiceStatusEnum,
   total: z.union([z.number(), z.string()]).nullable(),
@@ -291,14 +274,12 @@ export const WorkOrderDetailResponseSchema = z.object({
   address: z.string(),
   instructions: z.string().nullable(),
   notes: z.string().nullable(),
-  quoteObservations: z.string().nullable(),
   invoiceObservations: z.string().nullable(),
   isScheduleLater: z.boolean(),
   isAnyTime: z.boolean(),
   scheduledAt: z.coerce.date().nullable(),
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
-  quoteStatus: QuoteStatusEnum,
   jobStatus: JobStatusEnum,
   invoiceStatus: InvoiceStatusEnum,
   subtotal: z.union([z.number(), z.string()]).nullable(),

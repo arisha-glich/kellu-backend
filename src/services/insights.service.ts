@@ -116,7 +116,7 @@ export async function getInsightsOverview(
   const { from, to } = range
 
   const [convertedQuotes, jobs, invoicedValue] = await Promise.all([
-    prisma.workOrder.count({
+    prisma.quote.count({
       where: {
         businessId,
         quoteStatus: 'CONVERTED',
@@ -269,15 +269,15 @@ export async function getInsightsLeadConversion(
   const { from, to } = range
 
   const [grouped, quotesSentInPeriod, quotesConvertedInPeriod] = await Promise.all([
-    prisma.workOrder.groupBy({
+    prisma.quote.groupBy({
       by: ['quoteStatus'],
       where: { businessId, createdAt: { gte: from, lte: to } },
       _count: { _all: true },
     }),
-    prisma.workOrder.count({
+    prisma.quote.count({
       where: { businessId, quoteSentAt: { gte: from, lte: to } },
     }),
-    prisma.workOrder.count({
+    prisma.quote.count({
       where: { businessId, quoteConvertedAt: { gte: from, lte: to } },
     }),
   ])

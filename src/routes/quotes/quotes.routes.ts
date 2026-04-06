@@ -1,5 +1,5 @@
 /**
- * Quote API routes – quotes are WorkOrders with quoteRequired = true.
+ * Quote API routes – `Quote` model (separate from work orders / jobs).
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
@@ -25,7 +25,7 @@ const ItemTypeEnum = z.enum(['SERVICE', 'PRODUCT'])
 export const QuoteParamsSchema = z.object({
   quoteId: z.string().openapi({
     param: { name: 'quoteId', in: 'path' },
-    description: 'WorkOrder ID (with quoteRequired=true)',
+    description: 'Quote id',
   }),
 })
 
@@ -53,7 +53,7 @@ export const CreateQuoteBodySchema = z
     workOrderId:z.string().optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
   })
-  .openapi({ description: 'Create quote — creates a WorkOrder with quoteRequired=true' })
+  .openapi({ description: 'Create quote (`Quote` row + line items)' })
 
 /** Update quote (work order) fields. quoteStatus is never sent here — use send/approve/reject/set-awaiting-response. */
 export const UpdateQuoteBodySchema = z
@@ -202,14 +202,35 @@ const LineItemSchema = z.object({
   cost: z.union([z.number(), z.string()]).nullable(),
 })
 
+const RelatedWorkOrderBriefSchema = z.object({
+  id: z.string(),
+  workOrderNumber: z.string().nullable(),
+  title: z.string(),
+})
+
 const QuoteDetailSchema = z.object({
   id: z.string(),
-  workOrderId: z.string(),
+  quoteId: z.string(),
+  /** @deprecated Same as id; kept for older clients. */
+  workOrderId: z.string().optional(),
+  quoteNumber: z.string().nullable(),
   workOrderNumber: z.string().nullable(),
+  relatedWorkOrderId: z.string().nullable().optional(),
+  relatedWorkOrder: RelatedWorkOrderBriefSchema.nullable().optional(),
   title: z.string(),
   address: z.string(),
   instructions: z.string().nullable(),
   notes: z.string().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  isScheduleLater: z.boolean(),
+  isAnyTime: z.boolean(),
+  scheduledAt: z.coerce.date().nullable(),
+  startTime: z.string().nullable(),
+  endTime: z.string().nullable(),
+  clientId: z.string(),
+  businessId: z.string(),
+  assignedToId: z.string().nullable(),
   quoteRequired: z.literal(true),
   quoteStatus: QuoteStatusEnum,
   quoteVersion: z.number().int(),
@@ -225,12 +246,17 @@ const QuoteDetailSchema = z.object({
   quoteObservations: z.string().nullable(),
   quoteTermsConditions: z.string().nullable(),
   lastQuotePdfUrl: z.string().nullable(),
+  lastJobReportPdfUrl: z.string().nullable().optional(),
+  quoteClientActionToken: z.string().nullable().optional(),
+  quoteWhatsappStatus: z.string().nullable().optional(),
   subtotal: z.union([z.number(), z.string()]).nullable(),
+  discount: z.union([z.number(), z.string()]).nullable().optional(),
+  discountType: z.enum(['PERCENTAGE', 'AMOUNT']).nullable().optional(),
+  tax: z.union([z.number(), z.string()]).nullable().optional(),
   total: z.union([z.number(), z.string()]).nullable(),
   cost: z.union([z.number(), z.string()]).nullable(),
+  amountPaid: z.union([z.number(), z.string()]).nullable().optional(),
   balance: z.union([z.number(), z.string()]).nullable(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
   client: z.object({
     id: z.string(),
     name: z.string(),
@@ -244,6 +270,9 @@ const QuoteDetailSchema = z.object({
     })
     .nullable(),
   lineItems: z.array(LineItemSchema),
+  payments: z.array(z.unknown()).optional(),
+  expenses: z.array(z.unknown()).optional(),
+  attachments: z.array(z.unknown()).optional(),
 })
 
 const QuoteListLineItemSchema = z.object({
@@ -255,8 +284,10 @@ const QuoteListLineItemSchema = z.object({
 
 const QuoteListItemSchema = z.object({
   id: z.string(),
-  /** Same as id; use for routes keyed by work order id. */
-  workOrderId: z.string(),
+  quoteId: z.string(),
+  /** @deprecated Same as id. */
+  workOrderId: z.string().optional(),
+  quoteNumber: z.string().nullable(),
   workOrderNumber: z.string().nullable(),
   /** e.g. "#3 — Window clean" */
   workOrderName: z.string(),

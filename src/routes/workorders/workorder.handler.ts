@@ -70,7 +70,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       const limit = query.limit ? Number.parseInt(query.limit, 10) : 10
       const result = await listWorkOrders(businessId, {
         search: query.search,
-        quoteStatus: query.quoteStatus,
         jobStatus: query.jobStatus,
         invoiceStatus: query.invoiceStatus,
         sortBy: query.sortBy,
@@ -236,9 +235,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         assignedToId: resolveWorkOrderAssigneeId(body) ?? null,
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
-        quoteRequired: body.quoteRequired,
-        quoteClientMessage: body.quoteClientMessage,
-        quoteTermsConditions: body.quoteTermsConditions,
         invoiceClientMessage: body.invoiceClientMessage,
         invoiceTermsConditions: body.invoiceTermsConditions,
         discount: body.discount,
@@ -246,14 +242,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
       })
-      if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
+      if (body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture
-            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
-            : {}),
-          ...(body.applyInvoiceTermsToFuture
-            ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
-            : {}),
+          invoiceTermsConditions: body.invoiceTermsConditions ?? null,
         })
       }
       try {
@@ -327,9 +318,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         assignedToId: resolveWorkOrderAssigneeId(body),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
-        quoteRequired: body.quoteRequired,
-        quoteClientMessage: body.quoteClientMessage,
-        quoteTermsConditions: body.quoteTermsConditions,
         invoiceClientMessage: body.invoiceClientMessage,
         invoiceTermsConditions: body.invoiceTermsConditions,
         discount: body.discount,
@@ -337,14 +325,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
       })
-      if (body.applyQuoteTermsToFuture || body.applyInvoiceTermsToFuture) {
+      if (body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          ...(body.applyQuoteTermsToFuture
-            ? { quoteTermsConditions: body.quoteTermsConditions ?? null }
-            : {}),
-          ...(body.applyInvoiceTermsToFuture
-            ? { invoiceTermsConditions: body.invoiceTermsConditions ?? null }
-            : {}),
+          invoiceTermsConditions: body.invoiceTermsConditions ?? null,
         })
       }
       return c.json(

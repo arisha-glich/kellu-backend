@@ -150,7 +150,6 @@ function mapWorkOrderToItem(wo: {
   isAnyTime: boolean
   assignedToId: string | null
   jobStatus: string
-  quoteStatus: string
   invoiceStatus: string
   completedAt: Date | null
   workOrderNumber: string | null
@@ -180,7 +179,7 @@ function mapWorkOrderToItem(wo: {
     completedAt: wo.completedAt,
     workOrderNumber: wo.workOrderNumber,
     workOrderId: null,
-    quoteStatus: wo.quoteStatus,
+    quoteStatus: null,
     invoiceStatus: wo.invoiceStatus,
   }
 }

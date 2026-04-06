@@ -30,7 +30,6 @@ export class ClientNotFoundError extends Error {
 
 export interface WorkOrderListFilters {
   search?: string
-  quoteStatus?: QuoteStatus
   jobStatus?: JobStatus
   invoiceStatus?: InvoiceStatus
   page?: number
@@ -58,9 +57,6 @@ export interface CreateWorkOrderInput {
   assignedToId?: string | null
   instructions?: string | null
   notes?: string | null
-  quoteRequired?: boolean
-  quoteClientMessage?: string | null
-  quoteTermsConditions?: string | null
   invoiceClientMessage?: string | null
   invoiceTermsConditions?: string | null
   discount?: number
@@ -112,6 +108,33 @@ function deriveJobStatus(data: {
     return 'UNASSIGNED'
   }
   return 'SCHEDULED'
+}
+
+/** When a job WO advances, convert any APPROVED quote linked via `relatedWorkOrderId`. */
+async function convertQuotesWhenJobAdvances(businessId: string, workOrderId: string): Promise<void> {
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { jobStatus: true },
+  })
+  if (!wo) {
+    return
+  }
+  const eligible = ['SCHEDULED', 'ON_MY_WAY', 'IN_PROGRESS', 'COMPLETED']
+  if (!eligible.includes(wo.jobStatus)) {
+    return
+  }
+  await prisma.quote.updateMany({
+    where: {
+      businessId,
+      relatedWorkOrderId: workOrderId,
+      quoteStatus: 'APPROVED',
+    },
+    data: {
+      quoteStatus: 'CONVERTED',
+      quoteConvertedAt: new Date(),
+      convertedToWorkOrderId: workOrderId,
+    },
+  })
 }
 
 /** Recalculate subtotal, discount amount, tax, total, cost, amountPaid, balance and update work order. */
@@ -206,7 +229,6 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
   await ensureBusinessExists(businessId)
   const {
     search,
-    quoteStatus,
     jobStatus,
     invoiceStatus,
     page = 1,
@@ -217,9 +239,6 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
   const skip = (page - 1) * limit
 
   const searchWhere: Prisma.WorkOrderWhereInput = { businessId }
-  if (quoteStatus) {
-    searchWhere.quoteStatus = quoteStatus
-  }
   if (jobStatus) {
     searchWhere.jobStatus = jobStatus
   }
@@ -270,9 +289,9 @@ export async function getWorkOrderOverview(businessId: string): Promise<WorkOrde
   const where = { businessId }
 
   const [quoteCounts, jobCounts, invoiceCounts] = await Promise.all([
-    prisma.workOrder.groupBy({
+    prisma.quote.groupBy({
       by: ['quoteStatus'],
-      where,
+      where: { businessId },
       _count: { id: true },
     }),
     prisma.workOrder.groupBy({
@@ -328,7 +347,7 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
 
-/** Create work order (§6.3). Sets quote_status=NOT_SENT, invoice_status=NOT_SENT, derives job status. */
+/** Create work order (§6.3). Sets invoice_status=NOT_SENT, derives job status. */
 export async function createWorkOrder(businessId: string, input: CreateWorkOrderInput) {
   await ensureBusinessExists(businessId)
   const client = await prisma.client.findFirst({
@@ -364,12 +383,8 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         startTime: isAnyTime ? null : (input.startTime ?? null),
         endTime: isAnyTime ? null : (input.endTime ?? null),
         assignedToId: input.assignedToId ?? null,
-        quoteRequired: input.quoteRequired ?? false,
-        quoteObservations: input.quoteClientMessage ?? null,
-        quoteTermsConditions: input.quoteTermsConditions ?? null,
         invoiceObservations: input.invoiceClientMessage ?? null,
         invoiceTermsConditions: input.invoiceTermsConditions ?? null,
-        quoteStatus: 'NOT_SENT',
         jobStatus,
         invoiceStatus: 'NOT_SENT',
         workOrderNumber,
@@ -518,13 +533,6 @@ export async function updateWorkOrder(
       ...(input.startTime !== undefined && input.isAnyTime !== true && { startTime: input.startTime }),
       ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
-      ...(input.quoteRequired !== undefined && { quoteRequired: input.quoteRequired }),
-      ...(input.quoteClientMessage !== undefined && {
-        quoteObservations: input.quoteClientMessage,
-      }),
-      ...(input.quoteTermsConditions !== undefined && {
-        quoteTermsConditions: input.quoteTermsConditions,
-      }),
       ...(input.invoiceClientMessage !== undefined && {
         invoiceObservations: input.invoiceClientMessage,
       }),
@@ -558,6 +566,8 @@ export async function updateWorkOrder(
 
     await recalculateFinancials(workOrderId, taxPercent, tx)
   })
+
+  await convertQuotesWhenJobAdvances(businessId, workOrderId)
 
   return getWorkOrderById(businessId, workOrderId)
 }
@@ -1084,6 +1094,14 @@ export async function getJobFollowUpEmailComposeData(businessId: string, workOrd
     throw new WorkOrderNotFoundError()
   }
 
+  const linkedQuotePdf = await prisma.quote.findFirst({
+    where: {
+      OR: [{ relatedWorkOrderId: workOrderId }, { convertedToWorkOrderId: workOrderId }],
+      lastQuotePdfUrl: { not: null },
+    },
+    select: { id: true },
+  })
+
   const displayName = wo.business.name?.trim() || 'Company'
   const from = clientToCustomerFrom(displayName)
   const replyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
@@ -1099,7 +1117,7 @@ export async function getJobFollowUpEmailComposeData(businessId: string, workOrd
     selectedByDefault: boolean
   }> = []
 
-  if (wo.lastQuotePdfUrl) {
+  if (linkedQuotePdf) {
     attachments.push({
       id: 'quote_pdf',
       label: 'Quote.pdf',
@@ -1181,6 +1199,14 @@ export async function sendJobFollowUpEmail(
     throw new WorkOrderNotFoundError()
   }
 
+  const linkedQuoteForPdf = await prisma.quote.findFirst({
+    where: {
+      OR: [{ relatedWorkOrderId: workOrderId }, { convertedToWorkOrderId: workOrderId }],
+      lastQuotePdfUrl: { not: null },
+    },
+    select: { lastQuotePdfUrl: true },
+  })
+
   const toEmail = (options?.to ?? wo.client.email)?.trim()
   if (!toEmail) {
     throw new Error(
@@ -1223,11 +1249,11 @@ export async function sendJobFollowUpEmail(
     url: string
     contentType: string
   }> = []
-  if (wo.lastQuotePdfUrl) {
+  if (linkedQuoteForPdf?.lastQuotePdfUrl) {
     builtInAttachments.push({
       id: 'quote_pdf',
       filename: 'Quote.pdf',
-      url: wo.lastQuotePdfUrl,
+      url: linkedQuoteForPdf.lastQuotePdfUrl,
       contentType: 'application/pdf',
     })
   }
