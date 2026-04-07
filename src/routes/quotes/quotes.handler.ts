@@ -180,6 +180,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         instructions: body.instructions,
         notes: body.notes,
         quoteTermsConditions: body.quoteTermsConditions,
+        workOrderId: body.workOrderId,
         lineItems: body.lineItems,
       })
       try {
@@ -194,10 +195,10 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           userId: user.id,
           type: 'QUOTE_CREATED',
           title: `You created a quote - ${quote.total != null ? `$${Number(quote.total).toFixed(2)}` : ''}`,
-          message: `${quote.workOrderNumber ?? 'Quote'} - ${quote.title}`,
+          message: `${quote.quoteNumber ?? 'Quote'} - ${quote.title}`,
           metadata: {
             quoteId: quote.id,
-            quoteNumber: quote.workOrderNumber,
+            quoteNumber: quote.quoteNumber,
             title: quote.title,
             total: quote.total != null ? Number(quote.total) : null,
           },
@@ -221,6 +222,9 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
       if (error instanceof ClientNotFoundError) {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error creating quote:', error)
       return c.json({ message: 'Failed to create quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
@@ -260,6 +264,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         ...(body.discount !== undefined && { discount: body.discount }),
         ...(body.discountType !== undefined && { discountType: body.discountType ?? null }),
         ...(body.lineItems !== undefined && { lineItems: body.lineItems }),
+        ...(body.workOrderId !== undefined && { workOrderId: body.workOrderId ?? null }),
       })
       return c.json(
         { message: 'Quote updated successfully', success: true, data: quote },
@@ -267,7 +272,10 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       )
     } catch (error) {
       if (error instanceof WorkOrderNotFoundError) {
-        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+        return c.json(
+          { message: 'Quote or linked work order not found' },
+          HttpStatusCodes.NOT_FOUND
+        )
       }
       console.error('Error updating quote:', error)
       return c.json({ message: 'Failed to update quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
@@ -365,10 +373,10 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           userId: user.id,
           type: 'QUOTE_SENT',
           title: `You sent a quote - ${quote.total != null ? `$${Number(quote.total).toFixed(2)}` : ''}`,
-          message: `${quote.workOrderNumber ?? 'Quote'} - ${quote.title}`,
+          message: `${quote.quoteNumber ?? 'Quote'} - ${quote.title}`,
           metadata: {
             quoteId: quote.id,
-            quoteNumber: quote.workOrderNumber,
+            quoteNumber: quote.quoteNumber,
             title: quote.title,
             total: quote.total != null ? Number(quote.total) : null,
             sentAt: quote.quoteSentAt ?? null,
@@ -671,7 +679,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
   clientRespondGet: async c => {
-    const { action, token } = c.req.valid('query')
+    const { action, token, quoteId: quoteIdFromQuery } = c.req.valid('query')
     const frontendDefault = (Bun.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '')
     const approvedBase =
       Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() ||
@@ -680,7 +688,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() ||
       `${frontendDefault}/quotes/reject-quote`
 
-    /** Frontend uses dynamic segments e.g. `/quotes/accept-quote/[quoteId]` — append id to env base. */
+    /** Env base is the path *without* the id segment; `quoteClientPageUrl` appends `/{quoteId}`. */
     const quoteClientPageUrl = (
       basePath: string,
       quoteId: string | undefined,
@@ -697,7 +705,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
     if (action === 'approve') {
       try {
-        const quote = await clientApproveQuoteByToken(token)
+        const quote = await clientApproveQuoteByToken(token, quoteIdFromQuery)
         return c.redirect(
           quoteClientPageUrl(approvedBase, quote.id, {
             quoteAction: 'approved',
@@ -720,7 +728,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
     }
 
-    const rejectResolved = await resolveClientRejectFormQuote(token)
+    const rejectResolved = await resolveClientRejectFormQuote(token, quoteIdFromQuery)
     if (rejectResolved.ok === false) {
       if (rejectResolved.kind === 'not_found') {
         return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'not-found' }))
@@ -728,67 +736,28 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' }))
     }
     const rejectQuoteId = rejectResolved.quoteId
-
-    const html = `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Reject Quote</title>
-    <style>
-      body { font-family: Arial, sans-serif; background: #f8fafc; padding: 24px; color: #111827; }
-      .card { max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; }
-      h1 { margin-top: 0; }
-      textarea { width: 100%; min-height: 120px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; }
-      button { margin-top: 12px; background: #ef4444; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
-      .note { color: #6b7280; font-size: 13px; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>Reject Quote</h1>
-      <p>Please tell us why you are rejecting this quote.</p>
-      <form id="rejectForm">
-        <textarea id="reason" name="reason" placeholder="Enter rejection reason..." required minlength="3"></textarea>
-        <button type="submit">Submit rejection</button>
-      </form>
-      <p class="note">This reason will be shared with the business team.</p>
-      <div id="result"></div>
-    </div>
-    <script>
-      const form = document.getElementById('rejectForm');
-      const result = document.getElementById('result');
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const reason = document.getElementById('reason').value;
-        const res = await fetch('/api/quotes/client/respond/reject', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quoteId: ${JSON.stringify(rejectQuoteId)}, reason }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const qid = data?.data?.quoteId ?? '';
-          const cid = data?.data?.clientId ?? '';
-          const base = ${JSON.stringify(rejectedBase.replace(/\/$/, ''))};
-          const path = qid ? base + '/' + qid : base;
-          const redirectUrl = new URL(path);
-          redirectUrl.searchParams.set('quoteAction', 'rejected');
-          if (cid) redirectUrl.searchParams.set('clientId', cid);
-          window.location.href = redirectUrl.toString();
-        } else {
-          result.innerHTML = '<p style="color:#b91c1c;"><strong>Could not submit rejection. Please try again.</strong></p>';
-        }
-      });
-    </script>
-  </body>
-</html>`
-    return c.html(html, HttpStatusCodes.OK)
+    return c.redirect(
+      quoteClientPageUrl(rejectedBase, rejectQuoteId, {
+        quoteAction: 'reject',
+        token,
+      })
+    )
   },
   clientRespondPost: async c => {
     try {
-      const { quoteId, reason } = c.req.valid('json')
-      const quote = await clientRejectQuoteByQuoteId(quoteId, reason)
+      const body = c.req.valid('json')
+      const token =
+        (body.token?.trim() || c.req.header('x-quote-token')?.trim() || '').trim() || undefined
+      if (!token || token.length < 10) {
+        return c.json(
+          {
+            message: 'Missing action token: include `token` in the JSON body or send `x-quote-token` header',
+            success: false,
+          },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      const quote = await clientRejectQuoteByQuoteId(body.quoteId, body.reason, token)
       return c.json(
         {
           message: 'Quote rejected successfully',

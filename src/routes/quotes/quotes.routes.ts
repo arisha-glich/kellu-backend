@@ -87,15 +87,36 @@ export const ClientQuoteRespondQuerySchema = z.object({
     param: { name: 'action', in: 'query' },
     description: 'Client response action',
   }),
-  token: z.string().min(10).openapi({
-    param: { name: 'token', in: 'query' },
-    description: 'Secure quote action token',
-  }),
+  token: z
+    .string()
+    .min(10)
+    .transform(s => s.trim())
+    .openapi({
+      param: { name: 'token', in: 'query' },
+      description: 'Secure quote action token',
+    }),
+  quoteId: z
+    .string()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: 'quoteId', in: 'query' },
+      description: 'Quote id (included in email links; improves resolution if token encoding differs)',
+    }),
 })
 
 export const ClientQuoteRejectBodySchema = z.object({
   quoteId: z.string().min(1).openapi({ description: 'Work order / quote id (same as quote record id)' }),
   reason: z.string().min(3, 'Rejection reason is required'),
+  token: z
+    .string()
+    .min(10)
+    .transform(s => s.trim())
+    .optional()
+    .openapi({
+      description:
+        'Quote action token from the email/link, or use the `x-quote-token` header instead',
+    }),
 })
 
 export const SendQuoteEmailBodySchema = z
@@ -211,10 +232,11 @@ const RelatedWorkOrderBriefSchema = z.object({
 const QuoteDetailSchema = z.object({
   id: z.string(),
   quoteId: z.string(),
-  /** @deprecated Same as id; kept for older clients. */
+  /** Present only when the quote is linked to a job work order (`workOrderId` on create/update). */
   workOrderId: z.string().optional(),
   quoteNumber: z.string().nullable(),
-  workOrderNumber: z.string().nullable(),
+  /** Linked job work order number; only present when `relatedWorkOrderId` is set. */
+  workOrderNumber: z.string().nullable().optional(),
   relatedWorkOrderId: z.string().nullable().optional(),
   relatedWorkOrder: RelatedWorkOrderBriefSchema.nullable().optional(),
   title: z.string(),
@@ -285,10 +307,10 @@ const QuoteListLineItemSchema = z.object({
 const QuoteListItemSchema = z.object({
   id: z.string(),
   quoteId: z.string(),
-  /** @deprecated Same as id. */
+  /** Present only when the quote is linked to a job work order. */
   workOrderId: z.string().optional(),
   quoteNumber: z.string().nullable(),
-  workOrderNumber: z.string().nullable(),
+  workOrderNumber: z.string().nullable().optional(),
   /** e.g. "#3 — Window clean" */
   workOrderName: z.string(),
   title: z.string(),
@@ -566,11 +588,11 @@ export const QUOTE_ROUTES = {
     method: 'get',
     tags: ['Quotes'],
     path: '/client/respond',
-    summary: 'Client quote response action page (approve/reject)',
+    summary: 'Client quote response (approve applies; reject redirects to frontend with token)',
     request: { query: ClientQuoteRespondQuerySchema },
     responses: {
-      [HttpStatusCodes.OK]: {
-        description: 'HTML response page',
+      [HttpStatusCodes.MOVED_TEMPORARILY]: {
+        description: 'Redirect to frontend (approve success, reject form, or error state)',
       },
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid request'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
@@ -581,7 +603,7 @@ export const QUOTE_ROUTES = {
     method: 'post',
     tags: ['Quotes'],
     path: '/client/respond/reject',
-    summary: 'Client rejects quote with reason (quoteId + reason; no token in body)',
+    summary: 'Client rejects quote (quoteId + reason + token in body or x-quote-token header)',
     request: {
       body: jsonContentRequired(ClientQuoteRejectBodySchema, 'Client rejection reason payload'),
     },

@@ -3,6 +3,7 @@
  * Line items use `LineItem.quoteId`. Optional `relatedWorkOrderId` links a quote to an existing job WO.
  */
 
+import { timingSafeEqual } from 'node:crypto'
 import type { QuoteStatus } from '~/generated/prisma'
 import { Prisma } from '~/generated/prisma'
 import { renderEmailTemplate } from '~/lib/email-render'
@@ -153,14 +154,21 @@ async function getQuoteById(businessId: string, quoteId: string) {
 function formatQuoteDetailResponse(
   q: Prisma.QuoteGetPayload<{ include: typeof quoteDetailInclude }>
 ) {
+  const linkedJob =
+    q.relatedWorkOrderId != null
+      ? {
+          workOrderId: q.relatedWorkOrder?.id ?? q.relatedWorkOrderId,
+          workOrderNumber: q.relatedWorkOrder?.workOrderNumber ?? null,
+          relatedWorkOrderId: q.relatedWorkOrderId,
+          relatedWorkOrder: q.relatedWorkOrder,
+        }
+      : {}
+
   return {
     id: q.id,
     quoteId: q.id,
-    workOrderId: q.id,
     quoteNumber: q.quoteNumber,
-    workOrderNumber: q.quoteNumber,
-    relatedWorkOrderId: q.relatedWorkOrderId,
-    relatedWorkOrder: q.relatedWorkOrder,
+    ...linkedJob,
     title: q.title,
     address: q.address,
     instructions: q.instructions,
@@ -289,17 +297,25 @@ function mapQuoteListRow(q: {
   quoteSentAt: Date | null
   quoteExpiresAt: Date | null
   total: Prisma.Decimal | null
+  relatedWorkOrderId: string | null
+  relatedWorkOrder: { id: string; workOrderNumber: string | null; title: string } | null
   client: { id: string; name: string; email: string | null; phone: string }
   assignedTo: { id: string; user: { name: string | null; email: string } } | null
   lineItems: { id: string; name: string; quantity: number; price: Prisma.Decimal }[]
 }) {
   const workOrderName = [q.quoteNumber, q.title].filter(Boolean).join(' — ')
+  const linkedJob =
+    q.relatedWorkOrderId != null
+      ? {
+          workOrderId: q.relatedWorkOrder?.id ?? q.relatedWorkOrderId,
+          workOrderNumber: q.relatedWorkOrder?.workOrderNumber ?? null,
+        }
+      : {}
   return {
     id: q.id,
     quoteId: q.id,
-    workOrderId: q.id,
     quoteNumber: q.quoteNumber,
-    workOrderNumber: q.quoteNumber,
+    ...linkedJob,
     workOrderName: workOrderName || q.title,
     title: q.title,
     address: q.address,
@@ -369,6 +385,8 @@ export async function listQuotes(businessId: string, filters: QuoteListFilters =
         quoteSentAt: true,
         quoteExpiresAt: true,
         total: true,
+        relatedWorkOrderId: true,
+        relatedWorkOrder: { select: { id: true, workOrderNumber: true, title: true } },
         client: { select: { id: true, name: true, email: true, phone: true } },
         assignedTo: {
           select: { id: true, user: { select: { name: true, email: true } } },
@@ -763,9 +781,164 @@ function summarizeQuoteLineItems(
     .join('\n')
 }
 
-function buildClientQuoteActionUrl(token: string, action: 'approve' | 'reject'): string {
+function safeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8')
+  const bufB = Buffer.from(b, 'utf8')
+  if (bufA.length !== bufB.length) {
+    return false
+  }
+  return timingSafeEqual(bufA, bufB)
+}
+
+/** Lookup quote for approve/reject links; optional quoteId matches emails that include both. */
+async function findQuoteRowByClientActionToken(
+  token: string,
+  quoteIdHint?: string | null
+): Promise<{
+  id: string
+  quoteStatus: QuoteStatus
+  businessId: string
+  clientId: string
+  quoteCorrelative: string | null
+} | null> {
+  const normalized = token.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const baseSelect = {
+    id: true,
+    quoteStatus: true,
+    businessId: true,
+    clientId: true,
+    quoteCorrelative: true,
+  } as const
+
+  let row = await prisma.quote.findFirst({
+    where: { quoteClientActionToken: normalized },
+    select: baseSelect,
+  })
+
+  if (!row && quoteIdHint?.trim()) {
+    const hinted = await prisma.quote.findFirst({
+      where: { id: quoteIdHint.trim() },
+      select: { ...baseSelect, quoteClientActionToken: true },
+    })
+    if (
+      hinted?.quoteClientActionToken &&
+      safeEqualStrings(hinted.quoteClientActionToken, normalized)
+    ) {
+      const { quoteClientActionToken: _t, ...rest } = hinted
+      row = rest
+    }
+  }
+
+  return row
+}
+
+function numericFromDb(v: unknown): number | null {
+  if (v == null) {
+    return null
+  }
+  if (typeof v === 'number') {
+    return v
+  }
+  if (
+    typeof v === 'object' &&
+    v !== null &&
+    'toNumber' in v &&
+    typeof (v as { toNumber: unknown }).toNumber === 'function'
+  ) {
+    try {
+      return (v as { toNumber: () => number }).toNumber()
+    } catch {
+      return Number(v)
+    }
+  }
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Quote preview for client accept/reject pages (no session).
+ * Path `quoteId` must match the quote that owns `token`.
+ */
+export async function getPublicQuoteViewForClient(quoteId: string, token: string) {
+  const row = await findQuoteRowByClientActionToken(token.trim(), quoteId)
+  if (!row || row.id !== quoteId) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const q = await prisma.quote.findFirst({
+    where: { id: row.id },
+    select: {
+      id: true,
+      quoteNumber: true,
+      quoteCorrelative: true,
+      title: true,
+      address: true,
+      quoteStatus: true,
+      quoteSentAt: true,
+      quoteExpiresAt: true,
+      subtotal: true,
+      discount: true,
+      tax: true,
+      total: true,
+      quoteTermsConditions: true,
+      lineItems: {
+        select: {
+          id: true,
+          name: true,
+          itemType: true,
+          description: true,
+          quantity: true,
+          price: true,
+        },
+      },
+      client: { select: { name: true } },
+      business: { select: { name: true } },
+    },
+  })
+  if (!q) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  return {
+    id: q.id,
+    quoteId: q.id,
+    workOrderId: q.id,
+    quoteNumber: q.quoteNumber,
+    workOrderNumber: q.quoteNumber,
+    title: q.title,
+    address: q.address,
+    quoteStatus: q.quoteStatus,
+    quoteSentAt: q.quoteSentAt,
+    quoteExpiresAt: q.quoteExpiresAt,
+    subtotal: numericFromDb(q.subtotal),
+    discount: numericFromDb(q.discount),
+    tax: numericFromDb(q.tax),
+    total: numericFromDb(q.total),
+    quoteTermsConditions: q.quoteTermsConditions,
+    client: q.client,
+    businessName: q.business.name,
+    lineItems: q.lineItems.map(li => ({
+      id: li.id,
+      name: li.name,
+      itemType: li.itemType,
+      description: li.description,
+      quantity: li.quantity,
+      price: numericFromDb(li.price) ?? 0,
+    })),
+  }
+}
+
+function buildClientQuoteActionUrl(token: string, action: 'approve' | 'reject', quoteId: string): string {
   const base = BACKEND_PUBLIC_URL.replace(/\/$/, '')
-  return `${base}/api/quotes/client/respond?action=${action}&token=${encodeURIComponent(token)}`
+  const u = new URL(`${base}/api/quotes/client/respond`)
+  u.searchParams.set('action', action)
+  u.searchParams.set('token', token)
+  u.searchParams.set('quoteId', quoteId)
+  return u.toString()
 }
 
 function appendQuoteActionButtons(
@@ -898,8 +1071,8 @@ export async function sendQuoteEmail(
   const subject =
     options?.subject ??
     `Quote from ${displayName} - ${q.title} ${q.quoteCorrelative ?? ''}`.trim()
-  const approveUrl = buildClientQuoteActionUrl(actionToken, 'approve')
-  const rejectUrl = buildClientQuoteActionUrl(actionToken, 'reject')
+  const approveUrl = buildClientQuoteActionUrl(actionToken, 'approve', q.id)
+  const rejectUrl = buildClientQuoteActionUrl(actionToken, 'reject', q.id)
   const htmlBase =
     options?.message ??
     (await renderEmailTemplate('quote-created', {
@@ -1068,8 +1241,8 @@ export async function getQuoteEmailComposeData(businessId: string, quoteId: stri
     lineItemsSummary: summarizeQuoteLineItems(q.lineItems),
     total: formatMoney(q.total),
     logoUrl: q.business.logoUrl ?? undefined,
-    approveUrl: buildClientQuoteActionUrl(actionToken, 'approve'),
-    rejectUrl: buildClientQuoteActionUrl(actionToken, 'reject'),
+    approveUrl: buildClientQuoteActionUrl(actionToken, 'approve', q.id),
+    rejectUrl: buildClientQuoteActionUrl(actionToken, 'reject', q.id),
   })
   const attachments: Array<{
     id: string
@@ -1131,11 +1304,8 @@ export async function getQuoteEmailComposeData(businessId: string, quoteId: stri
   }
 }
 
-export async function clientApproveQuoteByToken(token: string) {
-  const row = await prisma.quote.findFirst({
-    where: { quoteClientActionToken: token },
-    select: { id: true, businessId: true, clientId: true, quoteStatus: true, quoteCorrelative: true },
-  })
+export async function clientApproveQuoteByToken(token: string, quoteIdHint?: string | null) {
+  const row = await findQuoteRowByClientActionToken(token, quoteIdHint)
   if (!row) {
     throw new WorkOrderNotFoundError()
   }
@@ -1155,15 +1325,12 @@ export async function clientApproveQuoteByToken(token: string) {
   return row
 }
 
-/** Resolve quote id for the token-based reject HTML page. */
-export async function resolveClientRejectFormQuote(token: string): Promise<
-  | { ok: true; quoteId: string }
-  | { ok: false; kind: 'not_found' | 'terminal' }
-> {
-  const row = await prisma.quote.findFirst({
-    where: { quoteClientActionToken: token },
-    select: { id: true, quoteStatus: true },
-  })
+/** Resolve quote id for client reject redirect (token + optional quoteId from email link). */
+export async function resolveClientRejectFormQuote(
+  token: string,
+  quoteIdHint?: string | null
+): Promise<{ ok: true; quoteId: string } | { ok: false; kind: 'not_found' | 'terminal' }> {
+  const row = await findQuoteRowByClientActionToken(token, quoteIdHint)
   if (!row) {
     return { ok: false, kind: 'not_found' }
   }
@@ -1174,13 +1341,10 @@ export async function resolveClientRejectFormQuote(token: string): Promise<
   return { ok: true, quoteId: row.id }
 }
 
-/** Public reject API: body is `{ quoteId, reason }` only (no token). */
-export async function clientRejectQuoteByQuoteId(quoteId: string, reason: string) {
-  const row = await prisma.quote.findFirst({
-    where: { id: quoteId },
-    select: { id: true, businessId: true, clientId: true, quoteStatus: true, quoteCorrelative: true },
-  })
-  if (!row) {
+/** Public reject API: `token` must match `quoteClientActionToken` for `quoteId`. */
+export async function clientRejectQuoteByQuoteId(quoteId: string, reason: string, token: string) {
+  const row = await findQuoteRowByClientActionToken(token.trim(), quoteId)
+  if (!row || row.id !== quoteId) {
     throw new WorkOrderNotFoundError()
   }
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
