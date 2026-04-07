@@ -193,6 +193,9 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
       if (error instanceof ClientNotFoundError) {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND') {
+        return c.json({ message: 'Team member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       console.error('Error creating invoice:', error)
       return c.json({ message: 'Failed to create invoice' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }

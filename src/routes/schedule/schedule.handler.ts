@@ -10,6 +10,9 @@ import {
   getDailySchedule,
   getScheduleItems,
   getTeamMembersForSchedule,
+  notifyAfterQuickCreateTask,
+  notifyAfterQuickCreateWorkOrder,
+  notifyAfterScheduleReschedule,
   quickCreateTask,
   quickCreateWorkOrder,
   rescheduleItem,
@@ -171,7 +174,20 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
       const { type, id } = c.req.valid('param')
       const body = c.req.valid('json')
 
-      const result = await rescheduleItem(businessId, id, type, body)
+      const { item: result, shouldNotifyReschedule } = await rescheduleItem(
+        businessId,
+        id,
+        type,
+        body
+      )
+
+      if (shouldNotifyReschedule) {
+        await notifyAfterScheduleReschedule(businessId, type, id, {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        })
+      }
 
       return c.json(
         { message: 'Item rescheduled successfully', success: true, data: result },
@@ -232,6 +248,12 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
         isAnyTime: body.isAnyTime,
       })
 
+      await notifyAfterQuickCreateWorkOrder(businessId, result.id, {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      })
+
       return c.json(
         { message: 'Work order created successfully', success: true, data: result },
         HttpStatusCodes.CREATED
@@ -287,6 +309,12 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
         endTime: body.endTime ?? null,
         isAnyTime: body.isAnyTime,
         workOrderId: body.workOrderId ?? null,
+      })
+
+      await notifyAfterQuickCreateTask(businessId, result.id, {
+        id: user.id,
+        email: user.email,
+        name: user.name,
       })
 
       return c.json(

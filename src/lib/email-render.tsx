@@ -6,12 +6,18 @@ import { AddTeamMemberEmail } from '../emails/admin/add.team-member'
 import { BookingConfirmationEmail } from '../emails/booking-confirmation'
 import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
+import { InvoiceAssignedTeamEmail } from '../emails/invoice-assigned-team'
+import { InvoiceCreatedClientEmail } from '../emails/invoice-created-client'
 import { QuoteCreatedEmail } from '../emails/quote-created'
 import { QuoteRejectedByClientEmail } from '../emails/quote-rejected-by-client'
 import { SettingsUpdatedEmail } from '../emails/settings-updated'
+import { TaskAssignedTeamEmail } from '../emails/task-assigned-team'
 import { TaskCreatedEmail } from '../emails/task-created'
+import { TaskRescheduledEmail } from '../emails/task-rescheduled'
 import { WelcomeEmail } from '../emails/welcome'
+import { WorkOrderAssignedTeamEmail } from '../emails/work-order-assigned-team'
 import { WorkOrderCreatedEmail } from '../emails/work-order-created'
+import { WorkOrderRescheduledEmail } from '../emails/work-order-rescheduled'
 
 const APP_NAME =
   (typeof globalThis !== 'undefined' &&
@@ -28,9 +34,15 @@ export type EmailTemplate =
   | 'client-profile-update'
   | 'booking-confirmation'
   | 'quote-created'
+  | 'invoice-created-client'
+  | 'invoice-assigned-team'
   | 'quote-rejected-by-client'
   | 'work-order-created'
+  | 'work-order-assigned-team'
+  | 'work-order-rescheduled'
   | 'task-created'
+  | 'task-assigned-team'
+  | 'task-rescheduled'
   | 'settings-updated'
 
 export const emailSubjects: Record<EmailTemplate, string> = {
@@ -38,12 +50,18 @@ export const emailSubjects: Record<EmailTemplate, string> = {
   'add-team-member': `${APP_NAME} - Your team member login for the portal`,
   welcome: `Welcome to ${APP_NAME}!`,
   'email-verification': 'Verify your email address',
-  'client-profile-update': `${APP_NAME} - Update to your client profile`,
+  'client-profile-update': `${APP_NAME} - your client profile has been created`,
   'booking-confirmation': 'Booking Confirmation',
   'quote-created': 'Your quote is ready',
+  'invoice-created-client': 'New invoice',
+  'invoice-assigned-team': "You've been assigned to an invoice",
   'quote-rejected-by-client': 'A client rejected your quote',
   'work-order-created': 'New work order created',
+  'work-order-assigned-team': "You've been assigned to a work order",
+  'work-order-rescheduled': 'Your work order schedule has been rescheduled',
   'task-created': 'New task assigned',
+  'task-assigned-team': "You've been assigned to a task",
+  'task-rescheduled': 'Your task schedule has been rescheduled',
   'settings-updated': 'Your company settings have been updated',
 } as const
 
@@ -146,8 +164,8 @@ export async function renderEmailTemplate(
         lineItemsSummary,
         total,
         logoUrl,
-          approveUrl,
-          rejectUrl,
+        approveUrl,
+        rejectUrl,
       } = data
       return render(
         <QuoteCreatedEmail
@@ -165,6 +183,82 @@ export async function renderEmailTemplate(
           logoUrl={logoUrl}
           approveUrl={approveUrl}
           rejectUrl={rejectUrl}
+        />
+      )
+    }
+    case 'invoice-created-client': {
+      const {
+        clientName,
+        businessName,
+        invoiceNumber,
+        title,
+        address,
+        createdDate,
+        assignedTeamMemberName,
+        lineItemsSummary,
+        subtotal,
+        tax,
+        total,
+        balance,
+        workOrderSummary,
+        logoUrl,
+      } = data
+      return render(
+        <InvoiceCreatedClientEmail
+          clientName={clientName}
+          businessName={businessName}
+          invoiceNumber={invoiceNumber}
+          title={title}
+          address={address}
+          createdDate={createdDate}
+          assignedTeamMemberName={assignedTeamMemberName}
+          lineItemsSummary={lineItemsSummary ?? ''}
+          subtotal={subtotal}
+          tax={tax}
+          total={total}
+          balance={balance}
+          workOrderSummary={workOrderSummary ?? null}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'invoice-assigned-team': {
+      const {
+        assigneeName,
+        businessName,
+        invoiceNumber,
+        title,
+        clientName,
+        clientPhone,
+        address,
+        createdDate,
+        lineItemsSummary,
+        subtotal,
+        tax,
+        total,
+        balance,
+        workOrderSummary,
+        observations,
+        logoUrl,
+      } = data
+      return render(
+        <InvoiceAssignedTeamEmail
+          assigneeName={assigneeName}
+          businessName={businessName}
+          invoiceNumber={invoiceNumber}
+          title={title}
+          clientName={clientName}
+          clientPhone={clientPhone}
+          address={address}
+          createdDate={createdDate}
+          lineItemsSummary={lineItemsSummary ?? ''}
+          subtotal={subtotal}
+          tax={tax}
+          total={total}
+          balance={balance}
+          workOrderSummary={workOrderSummary ?? null}
+          observations={observations}
+          logoUrl={logoUrl}
         />
       )
     }
@@ -226,6 +320,40 @@ export async function renderEmailTemplate(
         />
       )
     }
+    case 'work-order-assigned-team': {
+      const {
+        assigneeName,
+        businessName,
+        workOrderNumber,
+        title,
+        clientName,
+        clientPhone,
+        address,
+        date,
+        timeRange,
+        lineItemsSummary,
+        instructions,
+        total,
+        logoUrl,
+      } = data
+      return render(
+        <WorkOrderAssignedTeamEmail
+          assigneeName={assigneeName}
+          businessName={businessName}
+          workOrderNumber={workOrderNumber}
+          title={title}
+          clientName={clientName}
+          clientPhone={clientPhone}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          lineItemsSummary={lineItemsSummary ?? ''}
+          instructions={instructions}
+          total={total}
+          logoUrl={logoUrl}
+        />
+      )
+    }
     case 'task-created': {
       const {
         clientName,
@@ -240,6 +368,88 @@ export async function renderEmailTemplate(
       } = data
       return render(
         <TaskCreatedEmail
+          clientName={clientName}
+          businessName={businessName}
+          title={title}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          assignedTeamMemberName={assignedTeamMemberName}
+          instructions={instructions}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'task-assigned-team': {
+      const {
+        assigneeName,
+        businessName,
+        title,
+        clientName,
+        clientPhone,
+        address,
+        date,
+        timeRange,
+        instructions,
+        logoUrl,
+      } = data
+      return render(
+        <TaskAssignedTeamEmail
+          assigneeName={assigneeName}
+          businessName={businessName}
+          title={title}
+          clientName={clientName}
+          clientPhone={clientPhone}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          instructions={instructions}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'work-order-rescheduled': {
+      const {
+        clientName,
+        businessName,
+        workOrderNumber,
+        title,
+        address,
+        date,
+        timeRange,
+        assignedTeamMemberName,
+        instructions,
+        logoUrl,
+      } = data
+      return render(
+        <WorkOrderRescheduledEmail
+          clientName={clientName}
+          businessName={businessName}
+          workOrderNumber={workOrderNumber}
+          title={title}
+          address={address}
+          date={date}
+          timeRange={timeRange}
+          assignedTeamMemberName={assignedTeamMemberName}
+          instructions={instructions}
+          logoUrl={logoUrl}
+        />
+      )
+    }
+    case 'task-rescheduled': {
+      const {
+        clientName,
+        businessName,
+        title,
+        address,
+        date,
+        timeRange,
+        assignedTeamMemberName,
+        instructions,
+        logoUrl,
+      } = data
+      return render(
+        <TaskRescheduledEmail
           clientName={clientName}
           businessName={businessName}
           title={title}

@@ -1,4 +1,5 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { resolvePortalAccess } from '~/lib/portal-access'
 import type { CLIENT_ROUTES } from '~/routes/clients/client.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
@@ -11,7 +12,6 @@ import {
   getLeadSources,
   updateClientByClientId,
 } from '~/services/client.service'
-import { resolvePortalAccess } from '~/lib/portal-access'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
@@ -57,6 +57,52 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       console.error('Error fetching clients:', error)
       return c.json(
         { message: 'Failed to retrieve clients' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  listArchived: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json(
+        { message: 'only business owners can list clients' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to list clients' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const query = c.req.valid('query')
+      const page = query.page ? Number.parseInt(query.page, 10) : 1
+      const limit = query.limit ? Number.parseInt(query.limit, 10) : 10
+      const result = await getClients(businessId, {
+        search: query.search,
+        status: 'ARCHIVED',
+        sortBy: query.sortBy,
+        order: query.order,
+        page,
+        limit,
+      })
+      return c.json(
+        { message: 'Archived clients retrieved successfully', success: true, data: result },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error fetching archived clients:', error)
+      return c.json(
+        { message: 'Failed to retrieve archived clients' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

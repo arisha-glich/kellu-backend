@@ -6,6 +6,26 @@ import { zodResponseSchema } from '~/lib/zod-helper'
 /** List filter only — maps to no status filter when ALL */
 const ClientStatusFilterEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP', 'ALL'])
 const ClientStatusOnlyEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP'])
+
+/** Normalize query typos/casing (e.g. `archived`, ` Archived `) for reliable filters. */
+function normalizeClientListStatusQuery(
+  v: unknown
+): z.infer<typeof ClientStatusFilterEnum> | undefined {
+  if (v === undefined || v === null) {
+    return undefined
+  }
+  if (typeof v !== 'string') {
+    return undefined
+  }
+  const s = v.trim().toUpperCase()
+  if (s === '' || s === 'ALL') {
+    return 'ALL'
+  }
+  if (s === 'ACTIVE' || s === 'ARCHIVED' || s === 'FOLLOW_UP') {
+    return s
+  }
+  return undefined
+}
 /** Matches Prisma `LeadSource` (no UI-only values like All) */
 const LeadSourcePrismaEnum = z.enum(['Website', 'SocialMedia', 'Referral', 'Other'])
 
@@ -27,7 +47,7 @@ export const ClientListQuerySchema = z.object({
       param: { name: 'search', in: 'query' },
       description: 'Search by name, email, or phone',
     }),
-  status: ClientStatusFilterEnum.optional().openapi({
+  status: z.preprocess(normalizeClientListStatusQuery, ClientStatusFilterEnum.optional()).openapi({
     param: { name: 'status', in: 'query' },
     description: 'Filter by status (ACTIVE, ARCHIVED, FOLLOW_UP, ALL)',
   }),
@@ -48,6 +68,9 @@ export const ClientListQuerySchema = z.object({
     .optional()
     .openapi({ param: { name: 'limit', in: 'query' } }),
 })
+
+/** Same as list but without `status` (used for GET /archived). */
+export const ClientArchivedListQuerySchema = ClientListQuerySchema.omit({ status: true })
 
 export const ClientListItemSchema = z.object({
   id: z.string(),
@@ -134,6 +157,21 @@ export const CLIENT_ROUTES = {
     path: '/',
     summary: 'List clients with filters and pagination',
     request: { query: ClientListQuerySchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ClientListResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  listArchived: createRoute({
+    method: 'get',
+    tags: ['Clients'],
+    path: '/archived',
+    summary: 'List archived clients (status ARCHIVED only)',
+    request: { query: ClientArchivedListQuerySchema },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ClientListResponseSchema), 'OK'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),

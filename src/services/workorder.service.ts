@@ -13,6 +13,7 @@ import {
   clientToCustomerFrom,
   sendBookingConfirmationEmail,
   sendCustomerReminderEmail,
+  sendWorkOrderAssignedToTeamMemberEmail,
   sendWorkOrderCreatedEmail,
 } from '~/services/email-helpers'
 
@@ -111,7 +112,10 @@ function deriveJobStatus(data: {
 }
 
 /** When a job WO advances, convert any APPROVED quote linked via `relatedWorkOrderId`. */
-async function convertQuotesWhenJobAdvances(businessId: string, workOrderId: string): Promise<void> {
+async function convertQuotesWhenJobAdvances(
+  businessId: string,
+  workOrderId: string
+): Promise<void> {
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
     select: { jobStatus: true },
@@ -347,6 +351,98 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
 
+function lineItemsSummaryForWorkOrderEmail(
+  lineItems: Array<{ name: string; quantity: number; price: unknown }>
+): string {
+  return lineItems
+    .map(
+      li =>
+        `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
+    )
+    .join('\n')
+}
+
+/** Client + assigned team member emails after work order creation (failures logged only). */
+async function sendWorkOrderCreatedNotificationEmails(
+  businessId: string,
+  woId: string
+): Promise<void> {
+  try {
+    const woForEmail = await prisma.workOrder.findFirst({
+      where: { id: woId, businessId },
+      include: {
+        client: { select: { name: true, email: true, phone: true } },
+        assignedTo: { include: { user: { select: { name: true, email: true } } } },
+        business: { include: { settings: { select: { replyToEmail: true } } } },
+        lineItems: true,
+      },
+    })
+    if (!woForEmail?.business || !woForEmail.client) {
+      return
+    }
+
+    const companyReplyTo =
+      woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
+    const assignedName = woForEmail.assignedTo?.user?.name ?? 'Our team'
+    const dateStr = formatBookingDate(woForEmail.scheduledAt)
+    const timeRangeStr = formatTimeRange(
+      woForEmail.startTime,
+      woForEmail.endTime,
+      woForEmail.scheduledAt
+    )
+    const lineItemsSummary = lineItemsSummaryForWorkOrderEmail(woForEmail.lineItems)
+    const totalStr =
+      woForEmail.total != null ? `$${Number(woForEmail.total).toFixed(2)}` : undefined
+    const taxStr = `$${Number(woForEmail.tax ?? 0).toFixed(2)}`
+    const logoUrl = woForEmail.business.logoUrl ?? undefined
+    const woNumber = woForEmail.workOrderNumber ?? `#${woForEmail.id}`
+
+    const clientEmail = woForEmail.client.email?.trim()
+    if (clientEmail) {
+      sendWorkOrderCreatedEmail({
+        to: clientEmail,
+        clientName: woForEmail.client.name,
+        businessName: woForEmail.business.name,
+        companyReplyTo,
+        companyLogoUrl: logoUrl,
+        workOrderNumber: woNumber,
+        title: woForEmail.title,
+        address: woForEmail.address ?? '',
+        date: dateStr,
+        timeRange: timeRangeStr,
+        assignedTeamMemberName: assignedName,
+        lineItemsSummary,
+        tax: taxStr,
+        instructions: woForEmail.instructions,
+        total: totalStr,
+      })
+    }
+
+    const assigneeEmail = woForEmail.assignedTo?.user?.email?.trim()
+    if (assigneeEmail) {
+      sendWorkOrderAssignedToTeamMemberEmail({
+        to: assigneeEmail,
+        assigneeName: woForEmail.assignedTo?.user?.name ?? 'there',
+        businessName: woForEmail.business.name,
+        companyReplyTo,
+        companyLogoUrl: logoUrl,
+        workOrderNumber: woNumber,
+        title: woForEmail.title,
+        clientName: woForEmail.client.name,
+        clientPhone: woForEmail.client.phone,
+        address: woForEmail.address ?? '',
+        date: dateStr,
+        timeRange: timeRangeStr,
+        lineItemsSummary,
+        instructions: woForEmail.instructions,
+        total: totalStr,
+      })
+    }
+  } catch (e) {
+    console.error('[WORK_ORDER] Failed to send work order created / assignee email:', e)
+  }
+}
+
 /** Create work order (§6.3). Sets invoice_status=NOT_SENT, derives job status. */
 export async function createWorkOrder(businessId: string, input: CreateWorkOrderInput) {
   await ensureBusinessExists(businessId)
@@ -413,60 +509,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   })
 
   const result = await getWorkOrderById(businessId, wo.id)
-  const clientEmail = result.client?.email?.trim()
-  if (clientEmail) {
-    try {
-      const woForEmail = await prisma.workOrder.findFirst({
-        where: { id: wo.id, businessId },
-        include: {
-          client: { select: { name: true, email: true } },
-          assignedTo: { include: { user: { select: { name: true } } } },
-          business: { include: { settings: { select: { replyToEmail: true } } } },
-          lineItems: true,
-        },
-      })
-      if (woForEmail?.client?.email && woForEmail.business) {
-        const companyReplyTo =
-          woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
-        const assignedName = woForEmail.assignedTo?.user?.name ?? 'Our team'
-        const dateStr = formatBookingDate(woForEmail.scheduledAt)
-        const timeRangeStr = formatTimeRange(
-          woForEmail.startTime,
-          woForEmail.endTime,
-          woForEmail.scheduledAt
-        )
-        const lineItemsSummary = woForEmail.lineItems
-          .map(
-            li =>
-              `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
-          )
-          .join('\n')
-        const totalStr =
-          woForEmail.total != null ? `$${Number(woForEmail.total).toFixed(2)}` : undefined
-        const taxStr = `$${Number(woForEmail.tax ?? 0).toFixed(2)}`
-        sendWorkOrderCreatedEmail({
-          to: woForEmail.client.email,
-          clientName: woForEmail.client.name,
-          businessName: woForEmail.business.name,
-          companyReplyTo,
-          companyLogoUrl: woForEmail.business.logoUrl ?? undefined,
-          workOrderNumber: woForEmail.workOrderNumber ?? `#${woForEmail.id}`,
-          title: woForEmail.title,
-          address: woForEmail.address ?? '',
-          date: dateStr,
-          timeRange: timeRangeStr,
-          assignedTeamMemberName: assignedName,
-          lineItemsSummary,
-          tax: taxStr,
-          instructions: woForEmail.instructions,
-          total: totalStr,
-        })
-      }
-    } catch (e) {
-      console.error('[WORK_ORDER] Failed to send work order created email:', e)
-    }
-  }
-
+  await sendWorkOrderCreatedNotificationEmails(businessId, wo.id)
   return result
 }
 
@@ -500,11 +543,9 @@ export async function updateWorkOrder(
     input.isScheduleLater !== undefined
 
   const mergedForStatus = {
-    scheduledAt:
-      input.scheduledAt !== undefined ? input.scheduledAt : existing.scheduledAt,
+    scheduledAt: input.scheduledAt !== undefined ? input.scheduledAt : existing.scheduledAt,
     startTime: input.startTime !== undefined ? input.startTime : existing.startTime,
-    assignedToId:
-      input.assignedToId !== undefined ? input.assignedToId : existing.assignedToId,
+    assignedToId: input.assignedToId !== undefined ? input.assignedToId : existing.assignedToId,
     isAnyTime: input.isAnyTime !== undefined ? input.isAnyTime : existing.isAnyTime,
   }
 
@@ -530,7 +571,8 @@ export async function updateWorkOrder(
       ...(input.isAnyTime !== undefined && { isAnyTime: input.isAnyTime }),
       ...(input.isAnyTime === true && { startTime: null, endTime: null }),
       ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt }),
-      ...(input.startTime !== undefined && input.isAnyTime !== true && { startTime: input.startTime }),
+      ...(input.startTime !== undefined &&
+        input.isAnyTime !== true && { startTime: input.startTime }),
       ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
       ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
       ...(input.invoiceClientMessage !== undefined && {

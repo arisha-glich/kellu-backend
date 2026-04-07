@@ -167,6 +167,267 @@ export function sendWorkOrderCreatedEmail(params: SendWorkOrderCreatedEmailParam
   })
 }
 
+export interface SendWorkOrderAssignedToTeamMemberEmailParams {
+  to: string
+  assigneeName: string
+  businessName: string
+  companyReplyTo: string
+  workOrderNumber: string
+  title: string
+  clientName: string
+  clientPhone?: string | null
+  address: string
+  date: string
+  timeRange: string
+  lineItemsSummary?: string
+  instructions?: string | null
+  total?: string
+  companyLogoUrl?: string | null
+  subject?: string
+}
+
+/**
+ * Notify assigned team member about a new work order (Client → Their team, same From/Reply-To as customer-facing).
+ */
+export function sendWorkOrderAssignedToTeamMemberEmail(
+  params: SendWorkOrderAssignedToTeamMemberEmailParams
+): void {
+  const {
+    to,
+    assigneeName,
+    businessName,
+    companyReplyTo,
+    workOrderNumber,
+    title,
+    clientName,
+    clientPhone,
+    address,
+    date,
+    timeRange,
+    lineItemsSummary,
+    instructions,
+    total,
+    companyLogoUrl,
+    subject,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'work-order-assigned-team' as EmailTemplate,
+    payload: {
+      assigneeName,
+      businessName,
+      workOrderNumber,
+      title,
+      clientName,
+      ...(clientPhone?.trim() ? { clientPhone: clientPhone.trim() } : {}),
+      address,
+      date,
+      timeRange,
+      lineItemsSummary: lineItemsSummary ?? '',
+      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+      ...(total != null && total !== '' ? { total } : {}),
+      logoUrl: companyLogoUrl ?? undefined,
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
+export interface SendInvoiceCreatedClientEmailParams {
+  to: string
+  clientName: string
+  businessName: string
+  companyReplyTo: string
+  invoiceNumber: string
+  title: string
+  address: string
+  createdDate: string
+  assignedTeamMemberName: string
+  lineItemsSummary: string
+  subtotal?: string
+  tax?: string
+  total?: string
+  balance?: string
+  workOrderSummary?: string | null
+  companyLogoUrl?: string | null
+  subject?: string
+}
+
+export function sendInvoiceCreatedClientEmail(params: SendInvoiceCreatedClientEmailParams): void {
+  const {
+    to,
+    clientName,
+    businessName,
+    companyReplyTo,
+    invoiceNumber,
+    title,
+    address,
+    createdDate,
+    assignedTeamMemberName,
+    lineItemsSummary,
+    subtotal,
+    tax,
+    total,
+    balance,
+    workOrderSummary,
+    companyLogoUrl,
+    subject,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'invoice-created-client' as EmailTemplate,
+    payload: {
+      clientName,
+      businessName,
+      invoiceNumber,
+      title,
+      address,
+      createdDate,
+      assignedTeamMemberName,
+      lineItemsSummary: lineItemsSummary ?? '',
+      ...(subtotal != null && subtotal !== '' ? { subtotal } : {}),
+      ...(tax != null && tax !== '' ? { tax } : {}),
+      ...(total != null && total !== '' ? { total } : {}),
+      ...(balance != null && balance !== '' ? { balance } : {}),
+      ...(workOrderSummary?.trim() ? { workOrderSummary: workOrderSummary.trim() } : {}),
+      logoUrl: companyLogoUrl ?? undefined,
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
+export interface SendInvoiceAssignedToTeamMemberEmailParams {
+  to: string
+  assigneeName: string
+  businessName: string
+  companyReplyTo: string
+  invoiceNumber: string
+  title: string
+  clientName: string
+  clientPhone?: string | null
+  address: string
+  createdDate: string
+  lineItemsSummary: string
+  subtotal?: string
+  tax?: string
+  total?: string
+  balance?: string
+  workOrderSummary?: string | null
+  observations?: string | null
+  companyLogoUrl?: string | null
+  subject?: string
+}
+
+export function sendInvoiceAssignedToTeamMemberEmail(
+  params: SendInvoiceAssignedToTeamMemberEmailParams
+): void {
+  const {
+    to,
+    assigneeName,
+    businessName,
+    companyReplyTo,
+    invoiceNumber,
+    title,
+    clientName,
+    clientPhone,
+    address,
+    createdDate,
+    lineItemsSummary,
+    subtotal,
+    tax,
+    total,
+    balance,
+    workOrderSummary,
+    observations,
+    companyLogoUrl,
+    subject,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'invoice-assigned-team' as EmailTemplate,
+    payload: {
+      assigneeName,
+      businessName,
+      invoiceNumber,
+      title,
+      clientName,
+      ...(clientPhone?.trim() ? { clientPhone: clientPhone.trim() } : {}),
+      address,
+      createdDate,
+      lineItemsSummary: lineItemsSummary ?? '',
+      ...(subtotal != null && subtotal !== '' ? { subtotal } : {}),
+      ...(tax != null && tax !== '' ? { tax } : {}),
+      ...(total != null && total !== '' ? { total } : {}),
+      ...(balance != null && balance !== '' ? { balance } : {}),
+      ...(workOrderSummary?.trim() ? { workOrderSummary: workOrderSummary.trim() } : {}),
+      ...(observations?.trim() ? { observations: observations.trim() } : {}),
+      logoUrl: companyLogoUrl ?? undefined,
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
+export interface SendWorkOrderRescheduledEmailParams {
+  to: string
+  clientName: string
+  businessName: string
+  companyReplyTo: string
+  workOrderNumber: string
+  title: string
+  address: string
+  date: string
+  timeRange: string
+  assignedTeamMemberName: string
+  subject?: string
+  companyLogoUrl?: string | null
+  instructions?: string | null
+}
+
+/**
+ * Notify customer that a work order's schedule was updated (Client → Their Customers).
+ */
+export function sendWorkOrderRescheduledEmail(params: SendWorkOrderRescheduledEmailParams): void {
+  const {
+    to,
+    clientName,
+    businessName,
+    companyReplyTo,
+    workOrderNumber,
+    title,
+    address,
+    date,
+    timeRange,
+    assignedTeamMemberName,
+    subject,
+    companyLogoUrl,
+    instructions,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'work-order-rescheduled' as EmailTemplate,
+    payload: {
+      clientName,
+      businessName,
+      workOrderNumber,
+      title,
+      address,
+      date,
+      timeRange,
+      assignedTeamMemberName,
+      logoUrl: companyLogoUrl ?? undefined,
+      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
 export interface SendTaskCreatedEmailParams {
   to: string
   clientName: string
@@ -223,6 +484,115 @@ export function sendTaskCreatedEmail(params: SendTaskCreatedEmailParams): void {
   })
 }
 
+export interface SendTaskAssignedToTeamMemberEmailParams {
+  to: string
+  assigneeName: string
+  businessName: string
+  companyReplyTo: string
+  title: string
+  clientName: string
+  clientPhone?: string | null
+  address: string
+  date: string
+  timeRange: string
+  instructions?: string | null
+  companyLogoUrl?: string | null
+  subject?: string
+}
+
+/** Notify assigned team member about a new task (same From/Reply-To as customer-facing). */
+export function sendTaskAssignedToTeamMemberEmail(
+  params: SendTaskAssignedToTeamMemberEmailParams
+): void {
+  const {
+    to,
+    assigneeName,
+    businessName,
+    companyReplyTo,
+    title,
+    clientName,
+    clientPhone,
+    address,
+    date,
+    timeRange,
+    instructions,
+    companyLogoUrl,
+    subject,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'task-assigned-team' as EmailTemplate,
+    payload: {
+      assigneeName,
+      businessName,
+      title,
+      clientName,
+      ...(clientPhone?.trim() ? { clientPhone: clientPhone.trim() } : {}),
+      address,
+      date,
+      timeRange,
+      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+      logoUrl: companyLogoUrl ?? undefined,
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
+export interface SendTaskRescheduledEmailParams {
+  to: string
+  clientName: string
+  businessName: string
+  companyReplyTo: string
+  title: string
+  address: string
+  date: string
+  timeRange: string
+  assignedTeamMemberName: string
+  subject?: string
+  companyLogoUrl?: string | null
+  instructions?: string | null
+}
+
+/**
+ * Notify customer that a task's schedule was updated (Client → Their Customers).
+ */
+export function sendTaskRescheduledEmail(params: SendTaskRescheduledEmailParams): void {
+  const {
+    to,
+    clientName,
+    businessName,
+    companyReplyTo,
+    title,
+    address,
+    date,
+    timeRange,
+    assignedTeamMemberName,
+    subject,
+    companyLogoUrl,
+    instructions,
+  } = params
+  appEventEmitter.emit('mail:send-template', {
+    to,
+    template: 'task-rescheduled' as EmailTemplate,
+    payload: {
+      clientName,
+      businessName,
+      title,
+      address,
+      date,
+      timeRange,
+      assignedTeamMemberName,
+      logoUrl: companyLogoUrl ?? undefined,
+      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+    },
+    from: clientToCustomerFrom(businessName),
+    replyTo: companyReplyTo,
+    subjectOverride: subject,
+  })
+}
+
 /**
  * Send team member invitation with login credentials, dashboard link, role and permissions (Kellu → Team member).
  */
@@ -244,7 +614,8 @@ export interface SendTeamMemberInvitationParams {
 export async function sendTeamMemberInvitationEmail(
   params: SendTeamMemberInvitationParams
 ): Promise<void> {
-  const { to, memberName, businessName, roleName, email, password, description, permissions } = params
+  const { to, memberName, businessName, roleName, email, password, description, permissions } =
+    params
   const portalType = params.portalType ?? 'business'
   const loginUrl = portalType === 'admin' ? getAdminDashboardLoginUrl() : getDashboardLoginUrl()
   const portalLabel = portalType === 'admin' ? 'admin dashboard' : 'business dashboard'

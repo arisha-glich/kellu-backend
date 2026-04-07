@@ -16,6 +16,7 @@ import {
   removeMember,
   updateMember,
 } from '~/services/team.service'
+import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
@@ -100,6 +101,29 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         emailDescription: body.emailDescription,
         portalType: 'business',
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'TEAM_MEMBER_CREATED',
+          title: `You added a team member - ${member.user.name}`,
+          message: `${member.user.email} - ${member.role.displayName ?? member.role.name}`,
+          metadata: {
+            memberId: member.id,
+            memberName: member.user.name,
+            memberEmail: member.user.email,
+            roleId: member.role.id,
+            roleName: member.role.displayName ?? member.role.name,
+          },
+        })
+        await sendUserOperationEmail({
+          to: user.email,
+          userName: user.name,
+          actionTitle: 'Team member added successfully',
+          actionMessage: `Your team member "${member.user.name}" was added successfully.`,
+        })
+      } catch (notifyError) {
+        console.error('Team member notification/email failed:', notifyError)
+      }
       return c.json(
         { message: 'Team member added successfully', success: true, data: member },
         HttpStatusCodes.CREATED

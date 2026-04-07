@@ -9,7 +9,11 @@ import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
-import { clientToCustomerFrom } from '~/services/email-helpers'
+import {
+  clientToCustomerFrom,
+  sendInvoiceAssignedToTeamMemberEmail,
+  sendInvoiceCreatedClientEmail,
+} from '~/services/email-helpers'
 
 export class InvoiceNotFoundError extends Error {
   constructor() {
@@ -287,6 +291,133 @@ export async function getInvoiceOverview(businessId: string): Promise<InvoiceOve
   }
 }
 
+function invoiceLineItemsSummaryForEmail(
+  lineItems: Array<{ name: string; quantity: number; price: unknown }>
+): string {
+  if (!lineItems.length) {
+    return ''
+  }
+  return lineItems
+    .map(li => {
+      const unit = Number(li.price)
+      const line = unit * li.quantity
+      return `${li.name} x ${li.quantity} @ $${unit.toFixed(2)} = $${line.toFixed(2)}`
+    })
+    .join('\n')
+}
+
+function invoiceMoney(d: unknown): string | undefined {
+  if (d == null) {
+    return undefined
+  }
+  return `$${toNum(d).toFixed(2)}`
+}
+
+function invoiceWorkOrderSummary(
+  workOrder: { workOrderNumber: string | null; title: string } | null
+): string | null {
+  if (!workOrder) {
+    return null
+  }
+  const num = workOrder.workOrderNumber?.trim() || 'Job'
+  return `${num} — ${workOrder.title}`
+}
+
+/** Client + assigned team member emails after invoice creation (failures logged only). */
+async function sendInvoiceCreatedNotificationEmails(
+  businessId: string,
+  invoiceId: string
+): Promise<void> {
+  try {
+    const inv = await prisma.invoice.findFirst({
+      where: { id: invoiceId, businessId },
+      include: {
+        client: { select: { name: true, email: true, phone: true } },
+        business: { include: { settings: { select: { replyToEmail: true } } } },
+        lineItems: { select: { name: true, quantity: true, price: true } },
+        assignedTo: { include: { user: { select: { name: true, email: true } } } },
+        workOrder: { select: { workOrderNumber: true, title: true } },
+      },
+    })
+    if (!inv?.business || !inv.client) {
+      return
+    }
+
+    const companyReplyTo = inv.business.settings?.replyToEmail?.trim() || inv.business.email
+    const logoUrl = inv.business.logoUrl ?? undefined
+    const invNumber = inv.invoiceNumber?.trim() || inv.id
+    const lineItemsSummary = invoiceLineItemsSummaryForEmail(inv.lineItems)
+    const createdDate = inv.createdAt.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    const addressDisplay = inv.address?.trim() || '—'
+    const workOrderSummary = invoiceWorkOrderSummary(inv.workOrder)
+    const assignedName = inv.assignedTo?.user?.name ?? 'Our team'
+    const subtotalStr = invoiceMoney(inv.subtotal)
+    const taxStr = invoiceMoney(inv.tax)
+    const totalStr = invoiceMoney(inv.total)
+    const balanceStr = invoiceMoney(inv.balance)
+
+    try {
+      const clientEmail = inv.client.email?.trim()
+      if (clientEmail) {
+        sendInvoiceCreatedClientEmail({
+          to: clientEmail,
+          clientName: inv.client.name,
+          businessName: inv.business.name,
+          companyReplyTo,
+          companyLogoUrl: logoUrl,
+          invoiceNumber: invNumber,
+          title: inv.title,
+          address: addressDisplay,
+          createdDate,
+          assignedTeamMemberName: assignedName,
+          lineItemsSummary,
+          subtotal: subtotalStr,
+          tax: taxStr,
+          total: totalStr,
+          balance: balanceStr,
+          workOrderSummary,
+        })
+      }
+    } catch (e) {
+      console.error('[INVOICE] Failed to send invoice created client email:', e)
+    }
+
+    try {
+      const assigneeEmail = inv.assignedTo?.user?.email?.trim()
+      if (assigneeEmail && inv.assignedTo?.user) {
+        sendInvoiceAssignedToTeamMemberEmail({
+          to: assigneeEmail,
+          assigneeName: inv.assignedTo.user.name ?? 'there',
+          businessName: inv.business.name,
+          companyReplyTo,
+          companyLogoUrl: logoUrl,
+          invoiceNumber: invNumber,
+          title: inv.title,
+          clientName: inv.client.name,
+          clientPhone: inv.client.phone,
+          address: addressDisplay,
+          createdDate,
+          lineItemsSummary,
+          subtotal: subtotalStr,
+          tax: taxStr,
+          total: totalStr,
+          balance: balanceStr,
+          workOrderSummary,
+          observations: inv.observations,
+        })
+      }
+    } catch (e) {
+      console.error('[INVOICE] Failed to send invoice assignee email:', e)
+    }
+  } catch (e) {
+    console.error('[INVOICE] Failed to send invoice created notification emails:', e)
+  }
+}
+
 /** Get single invoice by id with client, lineItems, payments. */
 export async function getInvoiceById(businessId: string, invoiceId: string) {
   await ensureBusinessExists(businessId)
@@ -336,6 +467,16 @@ export async function createInvoice(
     throw new ClientNotFoundError()
   }
 
+  if (input.assignedToId) {
+    const member = await prisma.member.findFirst({
+      where: { id: input.assignedToId, businessId },
+      select: { id: true },
+    })
+    if (!member) {
+      throw new Error('MEMBER_NOT_FOUND')
+    }
+  }
+
   const invoiceNumber = await nextInvoiceNumber(businessId)
 
   const inv = await prisma.$transaction(async tx => {
@@ -371,6 +512,7 @@ export async function createInvoice(
     return created
   })
 
+  await sendInvoiceCreatedNotificationEmails(businessId, inv.id)
   return getInvoiceById(businessId, inv.id)
 }
 
