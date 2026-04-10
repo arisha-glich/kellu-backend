@@ -228,7 +228,7 @@ model Member {
   role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   assignedTasks         Task[]                @relation("TaskAssignee")
-  assignedWorkOrders    WorkOrder[]           @relation("WorkOrderAssignee")
+  primaryAssignedWorkOrders WorkOrder[]       @relation("WorkOrderPrimaryAssignee")
   workOrderAssignments  WorkOrderAssignment[]
   assignedQuotes        Quote[]               @relation("QuoteAssignee")
   assignedInvoices      Invoice[]
@@ -365,8 +365,8 @@ model WorkOrder {
   client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  assignedToId String?
-  assignedTo   Member?               @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  primaryAssigneeId String? @map("assignedToId")
+  primaryAssignee   Member? @relation("WorkOrderPrimaryAssignee", fields: [primaryAssigneeId], references: [id], onDelete: SetNull)
   assignees    WorkOrderAssignment[]
 
   quotesRelatedTo     Quote[] @relation("QuoteRelatedWorkOrder")

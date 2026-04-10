@@ -130,7 +130,7 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 // Derives job status from schedule fields (planning statuses are automatic)
 function deriveJobStatus(wo: {
   scheduledAt: Date | null
-  assignedToId: string | null
+  primaryAssigneeId: string | null
   jobStatus: string
 }): string {
   // Execution statuses are manual — don't override them
@@ -142,7 +142,7 @@ function deriveJobStatus(wo: {
   if (!wo.scheduledAt) {
     return 'UNSCHEDULED'
   }
-  if (!wo.assignedToId) {
+  if (!wo.primaryAssigneeId) {
     return 'UNASSIGNED'
   }
   return 'SCHEDULED'
@@ -157,14 +157,14 @@ function mapWorkOrderToItem(wo: {
   endTime: string | null
   isScheduleLater: boolean
   isAnyTime: boolean
-  assignedToId: string | null
+  primaryAssigneeId: string | null
   jobStatus: string
   invoiceStatus: string
   completedAt: Date | null
   workOrderNumber: string | null
   clientId: string
   client: { name: string } | null
-  assignedTo: {
+  primaryAssignee: {
     user: { name: string | null }
     calendarColor?: string | null
   } | null
@@ -181,9 +181,9 @@ function mapWorkOrderToItem(wo: {
     endTime: wo.endTime,
     isAnyTime: wo.isAnyTime,
     isScheduleLater: wo.isScheduleLater,
-    assignedToId: wo.assignedToId,
-    assignedToName: wo.assignedTo?.user?.name ?? null,
-    assignedToColor: wo.assignedTo?.calendarColor ?? null,
+    assignedToId: wo.primaryAssigneeId,
+    assignedToName: wo.primaryAssignee?.user?.name ?? null,
+    assignedToColor: wo.primaryAssignee?.calendarColor ?? null,
     status: deriveJobStatus(wo),
     completedAt: wo.completedAt,
     workOrderNumber: wo.workOrderNumber,
@@ -238,7 +238,7 @@ function mapTaskToItem(t: {
 
 const WORK_ORDER_INCLUDE = {
   client: { select: { name: true } },
-  assignedTo: {
+  primaryAssignee: {
     include: { user: { select: { name: true } } },
   },
 } satisfies Prisma.WorkOrderInclude
@@ -322,7 +322,7 @@ export async function getDailySchedule(
   const baseTaskWhere: Prisma.TaskWhereInput = { businessId }
 
   if (teamMemberId) {
-    baseWoWhere.assignedToId = teamMemberId
+    baseWoWhere.primaryAssigneeId = teamMemberId
     baseTaskWhere.assignedToId = teamMemberId
   }
 
@@ -450,7 +450,7 @@ export async function getScheduleItems(
   const taskWhere: Prisma.TaskWhereInput = { businessId }
 
   if (teamMemberId) {
-    woWhere.assignedToId = teamMemberId
+    woWhere.primaryAssigneeId = teamMemberId
     taskWhere.assignedToId = teamMemberId
   }
 
@@ -521,7 +521,7 @@ type WorkOrderScheduleSnapshot = {
   endTime: string | null
   isAnyTime: boolean
   isScheduleLater: boolean
-  assignedToId: string | null
+  primaryAssigneeId: string | null
 }
 
 type TaskScheduleSnapshot = {
@@ -540,7 +540,7 @@ function workOrderScheduleFingerprint(s: WorkOrderScheduleSnapshot): string {
     (s.endTime ?? '').trim(),
     s.isAnyTime ? '1' : '0',
     s.isScheduleLater ? '1' : '0',
-    s.assignedToId ?? '',
+    s.primaryAssigneeId ?? '',
   ].join('\t')
 }
 
@@ -566,7 +566,8 @@ function mergeWorkOrderReschedule(
     isAnyTime: input.isAnyTime !== undefined ? input.isAnyTime : existing.isAnyTime,
     isScheduleLater:
       input.isScheduleLater !== undefined ? input.isScheduleLater : existing.isScheduleLater,
-    assignedToId: input.assignedToId !== undefined ? input.assignedToId : existing.assignedToId,
+    primaryAssigneeId:
+      input.assignedToId !== undefined ? input.assignedToId : existing.primaryAssigneeId,
   }
 }
 
@@ -585,7 +586,10 @@ function mergeTaskReschedule(
 
 function workOrderScheduleWasBare(s: WorkOrderScheduleSnapshot): boolean {
   return (
-    s.scheduledAt == null && s.assignedToId == null && !s.startTime?.trim() && !s.endTime?.trim()
+    s.scheduledAt == null &&
+    s.primaryAssigneeId == null &&
+    !s.startTime?.trim() &&
+    !s.endTime?.trim()
   )
 }
 
@@ -645,7 +649,7 @@ async function rescheduleWorkOrderItemInner(
       endTime: true,
       isAnyTime: true,
       isScheduleLater: true,
-      assignedToId: true,
+      primaryAssigneeId: true,
     },
   })
   if (!wo) {
@@ -662,7 +666,7 @@ async function rescheduleWorkOrderItemInner(
     endTime: wo.endTime,
     isAnyTime: wo.isAnyTime,
     isScheduleLater: wo.isScheduleLater,
-    assignedToId: wo.assignedToId,
+    primaryAssigneeId: wo.primaryAssigneeId,
   }
   const merged = mergeWorkOrderReschedule(beforeSnap, input)
   const shouldNotifyReschedule = shouldSendRescheduleNotificationsWorkOrder(
@@ -688,7 +692,7 @@ async function rescheduleWorkOrderItemInner(
     updateData.isScheduleLater = input.isScheduleLater
   }
   if (input.assignedToId !== undefined) {
-    updateData.assignedTo = input.assignedToId
+    updateData.primaryAssignee = input.assignedToId
       ? { connect: { id: input.assignedToId } }
       : { disconnect: true }
   }
@@ -852,7 +856,7 @@ async function notifyWorkOrderRescheduleSideEffects(
     where: { id: workOrderId, businessId },
     include: {
       client: { select: { name: true, email: true } },
-      assignedTo: { include: { user: { select: { name: true } } } },
+      primaryAssignee: { include: { user: { select: { name: true } } } },
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
@@ -864,7 +868,7 @@ async function notifyWorkOrderRescheduleSideEffects(
   const timeRangeStr = wo.isAnyTime
     ? 'Anytime'
     : formatScheduleTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
-  const assignedName = wo.assignedTo?.user?.name ?? 'Our team'
+  const assignedName = wo.primaryAssignee?.user?.name ?? 'Our team'
   const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
 
   const clientEmail = wo.client.email?.trim()
@@ -995,7 +999,7 @@ export async function notifyAfterScheduleReschedule(
 type QuickCreateWoForNotify = Prisma.WorkOrderGetPayload<{
   include: {
     client: { select: { name: true; email: true; phone: true } }
-    assignedTo: { include: { user: { select: { name: true; email: true } } } }
+    primaryAssignee: { include: { user: { select: { name: true; email: true } } } }
     business: { include: { settings: { select: { replyToEmail: true } } } }
     lineItems: true
   }
@@ -1010,8 +1014,8 @@ type QuickCreateTaskForNotify = Prisma.TaskGetPayload<{
 }>
 
 function sendQuickCreateWorkOrderAssigneeEmail(wo: QuickCreateWoForNotify): void {
-  const assigneeEmail = wo.assignedTo?.user?.email?.trim()
-  if (!assigneeEmail || !wo.assignedTo?.user || !wo.business) {
+  const assigneeEmail = wo.primaryAssignee?.user?.email?.trim()
+  if (!assigneeEmail || !wo.primaryAssignee?.user || !wo.business) {
     return
   }
   const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
@@ -1028,7 +1032,7 @@ function sendQuickCreateWorkOrderAssigneeEmail(wo: QuickCreateWoForNotify): void
   const totalStr = wo.total != null ? `$${Number(wo.total).toFixed(2)}` : undefined
   sendWorkOrderAssignedToTeamMemberEmail({
     to: assigneeEmail,
-    assigneeName: wo.assignedTo.user.name ?? 'there',
+    assigneeName: wo.primaryAssignee.user.name ?? 'there',
     businessName: wo.business.name,
     companyReplyTo,
     companyLogoUrl: wo.business.logoUrl ?? undefined,
@@ -1117,7 +1121,7 @@ function sendQuickCreateWorkOrderClientEmail(wo: {
   total: unknown
   tax: unknown
   client: { name: string; email: string | null; phone: string }
-  assignedTo: { user: { name: string | null } } | null
+  primaryAssignee: { user: { name: string | null } } | null
   business: {
     name: string
     email: string
@@ -1131,7 +1135,7 @@ function sendQuickCreateWorkOrderClientEmail(wo: {
     return
   }
   const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
-  const assignedName = wo.assignedTo?.user?.name ?? 'Our team'
+  const assignedName = wo.primaryAssignee?.user?.name ?? 'Our team'
   const dateStr = formatScheduleEmailDate(wo.scheduledAt)
   const timeRangeStr = wo.isAnyTime
     ? 'Anytime'
@@ -1172,7 +1176,7 @@ async function notifyQuickCreateWorkOrderSideEffects(
     where: { id: workOrderId, businessId },
     include: {
       client: { select: { name: true, email: true, phone: true } },
-      assignedTo: { include: { user: { select: { name: true, email: true } } } },
+      primaryAssignee: { include: { user: { select: { name: true, email: true } } } },
       business: { include: { settings: { select: { replyToEmail: true } } } },
       lineItems: true,
     },

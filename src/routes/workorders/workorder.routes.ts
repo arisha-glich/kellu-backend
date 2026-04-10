@@ -185,6 +185,24 @@ export const RegisterPaymentBodySchema = z
     description: 'Register payment on work order (paymentDate defaults to now if omitted)',
   })
 
+const WorkOrderAssigneeMemberSchema = z.object({
+  id: z.string(),
+  calendarColor: z.string().nullable(),
+  user: z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    email: z.string(),
+  }),
+})
+
+const WorkOrderAssigneeRowSchema = z.object({
+  id: z.string(),
+  workOrderId: z.string(),
+  memberId: z.string(),
+  createdAt: z.coerce.date(),
+  member: WorkOrderAssigneeMemberSchema,
+})
+
 const WorkOrderListItemSchema = z.object({
   id: z.string(),
   workOrderNumber: z.string().nullable(),
@@ -206,12 +224,7 @@ const WorkOrderListItemSchema = z.object({
     email: z.string().nullable(),
     phone: z.string(),
   }),
-  assignedTo: z
-    .object({
-      id: z.string(),
-      user: z.object({ name: z.string().nullable(), email: z.string() }),
-    })
-    .nullable(),
+  assignees: z.array(WorkOrderAssigneeRowSchema),
 })
 
 const PaginationSchema = z.object({
@@ -292,7 +305,7 @@ export const WorkOrderDetailResponseSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   client: z.any(),
-  assignedTo: z.any().nullable(),
+  assignees: z.array(WorkOrderAssigneeRowSchema),
   lineItems: z.array(LineItemSchema),
   payments: z.array(PaymentSchema),
   attachments: z.array(WorkOrderAttachmentSchema),

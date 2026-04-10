@@ -235,6 +235,55 @@ async function getDefaultTaxPercent(businessId: string): Promise<number> {
   return 0
 }
 
+const workOrderAssigneeMemberSelect = {
+  id: true,
+  calendarColor: true,
+  user: { select: { id: true, name: true, email: true } },
+} as const
+
+const workOrderAssigneesInclude = {
+  include: {
+    member: { select: workOrderAssigneeMemberSelect },
+  },
+} as const
+
+type WorkOrderAssigneeRow = {
+  id: string
+  workOrderId: string
+  memberId: string
+  createdAt: Date
+  member: {
+    id: string
+    calendarColor: string | null
+    user: { id: string; name: string | null; email: string }
+  }
+}
+
+/** Public API: one shape for single or multiple assignees — no duplicate primary/legacy fields. */
+function mapAssigneesForApi(assignees: WorkOrderAssigneeRow[]) {
+  return assignees.map(a => ({
+    id: a.id,
+    workOrderId: a.workOrderId,
+    memberId: a.memberId,
+    createdAt: a.createdAt,
+    member: {
+      id: a.member.id,
+      calendarColor: a.member.calendarColor,
+      user: a.member.user,
+    },
+  }))
+}
+
+function mapWorkOrderForApi<
+  T extends Record<string, unknown> & { assignees?: WorkOrderAssigneeRow[] },
+>(wo: T) {
+  const { primaryAssigneeId: _primaryId, primaryAssignee: _primary, assignees = [], ...rest } = wo
+  return {
+    ...rest,
+    assignees: mapAssigneesForApi(assignees),
+  }
+}
+
 function normalizeAssigneeIds(input: {
   assignedToId?: string | null
   assignedToIds?: string[]
@@ -288,14 +337,14 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
       orderBy,
       include: {
         client: { select: { id: true, name: true, email: true, phone: true } },
-        assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } },
+        assignees: workOrderAssigneesInclude,
       },
     }),
     prisma.workOrder.count({ where: searchWhere }),
   ])
 
   return {
-    data: items,
+    data: items.map(wo => mapWorkOrderForApi(wo)),
     pagination: {
       page,
       limit,
@@ -342,12 +391,7 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
     where: { id: workOrderId, businessId },
     include: {
       client: true,
-      assignedTo: { include: { user: { select: { id: true, name: true, email: true } } } },
-      assignees: {
-        include: {
-          member: { include: { user: { select: { id: true, name: true, email: true } } } },
-        },
-      },
+      assignees: workOrderAssigneesInclude,
       lineItems: true,
       payments: true,
       expenses: true,
@@ -357,7 +401,7 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
-  return wo
+  return mapWorkOrderForApi(wo)
 }
 
 /** Generate next work order number (e.g. #1, #2) per business. */
@@ -395,7 +439,7 @@ async function sendWorkOrderCreatedNotificationEmails(
       where: { id: woId, businessId },
       include: {
         client: { select: { name: true, email: true, phone: true } },
-        assignedTo: { include: { user: { select: { name: true, email: true } } } },
+        primaryAssignee: { include: { user: { select: { name: true, email: true } } } },
         assignees: {
           include: {
             member: { include: { user: { select: { name: true, email: true } } } },
@@ -421,7 +465,7 @@ async function sendWorkOrderCreatedNotificationEmails(
     const assignedName =
       assigneeNames.length > 0
         ? assigneeNames.join(', ')
-        : (woForEmail.assignedTo?.user?.name ?? 'Our team')
+        : (woForEmail.primaryAssignee?.user?.name ?? 'Our team')
     const dateStr = formatBookingDate(woForEmail.scheduledAt)
     const timeRangeStr = formatTimeRange(
       woForEmail.startTime,
@@ -463,8 +507,8 @@ async function sendWorkOrderCreatedNotificationEmails(
           .filter((email): email is string => !!email)
       )
     )
-    if (assigneeEmails.length === 0 && woForEmail.assignedTo?.user?.email?.trim()) {
-      assigneeEmails.push(woForEmail.assignedTo.user.email.trim())
+    if (assigneeEmails.length === 0 && woForEmail.primaryAssignee?.user?.email?.trim()) {
+      assigneeEmails.push(woForEmail.primaryAssignee.user.email.trim())
     }
     for (const assigneeEmail of assigneeEmails) {
       sendWorkOrderAssignedToTeamMemberEmail({
@@ -472,7 +516,7 @@ async function sendWorkOrderCreatedNotificationEmails(
         assigneeName:
           woForEmail.assignees.find(a => a.member.user.email?.trim() === assigneeEmail)?.member.user
             .name ??
-          woForEmail.assignedTo?.user?.name ??
+          woForEmail.primaryAssignee?.user?.name ??
           'there',
         businessName: woForEmail.business.name,
         companyReplyTo,
@@ -543,7 +587,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         scheduledAt: input.scheduledAt ?? null,
         startTime: isAnyTime ? null : (input.startTime ?? null),
         endTime: isAnyTime ? null : (input.endTime ?? null),
-        assignedToId: primaryAssignedToId,
+        primaryAssigneeId: primaryAssignedToId,
         invoiceObservations: input.invoiceClientMessage ?? null,
         invoiceTermsConditions: input.invoiceTermsConditions ?? null,
         jobStatus,
@@ -598,7 +642,7 @@ export async function updateWorkOrder(
       id: true,
       scheduledAt: true,
       startTime: true,
-      assignedToId: true,
+      primaryAssigneeId: true,
       isAnyTime: true,
     },
   })
@@ -617,7 +661,8 @@ export async function updateWorkOrder(
   const mergedForStatus = {
     scheduledAt: input.scheduledAt !== undefined ? input.scheduledAt : existing.scheduledAt,
     startTime: input.startTime !== undefined ? input.startTime : existing.startTime,
-    assignedToId: input.assignedToId !== undefined ? input.assignedToId : existing.assignedToId,
+    assignedToId:
+      input.assignedToId !== undefined ? input.assignedToId : existing.primaryAssigneeId,
     isAnyTime: input.isAnyTime !== undefined ? input.isAnyTime : existing.isAnyTime,
   }
 
@@ -646,7 +691,7 @@ export async function updateWorkOrder(
       ...(input.startTime !== undefined &&
         input.isAnyTime !== true && { startTime: input.startTime }),
       ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
-      ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId }),
+      ...(input.assignedToId !== undefined && { primaryAssigneeId: input.assignedToId }),
       ...(input.invoiceClientMessage !== undefined && {
         invoiceObservations: input.invoiceClientMessage,
       }),
@@ -760,7 +805,7 @@ export async function sendBookingConfirmation(
     where: { id: workOrderId, businessId },
     include: {
       client: { select: { id: true, name: true, email: true } },
-      assignedTo: { include: { user: { select: { name: true } } } },
+      primaryAssignee: { include: { user: { select: { name: true } } } },
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
@@ -776,7 +821,7 @@ export async function sendBookingConfirmation(
   }
 
   const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
-  const assignedTeamMemberName = wo.assignedTo?.user?.name ?? 'Our team'
+  const assignedTeamMemberName = wo.primaryAssignee?.user?.name ?? 'Our team'
   const dateStr = formatBookingDate(wo.scheduledAt)
   const timeRangeStr = formatTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
 

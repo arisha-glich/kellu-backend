@@ -36,31 +36,24 @@ import {
 } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
-/** Prefer assignedToId; if omitted, use assignedTo (member id). */
-function resolveWorkOrderAssigneeId(body: {
-  assignedToId?: string | null
-  assignedTo?: string | null
-}): string | null | undefined {
-  if (body.assignedToId !== undefined) {
-    return body.assignedToId
-  }
-  if (body.assignedTo !== undefined) {
-    return body.assignedTo
-  }
-  return undefined
-}
-
 function resolveWorkOrderAssigneeIds(body: {
   assignedToIds?: string[] | null
-  assignedToId?: string | null
-  assignedTo?: string | null
 }): string[] | undefined {
   if (Array.isArray(body.assignedToIds)) {
     const deduped = Array.from(new Set(body.assignedToIds.map(id => id.trim()).filter(Boolean)))
     return deduped.length > 0 ? deduped : undefined
   }
-  const single = resolveWorkOrderAssigneeId(body)
-  return single ? [single] : undefined
+  return undefined
+}
+
+function resolvePrimaryAssigneeId(body: {
+  assignedToIds?: string[] | null
+}): string | null | undefined {
+  if (!Array.isArray(body.assignedToIds)) {
+    return undefined
+  }
+  const ids = Array.from(new Set(body.assignedToIds.map(id => id.trim()).filter(Boolean)))
+  return ids[0] ?? null
 }
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -254,8 +247,10 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         scheduledAt: body.scheduledAt,
         startTime: body.startTime,
         endTime: body.endTime,
-        assignedToId: resolveWorkOrderAssigneeId(body) ?? null,
-        assignedToIds: resolveWorkOrderAssigneeIds(body),
+        assignedToId: resolvePrimaryAssigneeId({ assignedToIds: body.assignedToIds }) ?? null,
+        assignedToIds: resolveWorkOrderAssigneeIds({
+          assignedToIds: body.assignedToIds,
+        }),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         invoiceClientMessage: body.invoiceClientMessage,
@@ -359,7 +354,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         scheduledAt: body.scheduledAt,
         startTime: body.startTime,
         endTime: body.endTime,
-        assignedToId: resolveWorkOrderAssigneeId(body),
+        assignedToId: resolvePrimaryAssigneeId({ assignedToIds: body.assignedToIds }),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         invoiceClientMessage: body.invoiceClientMessage,
