@@ -4,6 +4,7 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { WORK_ORDER_ROUTES } from '~/routes/workorders/workorder.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { createExpenseForWorkOrder, listExpensesByWorkOrder } from '~/services/expense.service'
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
@@ -46,6 +47,13 @@ function resolveWorkOrderAssigneeId(body: {
     return body.assignedTo
   }
   return undefined
+}
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
 }
 
 export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> = {
@@ -247,6 +255,22 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
           invoiceTermsConditions: body.invoiceTermsConditions ?? null,
         })
       }
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'WORKORDER_CREATED',
+        module: 'workorder',
+        entityId: workOrder.id,
+        newValues: {
+          id: workOrder.id,
+          title: workOrder.title,
+          workOrderNumber: workOrder.workOrderNumber,
+          jobStatus: workOrder.jobStatus,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       try {
         await createUserNotification({
           userId: user.id,
@@ -264,7 +288,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
           userName: user.name,
           actionTitle: 'Work order created successfully',
           actionMessage: `Your work order "${workOrder.title}" was created successfully.`,
-          
         })
       } catch (notifyError) {
         console.error('Work order notification/email failed:', notifyError)
@@ -330,6 +353,22 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
           invoiceTermsConditions: body.invoiceTermsConditions ?? null,
         })
       }
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'WORKORDER_UPDATED',
+        module: 'workorder',
+        entityId: workOrderId,
+        newValues: {
+          id: workOrder.id,
+          title: workOrder.title,
+          workOrderNumber: workOrder.workOrderNumber,
+          jobStatus: workOrder.jobStatus,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Work order updated successfully', success: true, data: workOrder },
         HttpStatusCodes.OK
@@ -367,6 +406,16 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       }
       const { workOrderId } = c.req.valid('param')
       await deleteWorkOrder(businessId, workOrderId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'WORKORDER_DELETED',
+        module: 'workorder',
+        entityId: workOrderId,
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Work order deleted successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

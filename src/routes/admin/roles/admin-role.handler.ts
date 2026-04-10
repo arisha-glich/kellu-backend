@@ -1,23 +1,20 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { RolePortalScope } from '~/generated/prisma'
+import { getAdminPortalPermissionActions, getAdminPortalPermissionMatrix } from '~/lib/permission'
 import { hasAdminPortalAccess } from '~/lib/portal-access'
-import {
-  getAdminPortalPermissionActions,
-  getAdminPortalPermissionMatrix,
-} from '~/lib/permission'
 import { resolveAdminBusinessScope } from '~/routes/admin/_helpers'
 import type { ADMIN_ROLE_ROUTES } from '~/routes/admin/roles/admin-role.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import {
   createRole,
   deleteRole,
+  getRoleById,
   InvalidPermissionError,
   listRoles,
   RoleInUseError,
   RoleNotFoundError,
   updateRole,
-  getRoleById,
 } from '~/services/role.service'
-import { RolePortalScope } from '~/generated/prisma'
-import { createAuditLog } from '~/services/audit-log.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 const FORBIDDEN_ADMIN_PORTAL_ONLY =
@@ -70,7 +67,10 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
     const businessId = await resolveAdminBusinessScope(c, user)
     if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
     const roles = await listRoles(businessId, RolePortalScope.ADMIN_PORTAL)
-    return c.json({ message: 'Roles retrieved successfully', success: true, data: roles }, HttpStatusCodes.OK)
+    return c.json(
+      { message: 'Roles retrieved successfully', success: true, data: roles },
+      HttpStatusCodes.OK
+    )
   },
   getById: async c => {
     const user = c.get('user')
@@ -83,9 +83,13 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
       if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       const { roleId } = c.req.valid('param')
       const role = await getRoleById(businessId, roleId, RolePortalScope.ADMIN_PORTAL)
-      return c.json({ message: 'Role retrieved successfully', success: true, data: role }, HttpStatusCodes.OK)
+      return c.json(
+        { message: 'Role retrieved successfully', success: true, data: role },
+        HttpStatusCodes.OK
+      )
     } catch (error) {
-      if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof RoleNotFoundError)
+        return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
       return c.json({ message: 'Failed to retrieve role' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
@@ -126,9 +130,13 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
           userAgent,
         })
       }
-      return c.json({ message: 'Role created successfully', success: true, data: role }, HttpStatusCodes.CREATED)
+      return c.json(
+        { message: 'Role created successfully', success: true, data: role },
+        HttpStatusCodes.CREATED
+      )
     } catch (error) {
-      if (error instanceof InvalidPermissionError) return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
+      if (error instanceof InvalidPermissionError)
+        return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
       return c.json({ message: 'Failed to create role' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
@@ -171,10 +179,15 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
           userAgent,
         })
       }
-      return c.json({ message: 'Role updated successfully', success: true, data: role }, HttpStatusCodes.OK)
+      return c.json(
+        { message: 'Role updated successfully', success: true, data: role },
+        HttpStatusCodes.OK
+      )
     } catch (error) {
-      if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof InvalidPermissionError) return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
+      if (error instanceof RoleNotFoundError)
+        return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof InvalidPermissionError)
+        return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
       return c.json({ message: 'Failed to update role' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
@@ -203,11 +216,20 @@ export const ADMIN_ROLE_HANDLER: HandlerMapFromRoutes<typeof ADMIN_ROLE_ROUTES> 
         ipAddress,
         userAgent,
       })
-      return c.json({ message: 'Role deleted successfully', success: true, data: { deleted: true } }, HttpStatusCodes.OK)
+      return c.json(
+        { message: 'Role deleted successfully', success: true, data: { deleted: true } },
+        HttpStatusCodes.OK
+      )
     } catch (error) {
-      if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof RoleInUseError) return c.json({ message: 'Role is assigned to members and cannot be deleted' }, HttpStatusCodes.BAD_REQUEST)
-      if (error instanceof InvalidPermissionError) return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
+      if (error instanceof RoleNotFoundError)
+        return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof RoleInUseError)
+        return c.json(
+          { message: 'Role is assigned to members and cannot be deleted' },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      if (error instanceof InvalidPermissionError)
+        return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
       return c.json({ message: 'Failed to delete role' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },

@@ -1,4 +1,4 @@
-import { createAccessControl, } from 'better-auth/plugins/access'
+import { createAccessControl } from 'better-auth/plugins/access'
 import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access'
 
 /**
@@ -14,7 +14,7 @@ export const statement = {
   workorders: ['create', 'read', 'update', 'delete'],
   quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
-  schedule:['create','read','update','delete'],
+  schedule: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
   invoices: ['create', 'read', 'update', 'delete'],
@@ -37,9 +37,9 @@ export const superAdmin = ac.newRole({
   ...adminAc.statements,
   user: [...adminAc.statements.user, 'read'],
   business: ['create', 'read', 'update', 'delete'],
-  schedule:['create',"read",'update','delete'],
+  schedule: ['create', 'read', 'update', 'delete'],
   workorders: ['create', 'read', 'update', 'delete'],
-  quotes: ['create', 'read', 'update','delete'],
+  quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
@@ -61,7 +61,7 @@ export const businessOwner = ac.newRole({
   workorders: ['create', 'read', 'update', 'delete'],
   quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
-  schedule:['create','delete','update','read'],
+  schedule: ['create', 'delete', 'update', 'read'],
   expenses: ['create', 'read', 'update', 'delete'],
   priceList: ['create', 'read', 'update', 'delete'],
   invoices: ['create', 'read', 'update', 'delete'],
@@ -80,7 +80,7 @@ export const businessOwner = ac.newRole({
  */
 export const admin = ac.newRole({
   workorders: ['create', 'read', 'update', 'delete'],
-  schedule:['create', 'read','update','delete'],
+  schedule: ['create', 'read', 'update', 'delete'],
   quotes: ['create', 'read', 'update', 'delete'],
   tasks: ['create', 'read', 'update', 'delete'],
   expenses: ['create', 'read', 'update', 'delete'],

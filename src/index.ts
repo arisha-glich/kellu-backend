@@ -5,7 +5,7 @@ import configureOpenAPI from '~/lib/configure-open-api'
 import createApp from '~/lib/create-app'
 import { registerEmailListeners } from '~/services/email-helpers'
 import { ORIGINS } from './config/origins'
-import { AppBindings } from './types'
+import type { AppBindings } from './types'
 
 registerEmailListeners()
 const app = createApp()
@@ -36,14 +36,11 @@ app.use('*', async (c, next) => {
     c.set('session', null)
     return next()
   }
- type AppUser=NonNullable<AppBindings['Variables']['user']>
+  type AppUser = NonNullable<AppBindings['Variables']['user']>
   // Cast session.user to the concrete shape Hono's context expects.
   // The extra fields (permissions, isAdmin, isOwner) are present at runtime —
   // we just satisfy TypeScript's strict check on the core required fields.
-  c.set(
-    'user',
-    session.user as AppUser
-  )
+  c.set('user', session.user as AppUser)
 
   c.set(
     'session',

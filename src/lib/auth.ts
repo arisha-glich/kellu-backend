@@ -1,4 +1,3 @@
-
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { customSession, openAPI } from 'better-auth/plugins'
@@ -36,7 +35,10 @@ function allPermissionsFromStatement(): PermissionPair[] {
   )
 }
 
-async function resolveUserPermissions(userId: string, fullCatalog: boolean): Promise<PermissionPair[]> {
+async function resolveUserPermissions(
+  userId: string,
+  fullCatalog: boolean
+): Promise<PermissionPair[]> {
   if (fullCatalog) {
     return allPermissionsFromStatement()
   }
@@ -119,9 +121,10 @@ export const auth = betterAuth({
   },
   plugins: [
     customSession(async ({ user }) => {
-      const { adminPortalTeamMember: _strippedFromSession, ...userWithoutPortalTeamFlag } = user as typeof user & {
-        adminPortalTeamMember?: boolean
-      }
+      const { adminPortalTeamMember: _strippedFromSession, ...userWithoutPortalTeamFlag } =
+        user as typeof user & {
+          adminPortalTeamMember?: boolean
+        }
 
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
@@ -136,8 +139,7 @@ export const auth = betterAuth({
         select: { id: true },
       })
 
-      const isPrimarySuperAdmin =
-        dbRole === UserRole.SUPER_ADMIN && !adminPortalTeamMember
+      const isPrimarySuperAdmin = dbRole === UserRole.SUPER_ADMIN && !adminPortalTeamMember
       const isAdminPortalTeamMember = adminPortalTeamMember && !!activeMembership
 
       const sessionRole =

@@ -1,6 +1,6 @@
-import { env } from 'node:process'
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { QUOTE_ROUTES } from '~/routes/quotes/quotes.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
@@ -12,13 +12,14 @@ import {
   deleteQuote,
   getQuote,
   getQuoteEmailComposeData,
-  getQuoteRejectionReason,
   getQuoteOverview,
+  getQuoteRejectionReason,
   listQuotes,
+  QuoteExpiredError,
   QuoteNoLineItemsError,
-  resolveClientRejectFormQuote,
   QuoteTerminalStateError,
   rejectQuote,
+  resolveClientRejectFormQuote,
   sendQuote,
   sendQuoteEmail,
   setQuoteAwaitingResponse,
@@ -26,6 +27,13 @@ import {
 } from '~/services/quotes.service'
 import { ClientNotFoundError, WorkOrderNotFoundError } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
   list: async c => {
@@ -183,13 +191,32 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         workOrderId: body.workOrderId,
         lineItems: body.lineItems,
       })
-      try {
-        await sendQuoteEmail(businessId, quote.id, {
-          requesterEmail: user.email,
-        })
-      } catch (emailError) {
-        console.error('Quote auto-email on create failed:', emailError)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_CREATED',
+        module: 'quote',
+        entityId: quote.id,
+        newValues: {
+          id: quote.id,
+          quoteNumber: quote.quoteNumber,
+          title: quote.title,
+          status: quote.quoteStatus,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
+      if (quote.client.email) {
+        try {
+          await sendQuoteEmail(businessId, quote.id, {
+            requesterEmail: user.email,
+          })
+        } catch (emailError) {
+          console.error('Quote auto-email on create failed:', emailError)
+        }
       }
+
       try {
         await createUserNotification({
           userId: user.id,
@@ -266,6 +293,22 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         ...(body.lineItems !== undefined && { lineItems: body.lineItems }),
         ...(body.workOrderId !== undefined && { workOrderId: body.workOrderId ?? null }),
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_UPDATED',
+        module: 'quote',
+        entityId: quote.id,
+        newValues: {
+          id: quote.id,
+          quoteNumber: quote.quoteNumber,
+          title: quote.title,
+          status: quote.quoteStatus,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Quote updated successfully', success: true, data: quote },
         HttpStatusCodes.OK
@@ -298,6 +341,16 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       await deleteQuote(businessId, quoteId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_DELETED',
+        module: 'quote',
+        entityId: quoteId,
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Quote deleted successfully', success: true as const },
         HttpStatusCodes.OK
@@ -634,6 +687,17 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       const quote = await approveQuote(businessId, quoteId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_APPROVED',
+        module: 'quote',
+        entityId: quote.id,
+        newValues: { status: quote.quoteStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Quote approved successfully', success: true, data: quote },
         HttpStatusCodes.OK
@@ -663,6 +727,17 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       const quote = await rejectQuote(businessId, quoteId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_REJECTED',
+        module: 'quote',
+        entityId: quote.id,
+        newValues: { status: quote.quoteStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Quote rejected successfully', success: true, data: quote },
         HttpStatusCodes.OK
@@ -682,11 +757,9 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     const { action, token, quoteId: quoteIdFromQuery } = c.req.valid('query')
     const frontendDefault = (Bun.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '')
     const approvedBase =
-      Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() ||
-      `${frontendDefault}/quotes/accept-quote`
+      Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() || `${frontendDefault}/quotes/accept-quote`
     const rejectedBase =
-      Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() ||
-      `${frontendDefault}/quotes/reject-quote`
+      Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() || `${frontendDefault}/quotes/reject-quote`
 
     /** Env base is the path *without* the id segment; `quoteClientPageUrl` appends `/{quoteId}`. */
     const quoteClientPageUrl = (
@@ -713,6 +786,13 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           })
         )
       } catch (error) {
+        if (error instanceof QuoteExpiredError) {
+          return c.redirect(
+            quoteClientPageUrl(rejectedBase, quoteIdFromQuery ?? undefined, {
+              quoteAction: 'expired',
+            })
+          )
+        }
         if (error instanceof QuoteTerminalStateError) {
           return c.redirect(
             quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' })
@@ -733,7 +813,16 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (rejectResolved.kind === 'not_found') {
         return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'not-found' }))
       }
-      return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' }))
+      if (rejectResolved.kind === 'expired') {
+        return c.redirect(
+          quoteClientPageUrl(rejectedBase, quoteIdFromQuery ?? undefined, {
+            quoteAction: 'expired',
+          })
+        )
+      }
+      return c.redirect(
+        quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' })
+      )
     }
     const rejectQuoteId = rejectResolved.quoteId
     return c.redirect(
@@ -751,7 +840,8 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (!token || token.length < 10) {
         return c.json(
           {
-            message: 'Missing action token: include `token` in the JSON body or send `x-quote-token` header',
+            message:
+              'Missing action token: include `token` in the JSON body or send `x-quote-token` header',
             success: false,
           },
           HttpStatusCodes.BAD_REQUEST
@@ -774,6 +864,15 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     } catch (error) {
       if (error instanceof WorkOrderNotFoundError) {
         return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof QuoteExpiredError) {
+        return c.json(
+          {
+            message:
+              'You cannot reject this quote because the 7-day response window has passed. Please contact the business for a new quote.',
+          },
+          HttpStatusCodes.GONE
+        )
       }
       if (error instanceof QuoteTerminalStateError) {
         return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)

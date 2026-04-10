@@ -131,7 +131,11 @@ export async function listRoles(businessId: string, portalScope: RolePortalScope
 }
 
 /** Get a single role with its permissions. */
-export async function getRoleById(businessId: string, roleId: string, portalScope: RolePortalScope) {
+export async function getRoleById(
+  businessId: string,
+  roleId: string,
+  portalScope: RolePortalScope
+) {
   await ensureBusinessExists(businessId)
   const role = await prisma.role.findFirst({
     where: { id: roleId, businessId, portalScope },

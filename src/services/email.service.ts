@@ -166,7 +166,15 @@ export interface SendEmailOptions {
 }
 
 class EmailService {
-  async send({ to, subject, html, from, replyTo, bcc, attachments }: SendEmailOptions): Promise<void> {
+  async send({
+    to,
+    subject,
+    html,
+    from,
+    replyTo,
+    bcc,
+    attachments,
+  }: SendEmailOptions): Promise<void> {
     // Normalize recipients - ensure they're valid email addresses
     const recipients = (Array.isArray(to) ? to : [to])
       .map(email => {

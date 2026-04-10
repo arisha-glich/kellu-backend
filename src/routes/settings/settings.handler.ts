@@ -4,6 +4,7 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { SETTINGS_ROUTES } from '~/routes/settings/settings.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { hasPermission } from '~/services/permission.service'
 import {
@@ -13,6 +14,13 @@ import {
   updateScheduleColor,
 } from '~/services/settings.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
   get: async c => {
@@ -106,6 +114,30 @@ export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
         ...(body.sendTeamPhotosWithConfirmation !== undefined && {
           sendTeamPhotosWithConfirmation: body.sendTeamPhotosWithConfirmation,
         }),
+        ...(body.timeZone !== undefined && { timeZone: body.timeZone }),
+      })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SETTINGS_UPDATED',
+        module: 'settings',
+        entityId: businessId,
+        newValues: {
+          fullName: data.personalProfile.fullName,
+          email: data.personalProfile.email,
+          name: data.company.name,
+          legalName: data.company.legalName,
+          companyEmail: data.company.email,
+          phone: data.company.phone,
+          webpage: data.company.webpage,
+          address: data.company.address,
+          street1: data.company.street1,
+          street2: data.company.street2,
+          city: data.company.city,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
       })
       return c.json(
         { message: 'Settings updated successfully', success: true, data },
@@ -169,6 +201,17 @@ export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
       const { color } = c.req.valid('json')
 
       const data = await updateScheduleColor(businessId, { memberId, color })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SETTINGS_UPDATED',
+        module: 'settings',
+        entityId: memberId,
+        newValues: { scheduleColor: color },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Schedule color updated successfully', success: true, data },
         HttpStatusCodes.OK

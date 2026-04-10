@@ -115,16 +115,22 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 
 /** Next quote display number per business (e.g. 1 → "#1"). */
 async function nextQuoteNumber(businessId: string): Promise<string> {
-  const last = await prisma.quote.findFirst({
+  const quotes = await prisma.quote.findMany({
     where: { businessId },
-    orderBy: { createdAt: 'desc' },
     select: { quoteNumber: true },
+    orderBy: { createdAt: 'desc' },
   })
-  if (!last?.quoteNumber) {
+  if (!quotes.length) {
     return '1'
   }
-  const num = Number.parseInt(last.quoteNumber.replace(/^#/, ''), 10)
-  return String(Number.isNaN(num) ? 1 : num + 1)
+  const maxNum = quotes.reduce((max, q) => {
+    if (!q.quoteNumber) {
+      return max
+    }
+    const num = Number.parseInt(q.quoteNumber.replace(/^#/, ''), 10)
+    return Number.isNaN(num) ? max : Math.max(max, num)
+  }, 0)
+  return String(maxNum + 1)
 }
 
 const quoteDetailInclude = {
@@ -282,6 +288,35 @@ async function recalculateQuoteFinancials(
   })
 }
 
+export class QuoteExpiredError extends Error {
+  constructor() {
+    super('QUOTE_EXPIRED')
+  }
+}
+
+// Add this with your other helpers
+async function assertQuoteNotExpired(quoteId: string): Promise<void> {
+  const row = await prisma.quote.findUnique({
+    where: { id: quoteId },
+    select: { quoteExpiresAt: true, quoteStatus: true },
+  })
+  if (!row) throw new WorkOrderNotFoundError()
+
+  // If already marked EXPIRED in DB
+  if (row.quoteStatus === 'EXPIRED') {
+    throw new QuoteExpiredError()
+  }
+
+  // If expiry date has passed (even if cron hasn't run yet)
+  if (row.quoteExpiresAt && row.quoteExpiresAt < new Date()) {
+    // Auto-mark as EXPIRED so DB stays consistent
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { quoteStatus: 'EXPIRED', quoteExpiredAt: new Date() },
+    })
+    throw new QuoteExpiredError()
+  }
+}
 // ─── Service Functions ────────────────────────────────────────────────────────
 
 /** Slim row for GET /quotes. */
@@ -932,7 +967,11 @@ export async function getPublicQuoteViewForClient(quoteId: string, token: string
   }
 }
 
-function buildClientQuoteActionUrl(token: string, action: 'approve' | 'reject', quoteId: string): string {
+function buildClientQuoteActionUrl(
+  token: string,
+  action: 'approve' | 'reject',
+  quoteId: string
+): string {
   const base = BACKEND_PUBLIC_URL.replace(/\/$/, '')
   const u = new URL(`${base}/api/quotes/client/respond`)
   u.searchParams.set('action', action)
@@ -941,11 +980,7 @@ function buildClientQuoteActionUrl(token: string, action: 'approve' | 'reject', 
   return u.toString()
 }
 
-function appendQuoteActionButtons(
-  html: string,
-  approveUrl: string,
-  rejectUrl: string
-): string {
+function appendQuoteActionButtons(html: string, approveUrl: string, rejectUrl: string): string {
   const buttons = `
   <div style="margin-top:24px;text-align:center;">
     <a href="${approveUrl}" style="display:inline-block;background:#10b981;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700;margin-right:8px;">Approve Quote</a>
@@ -976,8 +1011,7 @@ async function sendQuoteRejectedByClientNotification(params: {
     return
   }
 
-  const toEmail =
-    q.business.settings?.notificationEmail?.trim() || q.business.email?.trim()
+  const toEmail = q.business.settings?.notificationEmail?.trim() || q.business.email?.trim()
   if (!toEmail) {
     console.warn('[quote] No business email for quote rejection notification', q.id)
     return
@@ -1069,8 +1103,7 @@ export async function sendQuoteEmail(
   }
   const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
   const subject =
-    options?.subject ??
-    `Quote from ${displayName} - ${q.title} ${q.quoteCorrelative ?? ''}`.trim()
+    options?.subject ?? `Quote from ${displayName} - ${q.title} ${q.quoteCorrelative ?? ''}`.trim()
   const approveUrl = buildClientQuoteActionUrl(actionToken, 'approve', q.id)
   const rejectUrl = buildClientQuoteActionUrl(actionToken, 'reject', q.id)
   const htmlBase =
@@ -1091,7 +1124,9 @@ export async function sendQuoteEmail(
       approveUrl,
       rejectUrl,
     }))
-  const html = options?.message ? appendQuoteActionButtons(htmlBase, approveUrl, rejectUrl) : htmlBase
+  const html = options?.message
+    ? appendQuoteActionButtons(htmlBase, approveUrl, rejectUrl)
+    : htmlBase
 
   const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
   const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
@@ -1309,6 +1344,8 @@ export async function clientApproveQuoteByToken(token: string, quoteIdHint?: str
   if (!row) {
     throw new WorkOrderNotFoundError()
   }
+  await assertQuoteNotExpired(row.id)
+
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
   if (terminalStates.includes(row.quoteStatus)) {
     throw new QuoteTerminalStateError()
@@ -1334,6 +1371,14 @@ export async function resolveClientRejectFormQuote(
   if (!row) {
     return { ok: false, kind: 'not_found' }
   }
+  try {
+    await assertQuoteNotExpired(row.id)
+  } catch (e) {
+    if (e instanceof QuoteExpiredError) {
+      return { ok: false, kind: 'expired' }
+    }
+    throw e
+  }
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
   if (terminalStates.includes(row.quoteStatus)) {
     return { ok: false, kind: 'terminal' }
@@ -1347,6 +1392,7 @@ export async function clientRejectQuoteByQuoteId(quoteId: string, reason: string
   if (!row || row.id !== quoteId) {
     throw new WorkOrderNotFoundError()
   }
+  await assertQuoteNotExpired(row.id)
   const terminalStates: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
   if (terminalStates.includes(row.quoteStatus)) {
     throw new QuoteTerminalStateError()
@@ -1362,7 +1408,9 @@ export async function clientRejectQuoteByQuoteId(quoteId: string, reason: string
   })
 
   try {
-    if (await isPlatformNotificationRuleActive(PlatformNotificationEventKey.QUOTE_REJECTED_BY_CLIENT)) {
+    if (
+      await isPlatformNotificationRuleActive(PlatformNotificationEventKey.QUOTE_REJECTED_BY_CLIENT)
+    ) {
       await sendQuoteRejectedByClientNotification({
         quoteId: row.id,
         rejectionReason: reason.trim(),
@@ -1440,7 +1488,10 @@ export async function rejectQuote(businessId: string, quoteId: string) {
  * When a job work order linked via `relatedWorkOrderId` reaches an in-progress state,
  * mark an APPROVED quote as CONVERTED.
  */
-export async function convertQuoteIfEligible(businessId: string, workOrderId: string): Promise<void> {
+export async function convertQuoteIfEligible(
+  businessId: string,
+  workOrderId: string
+): Promise<void> {
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
     select: { jobStatus: true },

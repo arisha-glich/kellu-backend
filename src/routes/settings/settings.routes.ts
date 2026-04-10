@@ -51,6 +51,7 @@ const SettingsBlockSchema = z.object({
   defaultTaxRate: z.number().nullable(),
   taxIdRut: z.string().nullable(),
   sendTeamPhotosWithConfirmation: z.boolean(),
+  timeZone: z.string().nullable(),
 })
 
 const CurrentSettingsResponseSchema = z.object({
@@ -100,6 +101,7 @@ const UpdateSettingsBodySchema = z
     defaultTaxRate: z.number().min(0).max(100).nullable().optional(),
     taxIdRut: z.string().nullable().optional(),
     sendTeamPhotosWithConfirmation: z.boolean().optional(),
+    timeZone: z.string().nullable().optional(),
   })
   .openapi({ description: 'Update any subset of profile and company settings' })
 

@@ -5,6 +5,7 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { INVOICE_ROUTES } from '~/routes/invoices/invoice.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
   ClientNotFoundError,
@@ -20,6 +21,13 @@ import {
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
   list: async c => {
@@ -160,6 +168,23 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
         workOrderId: body.workOrderId,
         lineItems: body.lineItems,
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'INVOICE_CREATED',
+        module: 'invoice',
+        entityId: invoice.id,
+        newValues: {
+          id: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          title: invoice.title,
+          status: invoice.status,
+          total: invoice.total,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       try {
         await createUserNotification({
           userId: user.id,
@@ -219,6 +244,22 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
       }
       const { invoiceId } = c.req.valid('param')
       const invoice = await sendInvoice(businessId, invoiceId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'INVOICE_UPDATED',
+        module: 'invoice',
+        entityId: invoice.id,
+        newValues: {
+          id: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          status: invoice.status,
+          sentAt: invoice.sentAt,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       try {
         await createUserNotification({
           userId: user.id,

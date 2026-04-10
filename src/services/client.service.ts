@@ -9,6 +9,12 @@ export class ClientNotFoundError extends Error {
   }
 }
 
+export class EmailAlreadyUsedError extends Error {
+  constructor() {
+    super('EMAIL_ALREADY_USED')
+  }
+}
+
 export interface CreateClientInput {
   name: string
   phone: string
@@ -105,6 +111,18 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 
 export async function createClient(businessId: string, data: CreateClientInput) {
   await ensureBusinessExists(businessId)
+
+  if (data.email) {
+    const existing = await prisma.client.findFirst({
+      where: {
+        businessId,
+        email: { equals: data.email, mode: 'insensitive' },
+      },
+    })
+    if (existing) {
+      throw new EmailAlreadyUsedError()
+    }
+  }
 
   const client = await prisma.client.create({
     data: {

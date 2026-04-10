@@ -1,6 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
-import type { Prisma } from '~/generated/prisma'
+import type { Business, Prisma } from '~/generated/prisma'
 import { appEventEmitter } from '~/lib/event-emitter'
+import { resolveBusinessIanaTimeZone } from '~/lib/iana-timezone-from-country'
 import prisma from '~/lib/prisma'
 import { sendBusinessInvitationEmail } from '~/services/email-helpers'
 
@@ -61,6 +62,10 @@ export interface CreateBusinessInput {
   companyName: string
   email: string
   phone: string
+  /** IANA timezone from browser/locale; omitted → DB default UTC */
+  timeZone?: string
+  /** ISO 3166-1 alpha-2; empty/omitted → null */
+  country?: string | ''
   address?: string
   website?: string
   tempPassword?: string
@@ -86,6 +91,8 @@ export interface BusinessListResult {
   website: string | null
   status: string
   registered: Date
+  timeZone: string
+  country: string | null
   lastLogin: string | null
   userId: string
   owner: {
@@ -112,6 +119,8 @@ export interface BusinessDetailResult {
   phone: string | null
   address: string | null
   website: string | null
+  timeZone: string
+  country: string | null
   status: string
   registered: Date
   lastLogin: string | null
@@ -251,6 +260,8 @@ async function processBusinessListItem(
     phone: string | null
     address: string | null
     webpage: string | null
+    timeZone: string
+    country: string | null
     isActive: boolean
     createdAt: Date
     ownerId: string | null
@@ -288,6 +299,8 @@ async function processBusinessListItem(
     registered: business.createdAt,
     lastLogin: formatLastLogin(business.owner?.lastLoginAt ?? null),
     userId: business.ownerId ?? '',
+    timeZone: business.timeZone,
+    country: business.country,
     owner: {
       name: business.owner?.name ?? null,
       email: business.owner?.email ?? business.email,
@@ -375,6 +388,8 @@ export async function getBusinessById(id: string): Promise<BusinessDetailResult 
     phone: business.phone,
     address: business.address,
     website: business.webpage,
+    timeZone: business.timeZone,
+    country: business.country,
     status: resolveStatus(business, business.owner),
     registered: business.createdAt,
     lastLogin: formatLastLogin(business.owner?.lastLoginAt ?? null),
@@ -397,94 +412,185 @@ export async function getBusinessById(id: string): Promise<BusinessDetailResult 
   }
 }
 
+async function createOwnerUserForNewBusiness(
+  data: CreateBusinessInput
+): Promise<{ id: string; name: string; email: string; phone_no: string | null } | null> {
+  if (!data.tempPassword) {
+    return null
+  }
+  const existing = await prisma.user.findUnique({
+    where: { email: data.email },
+    select: { id: true },
+  })
+  if (existing) {
+    throw new EmailAlreadyUsedError()
+  }
+  const hashedPassword = await hashPassword(data.tempPassword)
+  const user = await prisma.user.create({
+    data: {
+      name: data.companyName,
+      email: data.email,
+      phone_no: data.phone,
+      banned: data.status === false,
+      role: 'BUSINESS_OWNER',
+      isOwner: true,
+    },
+  })
+  await prisma.account.create({
+    data: {
+      userId: user.id,
+      accountId: user.id,
+      providerId: 'credential',
+      password: hashedPassword,
+    },
+  })
+  return user
+}
+
+type CreatedBusinessOwner = NonNullable<Awaited<ReturnType<typeof createOwnerUserForNewBusiness>>>
+
+function normalizeBusinessCountry(country: CreateBusinessInput['country']): string | null {
+  if (country?.length === 2) {
+    return country.toUpperCase()
+  }
+  return null
+}
+
+function buildNewBusinessCreateData(
+  data: CreateBusinessInput,
+  resolvedTimeZone: string,
+  country: string | null,
+  owner: CreatedBusinessOwner | null
+): Prisma.BusinessCreateInput {
+  const createData: Prisma.BusinessCreateInput = {
+    name: data.companyName,
+    email: data.email,
+    phone: data.phone,
+    timeZone: resolvedTimeZone,
+    address: data.address ?? null,
+    webpage: data.website ?? null,
+    isActive: data.status !== false,
+  }
+  if (country != null) {
+    createData.country = country
+  }
+  if (owner) {
+    createData.owner = { connect: { id: owner.id } }
+  }
+  return createData
+}
+
+function resolveNewBusinessDisplayStatus(
+  data: CreateBusinessInput,
+  owner: CreatedBusinessOwner | null
+): string {
+  if (data.status === false) {
+    return 'Inactive'
+  }
+  if (owner) {
+    return 'Invited'
+  }
+  return 'Active'
+}
+
+async function upsertBusinessSettingsReplyTo(
+  businessId: string,
+  replyToEmail: string
+): Promise<void> {
+  await prisma.businessSettings.upsert({
+    where: { businessId },
+    create: {
+      businessId,
+      replyToEmail,
+    },
+    update: { replyToEmail },
+  })
+}
+
+async function sendNewBusinessOwnerInvitationIfNeeded(
+  owner: CreatedBusinessOwner | null,
+  data: CreateBusinessInput
+): Promise<void> {
+  if (!owner || !data.tempPassword) {
+    return
+  }
+  const ownerName = data.companyName || data.email.split('@')[0]
+  await sendBusinessInvitationEmail({
+    to: data.email,
+    businessName: data.companyName,
+    ownerName,
+    email: data.email,
+    tempPassword: data.tempPassword,
+  })
+}
+
+function mapCreatedBusinessToResult(
+  business: Business,
+  data: CreateBusinessInput,
+  owner: CreatedBusinessOwner | null,
+  resolvedTimeZone: string
+): {
+  id: string
+  companyName: string
+  email: string
+  phone: string
+  status: string
+  timeZone: string
+  country: string | null
+  address: string | null
+  website: string | null
+  createdAt: Date
+  updatedAt: Date
+  owner: { name: string | null; email: string; phone: string | null; address: string | null }
+} {
+  return {
+    id: business.id,
+    companyName: business.name,
+    email: business.email,
+    phone: business.phone ?? '',
+    status: resolveNewBusinessDisplayStatus(data, owner),
+    timeZone: resolvedTimeZone,
+    country: business.country ?? null,
+    createdAt: business.createdAt,
+    updatedAt: business.updatedAt,
+    address: business.address ?? null,
+    website: business.webpage ?? null,
+    owner: {
+      name: owner?.name ?? null,
+      email: owner?.email ?? business.email,
+      phone: owner?.phone_no ?? business.phone ?? null,
+      address: business.address ?? null,
+    },
+  }
+}
+
 export async function createBusiness(data: CreateBusinessInput): Promise<{
   id: string
   companyName: string
   email: string
   phone: string
   status: string
+  timeZone: string
+  country: string | null
   address: string | null
+  website: string | null
+  createdAt: Date
+  updatedAt: Date
   owner: { name: string | null; email: string; phone: string | null; address: string | null }
 }> {
-  let user: { id: string; name: string; email: string; phone_no: string | null } | null = null
+  const user = await createOwnerUserForNewBusiness(data)
 
-  if (data.tempPassword) {
-    const existing = await prisma.user.findUnique({
-      where: { email: data.email },
-      select: { id: true },
-    })
-    if (existing) {
-      throw new EmailAlreadyUsedError()
-    }
-
-    const hashedPassword = await hashPassword(data.tempPassword)
-    user = await prisma.user.create({
-      data: {
-        name: data.companyName,
-        email: data.email,
-        phone_no: data.phone,
-        banned: data.status === false,
-        role: 'BUSINESS_OWNER',
-        isOwner: true, // ✅ marks this user as the actual business owner
-      },
-    })
-
-    await prisma.account.create({
-      data: {
-        userId: user.id,
-        accountId: user.id,
-        providerId: 'credential',
-        password: hashedPassword,
-      },
-    })
-  }
+  const country = normalizeBusinessCountry(data.country)
+  const resolvedTimeZone = resolveBusinessIanaTimeZone(data.timeZone, country)
 
   const business = await prisma.business.create({
-    data: {
-      ...(user && { ownerId: user.id }),
-      name: data.companyName,
-      email: data.email,
-      phone: data.phone,
-      address: data.address ?? null,
-      webpage: data.website ?? null,
-      isActive: data.status !== false,
-    },
+    data: buildNewBusinessCreateData(data, resolvedTimeZone, country, user),
   })
 
-  await prisma.businessSettings.upsert({
-    where: { businessId: business.id },
-    create: {
-      businessId: business.id,
-      replyToEmail: business.email,
-    },
-    update: { replyToEmail: business.email },
-  })
+  await upsertBusinessSettingsReplyTo(business.id, business.email)
+  await sendNewBusinessOwnerInvitationIfNeeded(user, data)
 
-  if (user && data.tempPassword) {
-    const ownerName = data.companyName || data.email.split('@')[0]
-    await sendBusinessInvitationEmail({
-      to: data.email,
-      businessName: data.companyName,
-      ownerName,
-      email: data.email,
-      tempPassword: data.tempPassword,
-    })
-  }
-
-  return {
-    id: business.id,
-    companyName: business.name,
-    email: business.email,
-    phone: business.phone ?? '',
-    status: data.status === false ? 'Inactive' : user ? 'Invited' : 'Active',
-    address: business.address,
-    owner: {
-      name: user?.name ?? null,
-      email: business.email,
-      phone: business.phone,
-      address: business.address,
-    },
-  }
+  return mapCreatedBusinessToResult(business, data, user, resolvedTimeZone)
 }
 
 export async function updateBusiness(id: string, data: UpdateBusinessInput) {

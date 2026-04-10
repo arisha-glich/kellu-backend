@@ -53,6 +53,7 @@ export interface CurrentSettingsResult {
     defaultTaxRate: number | null
     taxIdRut: string | null
     sendTeamPhotosWithConfirmation: boolean
+    timeZone: string | null
   }
 }
 
@@ -92,6 +93,7 @@ export interface UpdateSettingsInput {
   defaultTaxRate?: number | null
   taxIdRut?: string | null
   sendTeamPhotosWithConfirmation?: boolean
+  timeZone?: string | null
 }
 
 export interface ScheduleColorAssignee {
@@ -177,6 +179,7 @@ export async function getCurrentBusinessSettings(
       defaultTaxRate: settings?.defaultTaxRate != null ? Number(settings.defaultTaxRate) : null,
       taxIdRut: settings?.rutNumber ?? null,
       sendTeamPhotosWithConfirmation: settings?.sendTeamPhotosWithConfirmation ?? false,
+      timeZone: business.timeZone ?? null,
     },
   }
 }
@@ -218,6 +221,7 @@ export async function updateCurrentBusinessSettings(
     ...(input.name !== undefined && { name: input.name }),
     ...(input.legalName !== undefined && { legalName: input.legalName }),
     ...(input.companyEmail !== undefined && { email: input.companyEmail }),
+    ...(input.timeZone !== undefined && input.timeZone !== null && { timeZone: input.timeZone }),
     ...(input.phone !== undefined && { phone: input.phone }),
     ...(input.webpage !== undefined && { webpage: input.webpage }),
     ...(input.address !== undefined && { address: input.address }),

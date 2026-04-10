@@ -52,8 +52,6 @@
 //   return allowed
 // }
 
-
-
 import { UserRole } from '~/generated/prisma'
 import { adminPortalAllows } from '~/lib/permission'
 import prisma from '~/lib/prisma'

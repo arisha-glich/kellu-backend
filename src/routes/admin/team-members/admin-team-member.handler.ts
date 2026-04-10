@@ -35,9 +35,13 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
       const { memberId } = c.req.valid('param')
       const member = await getMemberById(businessId, memberId, RolePortalScope.ADMIN_PORTAL)
       if (!member) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
-      return c.json({ message: 'Member retrieved successfully', success: true, data: member }, HttpStatusCodes.OK)
+      return c.json(
+        { message: 'Member retrieved successfully', success: true, data: member },
+        HttpStatusCodes.OK
+      )
     } catch (error) {
-      if (error instanceof MemberNotFoundError) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof MemberNotFoundError)
+        return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
       return c.json({ message: 'Failed to retrieve member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
@@ -60,10 +64,18 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         emailDescription: body.emailDescription,
         portalType: 'admin',
       })
-      return c.json({ message: 'Team member added successfully', success: true, data: member }, HttpStatusCodes.CREATED)
+      return c.json(
+        { message: 'Team member added successfully', success: true, data: member },
+        HttpStatusCodes.CREATED
+      )
     } catch (error) {
-      if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof EmailAlreadyUsedError) return c.json({ message: 'A team member with this email already exists in this business' }, HttpStatusCodes.BAD_REQUEST)
+      if (error instanceof RoleNotFoundError)
+        return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof EmailAlreadyUsedError)
+        return c.json(
+          { message: 'A team member with this email already exists in this business' },
+          HttpStatusCodes.BAD_REQUEST
+        )
       return c.json({ message: 'Failed to add team member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
@@ -85,11 +97,19 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         isActive: body.isActive,
         portalType: 'admin',
       })
-      return c.json({ message: 'Team member updated successfully', success: true, data: member }, HttpStatusCodes.OK)
+      return c.json(
+        { message: 'Team member updated successfully', success: true, data: member },
+        HttpStatusCodes.OK
+      )
     } catch (error) {
-      if (error instanceof MemberNotFoundError) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof RoleNotFoundError) return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
-      return c.json({ message: 'Failed to update team member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+      if (error instanceof MemberNotFoundError)
+        return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      if (error instanceof RoleNotFoundError)
+        return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      return c.json(
+        { message: 'Failed to update team member' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
   remove: async c => {
@@ -105,8 +125,12 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof MemberNotFoundError) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
-      return c.json({ message: 'Failed to remove team member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+      if (error instanceof MemberNotFoundError)
+        return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      return c.json(
+        { message: 'Failed to remove team member' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 }

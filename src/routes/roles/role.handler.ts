@@ -1,5 +1,8 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { Prisma, RolePortalScope, UserRole } from '~/generated/prisma'
+import { hasBusinessPortalAccess } from '~/lib/portal-access'
 import type { ROLE_ROUTES } from '~/routes/roles/role.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
   createRole,
@@ -13,10 +16,7 @@ import {
   RoleNotFoundError,
   updateRole,
 } from '~/services/role.service'
-import { createAuditLog } from '~/services/audit-log.service'
-import { hasBusinessPortalAccess } from '~/lib/portal-access'
 import type { HandlerMapFromRoutes } from '~/types'
-import { Prisma, RolePortalScope, UserRole } from '~/generated/prisma'
 
 const FORBIDDEN_BUSINESS_PORTAL_ONLY =
   'This endpoint is only for business portal accounts. Admin users must use /api/admin/roles.'
@@ -178,7 +178,7 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
         { message: 'Role created successfully', success: true, data: role },
         HttpStatusCodes.CREATED
       )
-    } catch (error:any) {
+    } catch (error: any) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         return c.json({ message: 'Role name already exists' }, HttpStatusCodes.CONFLICT)
       }

@@ -50,7 +50,7 @@ export const CreateQuoteBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
-    workOrderId:z.string().optional().nullable(),
+    workOrderId: z.string().optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
   })
   .openapi({ description: 'Create quote (`Quote` row + line items)' })
@@ -69,7 +69,7 @@ export const UpdateQuoteBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
-    workOrderId:z.string().optional().nullable(),
+    workOrderId: z.string().optional().nullable(),
     discount: z.number().min(0).optional(),
     discountType: z.enum(['PERCENTAGE', 'AMOUNT']).optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
@@ -101,12 +101,16 @@ export const ClientQuoteRespondQuerySchema = z.object({
     .optional()
     .openapi({
       param: { name: 'quoteId', in: 'query' },
-      description: 'Quote id (included in email links; improves resolution if token encoding differs)',
+      description:
+        'Quote id (included in email links; improves resolution if token encoding differs)',
     }),
 })
 
 export const ClientQuoteRejectBodySchema = z.object({
-  quoteId: z.string().min(1).openapi({ description: 'Work order / quote id (same as quote record id)' }),
+  quoteId: z
+    .string()
+    .min(1)
+    .openapi({ description: 'Work order / quote id (same as quote record id)' }),
   reason: z.string().min(3, 'Rejection reason is required'),
   token: z
     .string()
@@ -400,7 +404,10 @@ export const QUOTE_ROUTES = {
     summary: 'Get client rejection reason and related timestamps for a quote',
     request: { params: QuoteParamsSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteRejectionReasonResponseSchema), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(QuoteRejectionReasonResponseSchema),
+        'OK'
+      ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -621,6 +628,7 @@ export const QUOTE_ROUTES = {
       ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid payload'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.GONE]: jsonContent(zodResponseSchema(), 'Quote expired -7 days have passed'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),

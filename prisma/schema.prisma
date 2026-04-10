@@ -169,6 +169,10 @@ model Business {
   id        String   @id @default(cuid())
   name      String
   legalName String?
+  /// IANA timezone from browser/locale (e.g. America/Edmonton); scheduling & reminders
+  timeZone  String   @default("UTC") @map("timezone")
+  /// ISO 3166-1 alpha-2 (e.g. US, CA, GB); from locale; phone/format requirements
+  country   String?
   email     String
   phone     String?
   address   String?
@@ -357,7 +361,7 @@ model WorkOrder {
   endTime     String?
 
   clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   assignedToId String?
@@ -717,7 +721,7 @@ model BusinessSettings {
   whatsappEnabled          Boolean @default(false)
   sendQuoteWhatsappDefault Boolean @default(false)
   defaultTaxRate  Decimal?  @db.Decimal(5, 2)
-  rutNumber       String? 
+  rutNumber       String?
   notificationEmail              String?
   replyToEmail                   String?
   sendTeamPhotosWithConfirmation Boolean @default(false)

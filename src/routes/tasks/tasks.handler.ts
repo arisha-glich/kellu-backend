@@ -4,6 +4,7 @@
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { TASK_ROUTES } from '~/routes/tasks/tasks.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { hasPermission } from '~/services/permission.service'
 import {
@@ -18,6 +19,13 @@ import {
   updateTask,
 } from '~/services/task.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
   list: async c => {
@@ -140,6 +148,17 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         endTime: body.endTime ?? null,
         isAnyTime: body.isAnyTime ?? false,
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'TASK_CREATED',
+        module: 'task',
+        entityId: task.id,
+        newValues: { id: task.id, title: task.title, status: task.taskStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Task created successfully', success: true, data: task },
         HttpStatusCodes.CREATED
@@ -190,6 +209,17 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         ...(body.endTime !== undefined && { endTime: body.endTime ?? null }),
         ...(body.isAnyTime !== undefined && { isAnyTime: body.isAnyTime }),
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'TASK_UPDATED',
+        module: 'task',
+        entityId: task.id,
+        newValues: { id: task.id, title: task.title, status: task.taskStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Task updated successfully', success: true, data: task },
         HttpStatusCodes.OK
@@ -228,6 +258,16 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
 
       const { taskId } = c.req.valid('param')
       await deleteTask(businessId, taskId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'TASK_DELETED',
+        module: 'task',
+        entityId: taskId,
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Task deleted successfully', success: true as const },
         HttpStatusCodes.OK
@@ -257,6 +297,17 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
 
       const { taskId } = c.req.valid('param')
       const task = await startTask(businessId, taskId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'TASK_UPDATED',
+        module: 'task',
+        entityId: task.id,
+        newValues: { id: task.id, status: task.taskStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Task started successfully', success: true, data: task },
         HttpStatusCodes.OK
@@ -289,6 +340,17 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
 
       const { taskId } = c.req.valid('param')
       const task = await completeTask(businessId, taskId)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'TASK_UPDATED',
+        module: 'task',
+        entityId: task.id,
+        newValues: { id: task.id, status: task.taskStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Task completed successfully', success: true, data: task },
         HttpStatusCodes.OK

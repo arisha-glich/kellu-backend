@@ -5,7 +5,9 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { RolePortalScope } from '~/generated/prisma'
 import type { TEAM_ROUTES } from '~/routes/team/team.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { getBusinessIdByUserId } from '~/services/business.service'
+import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import {
   addMember,
   EmailAlreadyUsedError,
@@ -16,8 +18,14 @@ import {
   removeMember,
   updateMember,
 } from '~/services/team.service'
-import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
   list: async c => {
@@ -101,6 +109,22 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         emailDescription: body.emailDescription,
         portalType: 'business',
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'USER_CREATED',
+        module: 'user',
+        entityId: member.user.id,
+        newValues: {
+          id: member.user.id,
+          email: member.user.email,
+          name: member.user.name,
+          memberId: member.id,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       try {
         await createUserNotification({
           userId: user.id,
@@ -168,6 +192,23 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
         isActive: body.isActive,
         portalType: 'business',
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'USER_UPDATED',
+        module: 'user',
+        entityId: member.user.id,
+        newValues: {
+          id: member.user.id,
+          email: member.user.email,
+          name: member.user.name,
+          memberId: member.id,
+          isActive: member.isActive,
+        },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Team member updated successfully', success: true, data: member },
         HttpStatusCodes.OK
@@ -202,6 +243,16 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
       }
       const { memberId } = c.req.valid('param')
       await removeMember(businessId, memberId, RolePortalScope.BUSINESS_PORTAL)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'USER_DELETED',
+        module: 'user',
+        entityId: memberId,
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
       return c.json(
         { message: 'Team member removed successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

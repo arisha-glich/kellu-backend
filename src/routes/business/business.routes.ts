@@ -2,6 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi'
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { TAGS } from '~/config/tags'
+import { isValidIanaTimeZoneId } from '~/lib/iana-timezone-from-country'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
 /** Kelly Figma: Company Name, Business Email, Status, Total Jobs, Revenue, Users, Last Login */
@@ -15,6 +16,10 @@ export const BusinessSchema = z.object({
   status: z.string(),
   registered: z.coerce.date(),
   lastLogin: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  timeZone: z.string(),
+  country: z.string().nullable(),
   userId: z.string(),
   owner: z.object({
     name: z.string().nullable(),
@@ -39,7 +44,11 @@ export const CreateBusinessResponseSchema = z.object({
   email: z.string().email(),
   phone: z.string(),
   status: z.string(),
+  timeZone: z.string(),
+  country: z.string().nullable(),
   address: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
   owner: z.object({
     name: z.string().nullable(),
     email: z.string().email(),
@@ -67,7 +76,11 @@ export const BusinessDetailSchema = z.object({
   website: z.string().nullable(),
   status: z.string(),
   registered: z.coerce.date(),
+  timeZone: z.string(),
+  country: z.string().nullable(),
   lastLogin: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
   userId: z.string(),
   owner: z.object({
     name: z.string().nullable(),
@@ -86,11 +99,46 @@ export const BusinessDetailSchema = z.object({
   }),
 })
 
+/** Browser/locale on signup; scheduling & phone requirements */
+const BusinessTimeZoneSchema = z.preprocess(
+  v => {
+    if (v === undefined || v === null) {
+      return undefined
+    }
+    if (typeof v !== 'string') {
+      return undefined
+    }
+    const t = v.trim()
+    return t === '' ? undefined : t
+  },
+  z
+    .string()
+    .refine(tz => isValidIanaTimeZoneId(tz), {
+      message: 'Invalid IANA timezone (e.g. America/Edmonton, Europe/London)',
+    })
+    .optional()
+)
+
+const BusinessCountrySchema = z
+  .union([
+    z
+      .string()
+      .length(2, 'Country must be ISO 3166-1 alpha-2 (e.g. US, CA, GB)')
+      .regex(/^[A-Za-z]{2}$/, 'Country must be 2-letter ISO code')
+      .transform(s => s.toUpperCase()),
+    z.literal(''),
+  ])
+  .optional()
+
 export const CreateBusinessBodySchema = z
   .object({
     companyName: z.string().min(1, 'Company name is required'),
     email: z.string().email('Valid email is required'),
     phone: z.string().min(1, 'Phone number is required'),
+    /** IANA zone; omit or null to infer from `country` (e.g. GB → Europe/London, US → America/New_York). */
+    timeZone: BusinessTimeZoneSchema,
+    /** ISO 3166-1 alpha-2; used when `timeZone` is missing (US has multiple zones—send `timeZone` for exact local time). */
+    country: BusinessCountrySchema,
     address: z.string().optional(),
     website: z.string().url().optional().or(z.literal('')),
     tempPassword: z.string().min(1, 'Temporary password is required for owner login').optional(),

@@ -1,11 +1,11 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { BUSINESS_ROUTES } from '~/routes/business/business.routes'
+import { createAuditLog } from '~/services/audit-log.service'
 import {
   BusinessNotFoundError,
   businessService,
   EmailAlreadyUsedError,
 } from '~/services/business.service'
-import { createAuditLog } from '~/services/audit-log.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -67,7 +67,6 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
 
   createBusiness: async c => {
     const user = c.get('user')
-    console.log(user)
     if (!user || !user.isAdmin) {
       return c.json(
         { message: 'only super admins can create businesses' },
@@ -85,6 +84,8 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         website: body.website,
         tempPassword: body.tempPassword,
         status: body.status,
+        timeZone: body.timeZone,
+        country: body.country,
       })
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({

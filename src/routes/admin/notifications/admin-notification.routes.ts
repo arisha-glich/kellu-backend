@@ -88,7 +88,10 @@ export const ADMIN_NOTIFICATION_ROUTES = {
     summary: 'Admin: create a custom notification rule',
     request: { body: jsonContentRequired(CreateRuleBodySchema, 'Create rule payload') },
     responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(PlatformNotificationRuleSchema), 'Created'),
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(PlatformNotificationRuleSchema),
+        'Created'
+      ),
       ...adminNotificationErrors,
     },
   }),
@@ -127,7 +130,10 @@ export const ADMIN_NOTIFICATION_ROUTES = {
     summary: 'Admin: delete a notification rule',
     request: { params: RuleIdParamsSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(z.object({ deleted: z.literal(true) })), 'OK'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ deleted: z.literal(true) })),
+        'OK'
+      ),
       ...adminNotificationErrors,
     },
   }),
@@ -148,7 +154,9 @@ export const ADMIN_NOTIFICATION_ROUTES = {
     tags: ['Admin Notifications'],
     path: '/email-forwarding',
     summary: 'Admin: update platform email copy settings',
-    request: { body: jsonContentRequired(PatchEmailForwardingBodySchema, 'Email forwarding payload') },
+    request: {
+      body: jsonContentRequired(PatchEmailForwardingBodySchema, 'Email forwarding payload'),
+    },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(EmailForwardingSchema), 'OK'),
       ...adminNotificationErrors,

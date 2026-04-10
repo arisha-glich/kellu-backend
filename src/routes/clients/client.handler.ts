@@ -1,11 +1,12 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
-import { resolvePortalAccess } from '~/lib/portal-access'
+import { ClientStatus, UserRole } from '~/generated/prisma'
 import type { CLIENT_ROUTES } from '~/routes/clients/client.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
   ClientNotFoundError,
   createClient,
   deleteClientByClientId,
+  EmailAlreadyUsedError,
   getClientByClientId,
   getClientStatistics,
   getClients,
@@ -14,6 +15,15 @@ import {
 } from '~/services/client.service'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
+
+function listStatusForService(
+  status: 'ACTIVE' | 'ARCHIVED' | 'FOLLOW_UP' | 'ALL' | undefined
+): ClientStatus | undefined {
+  if (status === undefined || status === 'ALL') {
+    return undefined
+  }
+  return status
+}
 
 export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
   list: async c => {
@@ -40,7 +50,7 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       const limit = query.limit ? Number.parseInt(query.limit, 10) : 10
       const result = await getClients(businessId, {
         search: query.search,
-        status: query.status === 'ALL' ? undefined : query.status,
+        status: listStatusForService(query.status),
         sortBy: query.sortBy,
         order: query.order,
         page,
@@ -86,7 +96,7 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       const limit = query.limit ? Number.parseInt(query.limit, 10) : 10
       const result = await getClients(businessId, {
         search: query.search,
-        status: 'ARCHIVED',
+        status: ClientStatus.ARCHIVED,
         sortBy: query.sortBy,
         order: query.order,
         page,
@@ -179,14 +189,7 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
 
   create: async c => {
     const user = c.get('user')
-    if (!user) {
-      return c.json(
-        { message: 'only business owners can create clients' },
-        HttpStatusCodes.UNAUTHORIZED
-      )
-    }
-    const { businessPortalAccess } = await resolvePortalAccess(user.id)
-    if (!businessPortalAccess) {
+    if (!user || user.role !== UserRole.BUSINESS_OWNER) {
       return c.json(
         { message: 'only business owners can create clients' },
         HttpStatusCodes.UNAUTHORIZED
@@ -220,6 +223,9 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof EmailAlreadyUsedError) {
+        return c.json({ message: 'Email already in use' }, HttpStatusCodes.CONFLICT)
+      }
       console.error('Error creating client:', error)
       return c.json({ message: 'Failed to create client' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
@@ -229,7 +235,7 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
     const user = c.get('user')
     if (!user) {
       return c.json(
-        { message: 'only business owners can create clients' },
+        { message: 'only business owners can view clients' },
         HttpStatusCodes.UNAUTHORIZED
       )
     }

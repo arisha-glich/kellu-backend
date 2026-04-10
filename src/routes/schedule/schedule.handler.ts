@@ -4,6 +4,7 @@
  */
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { hasPermission } from '~/services/permission.service'
 import {
@@ -19,6 +20,13 @@ import {
 } from '~/services/schedule.service'
 import type { HandlerMapFromRoutes } from '~/types'
 import type { SCHEDULE_ROUTES } from './schedule.routes'
+
+function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
+  const forwarded = c.req.header('x-forwarded-for')
+  const ipAddress = forwarded?.split(',')[0]?.trim() || null
+  const userAgent = c.req.header('user-agent') ?? null
+  return { ipAddress, userAgent }
+}
 
 export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
   // ─────────────────────────────────────────────
@@ -180,6 +188,17 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
         type,
         body
       )
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SCHEDULE_UPDATED',
+        module: 'schedule',
+        entityId: id,
+        newValues: { type, id },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
 
       if (shouldNotifyReschedule) {
         await notifyAfterScheduleReschedule(businessId, type, id, {
@@ -247,6 +266,17 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
         isScheduleLater: body.isScheduleLater,
         isAnyTime: body.isAnyTime,
       })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SCHEDULE_CREATED',
+        module: 'schedule',
+        entityId: result.id,
+        newValues: { type: 'workorder', id: result.id, title: result.title },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
 
       await notifyAfterQuickCreateWorkOrder(businessId, result.id, {
         id: user.id,
@@ -309,6 +339,17 @@ export const SCHEDULE_HANDLER: HandlerMapFromRoutes<typeof SCHEDULE_ROUTES> = {
         endTime: body.endTime ?? null,
         isAnyTime: body.isAnyTime,
         workOrderId: body.workOrderId ?? null,
+      })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SCHEDULE_CREATED',
+        module: 'schedule',
+        entityId: result.id,
+        newValues: { type: 'task', id: result.id, title: result.title },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
       })
 
       await notifyAfterQuickCreateTask(businessId, result.id, {
