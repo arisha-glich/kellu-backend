@@ -83,6 +83,17 @@ export interface CreateWorkOrderInput {
 
 export type UpdateWorkOrderInput = Partial<CreateWorkOrderInput>
 
+/** When defined (including `[]`), replace `WorkOrderAssignment` rows and primary; when `undefined`, leave assignees unchanged. */
+function assigneeIdsFromUpdateInput(input: UpdateWorkOrderInput): string[] | undefined {
+  if (input.assignedToIds !== undefined || input.assignedToId !== undefined) {
+    return normalizeAssigneeIds({
+      assignedToId: input.assignedToId,
+      assignedToIds: input.assignedToIds,
+    })
+  }
+  return undefined
+}
+
 function toNum(d: unknown): number {
   if (d == null) {
     return 0
@@ -650,11 +661,24 @@ export async function updateWorkOrder(
     throw new WorkOrderNotFoundError()
   }
 
+  const assigneeIdsToApply = assigneeIdsFromUpdateInput(input)
+
+  if (assigneeIdsToApply !== undefined && assigneeIdsToApply.length > 0) {
+    const members = await prisma.member.findMany({
+      where: { businessId, id: { in: assigneeIdsToApply } },
+      select: { id: true },
+    })
+    if (members.length !== assigneeIdsToApply.length) {
+      throw new WorkOrderAssigneeNotFoundError()
+    }
+  }
+
   const scheduleFieldsTouched =
     input.scheduledAt !== undefined ||
     input.startTime !== undefined ||
     input.endTime !== undefined ||
     input.assignedToId !== undefined ||
+    input.assignedToIds !== undefined ||
     input.isAnyTime !== undefined ||
     input.isScheduleLater !== undefined
 
@@ -662,7 +686,11 @@ export async function updateWorkOrder(
     scheduledAt: input.scheduledAt !== undefined ? input.scheduledAt : existing.scheduledAt,
     startTime: input.startTime !== undefined ? input.startTime : existing.startTime,
     assignedToId:
-      input.assignedToId !== undefined ? input.assignedToId : existing.primaryAssigneeId,
+      assigneeIdsToApply !== undefined
+        ? (assigneeIdsToApply[0] ?? null)
+        : input.assignedToId !== undefined
+          ? input.assignedToId
+          : existing.primaryAssigneeId,
     isAnyTime: input.isAnyTime !== undefined ? input.isAnyTime : existing.isAnyTime,
   }
 
@@ -677,54 +705,73 @@ export async function updateWorkOrder(
 
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
-  await prisma.$transaction(async tx => {
-    const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
-      ...(input.title != null && { title: input.title }),
-      ...(input.clientId != null && { clientId: input.clientId }),
-      ...(input.address != null && { address: input.address }),
-      ...(input.instructions !== undefined && { instructions: input.instructions }),
-      ...(input.notes !== undefined && { notes: input.notes }),
-      ...(input.isScheduleLater !== undefined && { isScheduleLater: input.isScheduleLater }),
-      ...(input.isAnyTime !== undefined && { isAnyTime: input.isAnyTime }),
-      ...(input.isAnyTime === true && { startTime: null, endTime: null }),
-      ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt }),
-      ...(input.startTime !== undefined &&
-        input.isAnyTime !== true && { startTime: input.startTime }),
-      ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
-      ...(input.assignedToId !== undefined && { primaryAssigneeId: input.assignedToId }),
-      ...(input.invoiceClientMessage !== undefined && {
-        invoiceObservations: input.invoiceClientMessage,
-      }),
-      ...(input.invoiceTermsConditions !== undefined && {
-        invoiceTermsConditions: input.invoiceTermsConditions,
-      }),
-      ...(input.discount !== undefined && { discount: input.discount }),
-      ...(input.discountType !== undefined && { discountType: input.discountType }),
-      ...(jobStatus != null && { jobStatus }),
-    }
+  const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
+    ...(input.title != null && { title: input.title }),
+    ...(input.clientId != null && { clientId: input.clientId }),
+    ...(input.address != null && { address: input.address }),
+    ...(input.instructions !== undefined && { instructions: input.instructions }),
+    ...(input.notes !== undefined && { notes: input.notes }),
+    ...(input.isScheduleLater !== undefined && { isScheduleLater: input.isScheduleLater }),
+    ...(input.isAnyTime !== undefined && { isAnyTime: input.isAnyTime }),
+    ...(input.isAnyTime === true && { startTime: null, endTime: null }),
+    ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt }),
+    ...(input.startTime !== undefined &&
+      input.isAnyTime !== true && { startTime: input.startTime }),
+    ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
+    ...(assigneeIdsToApply !== undefined && {
+      primaryAssigneeId: assigneeIdsToApply[0] ?? null,
+    }),
+    ...(input.invoiceClientMessage !== undefined && {
+      invoiceObservations: input.invoiceClientMessage,
+    }),
+    ...(input.invoiceTermsConditions !== undefined && {
+      invoiceTermsConditions: input.invoiceTermsConditions,
+    }),
+    ...(input.discount !== undefined && { discount: input.discount }),
+    ...(input.discountType !== undefined && { discountType: input.discountType }),
+    ...(jobStatus != null && { jobStatus }),
+  }
 
-    await tx.workOrder.update({ where: { id: workOrderId }, data: updateData })
+  // Batch `$transaction([...])` avoids interactive transaction issues (e.g. P2028 on Bun).
+  await prisma.$transaction([
+    prisma.workOrder.update({ where: { id: workOrderId }, data: updateData }),
+    ...(assigneeIdsToApply !== undefined
+      ? [
+          prisma.workOrderAssignment.deleteMany({ where: { workOrderId } }),
+          ...(assigneeIdsToApply.length > 0
+            ? [
+                prisma.workOrderAssignment.createMany({
+                  data: assigneeIdsToApply.map(memberId => ({ workOrderId, memberId })),
+                  skipDuplicates: true,
+                }),
+              ]
+            : []),
+        ]
+      : []),
+    ...(input.lineItems
+      ? [
+          prisma.lineItem.deleteMany({ where: { workOrderId } }),
+          ...(input.lineItems.length > 0
+            ? [
+                prisma.lineItem.createMany({
+                  data: input.lineItems.map(li => ({
+                    workOrderId,
+                    name: li.name,
+                    itemType: li.itemType ?? 'SERVICE',
+                    description: li.description ?? null,
+                    quantity: li.quantity,
+                    price: li.price,
+                    cost: li.cost ?? null,
+                    priceListItemId: li.priceListItemId ?? null,
+                  })),
+                }),
+              ]
+            : []),
+        ]
+      : []),
+  ])
 
-    if (input.lineItems) {
-      await tx.lineItem.deleteMany({ where: { workOrderId } })
-      if (input.lineItems.length > 0) {
-        await tx.lineItem.createMany({
-          data: input.lineItems.map(li => ({
-            workOrderId,
-            name: li.name,
-            itemType: li.itemType ?? 'SERVICE',
-            description: li.description ?? null,
-            quantity: li.quantity,
-            price: li.price,
-            cost: li.cost ?? null,
-            priceListItemId: li.priceListItemId ?? null,
-          })),
-        })
-      }
-    }
-
-    await recalculateFinancials(workOrderId, taxPercent, tx)
-  })
+  await recalculateFinancials(workOrderId, taxPercent)
 
   await convertQuotesWhenJobAdvances(businessId, workOrderId)
 

@@ -354,7 +354,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         scheduledAt: body.scheduledAt,
         startTime: body.startTime,
         endTime: body.endTime,
-        assignedToId: resolvePrimaryAssigneeId({ assignedToIds: body.assignedToIds }),
+        assignedToIds: body.assignedToIds,
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         invoiceClientMessage: body.invoiceClientMessage,
@@ -395,6 +395,12 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       }
       if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof WorkOrderAssigneeNotFoundError) {
+        return c.json(
+          { message: 'One or more assigned team members were not found in this business' },
+          HttpStatusCodes.NOT_FOUND
+        )
       }
       console.error('Error updating work order:', error)
       return c.json(
