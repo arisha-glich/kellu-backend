@@ -25,6 +25,13 @@ import { createUserNotification, sendUserOperationEmail } from '~/services/notif
 
 export type ScheduleItemType = 'workorder' | 'task'
 
+/** Team members assigned to a work order (from `WorkOrderAssignment`; one or many). */
+export interface ScheduleItemAssignee {
+  memberId: string
+  name: string | null
+  calendarColor: string | null
+}
+
 export interface ScheduleItem {
   id: string
   type: ScheduleItemType
@@ -40,6 +47,8 @@ export interface ScheduleItem {
   assignedToId: string | null
   assignedToName: string | null
   assignedToColor: string | null // for calendar block color by technician
+  /** Work orders only: full assignee list. `assignedToId` stays as first member for backwards compatibility. */
+  assignees?: ScheduleItemAssignee[]
   status: string
   completedAt: Date | null
   workOrderNumber: string | null
@@ -131,6 +140,7 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 function deriveJobStatus(wo: {
   scheduledAt: Date | null
   primaryAssigneeId: string | null
+  assigneeLinkCount: number
   jobStatus: string
 }): string {
   // Execution statuses are manual — don't override them
@@ -142,10 +152,35 @@ function deriveJobStatus(wo: {
   if (!wo.scheduledAt) {
     return 'UNSCHEDULED'
   }
-  if (!wo.primaryAssigneeId) {
+  const hasAssignee = wo.assigneeLinkCount > 0 || !!wo.primaryAssigneeId
+  if (!hasAssignee) {
     return 'UNASSIGNED'
   }
   return 'SCHEDULED'
+}
+
+function workOrderMatchesTeamMemberFilter(teamMemberId: string): Prisma.WorkOrderWhereInput {
+  return {
+    OR: [{ primaryAssigneeId: teamMemberId }, { assignees: { some: { memberId: teamMemberId } } }],
+  }
+}
+
+function scheduleItemInMemberLane(item: ScheduleItem, memberId: string): boolean {
+  if (item.type !== 'workorder') {
+    return item.assignedToId === memberId
+  }
+  if (item.assignees?.some(a => a.memberId === memberId)) {
+    return true
+  }
+  return item.assignedToId === memberId
+}
+
+/** Timed row with date but no technician (work order: no assignees and no legacy primary). */
+function timedItemHasNoAssignee(item: ScheduleItem): boolean {
+  if (item.type !== 'workorder') {
+    return !item.assignedToId
+  }
+  return (item.assignees?.length ?? 0) === 0 && !item.assignedToId
 }
 
 function mapWorkOrderToItem(wo: {
@@ -168,7 +203,34 @@ function mapWorkOrderToItem(wo: {
     user: { name: string | null }
     calendarColor?: string | null
   } | null
+  assignees: Array<{
+    member: {
+      id: string
+      calendarColor: string | null
+      user: { name: string | null }
+    }
+  }>
 }): ScheduleItem {
+  const assignees: ScheduleItemAssignee[] = wo.assignees.map(a => ({
+    memberId: a.member.id,
+    name: a.member.user?.name ?? null,
+    calendarColor: a.member.calendarColor,
+  }))
+
+  let display: ScheduleItemAssignee | null = assignees[0] ?? null
+  if (!display && wo.primaryAssigneeId && wo.primaryAssignee) {
+    display = {
+      memberId: wo.primaryAssigneeId,
+      name: wo.primaryAssignee.user?.name ?? null,
+      calendarColor: wo.primaryAssignee.calendarColor ?? null,
+    }
+    if (assignees.length === 0) {
+      assignees.push(display)
+    }
+  }
+
+  const assigneeLinkCount = wo.assignees.length
+
   return {
     id: wo.id,
     type: 'workorder',
@@ -181,10 +243,16 @@ function mapWorkOrderToItem(wo: {
     endTime: wo.endTime,
     isAnyTime: wo.isAnyTime,
     isScheduleLater: wo.isScheduleLater,
-    assignedToId: wo.primaryAssigneeId,
-    assignedToName: wo.primaryAssignee?.user?.name ?? null,
-    assignedToColor: wo.primaryAssignee?.calendarColor ?? null,
-    status: deriveJobStatus(wo),
+    assignedToId: display?.memberId ?? null,
+    assignedToName: display?.name ?? null,
+    assignedToColor: display?.calendarColor ?? null,
+    assignees: assignees.length > 0 ? assignees : undefined,
+    status: deriveJobStatus({
+      scheduledAt: wo.scheduledAt,
+      primaryAssigneeId: wo.primaryAssigneeId,
+      assigneeLinkCount,
+      jobStatus: wo.jobStatus,
+    }),
     completedAt: wo.completedAt,
     workOrderNumber: wo.workOrderNumber,
     workOrderId: null,
@@ -240,6 +308,15 @@ const WORK_ORDER_INCLUDE = {
   client: { select: { name: true } },
   primaryAssignee: {
     include: { user: { select: { name: true } } },
+  },
+  assignees: {
+    include: {
+      member: {
+        include: {
+          user: { select: { name: true } },
+        },
+      },
+    },
   },
 } satisfies Prisma.WorkOrderInclude
 
@@ -322,7 +399,7 @@ export async function getDailySchedule(
   const baseTaskWhere: Prisma.TaskWhereInput = { businessId }
 
   if (teamMemberId) {
-    baseWoWhere.primaryAssigneeId = teamMemberId
+    Object.assign(baseWoWhere, workOrderMatchesTeamMemberFilter(teamMemberId))
     baseTaskWhere.assignedToId = teamMemberId
   }
 
@@ -390,12 +467,12 @@ export async function getDailySchedule(
   const timed = allScheduledItems.filter(i => !i.isAnyTime)
 
   // ── Split timed into unassigned row vs technician lanes ──
-  const unassignedRow = timed.filter(i => !i.assignedToId)
+  const unassignedRow = timed.filter(i => timedItemHasNoAssignee(i))
 
   // Build lanes for each team member
   const lanes: TeamMemberLane[] = allMembers.map(m => {
     const memberItems = timed
-      .filter(i => i.assignedToId === m.id)
+      .filter(i => scheduleItemInMemberLane(i, m.id))
       .sort((a, b) => {
         if (!a.startTime || !b.startTime) {
           return 0
@@ -450,7 +527,7 @@ export async function getScheduleItems(
   const taskWhere: Prisma.TaskWhereInput = { businessId }
 
   if (teamMemberId) {
-    woWhere.primaryAssigneeId = teamMemberId
+    Object.assign(woWhere, workOrderMatchesTeamMemberFilter(teamMemberId))
     taskWhere.assignedToId = teamMemberId
   }
 
@@ -1355,7 +1432,7 @@ export async function quickCreateWorkOrder(
       isScheduleLater,
       isAnyTime,
       jobStatus,
-      ...(assignedToId ? { assignedToId } : {}),
+      ...(assignedToId ? { primaryAssigneeId: assignedToId } : {}),
     },
     include: WORK_ORDER_INCLUDE,
   })

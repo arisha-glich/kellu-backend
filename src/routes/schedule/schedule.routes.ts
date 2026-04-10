@@ -22,6 +22,12 @@ const ItemTypeEnum = z.enum(['workorder', 'task'])
 // SHARED SCHEMAS
 // ─────────────────────────────────────────────
 
+const ScheduleItemAssigneeSchema = z.object({
+  memberId: z.string(),
+  name: z.string().nullable(),
+  calendarColor: z.string().nullable(),
+})
+
 export const ScheduleItemSchema = z.object({
   id: z.string(),
   type: ItemTypeEnum,
@@ -37,6 +43,7 @@ export const ScheduleItemSchema = z.object({
   assignedToId: z.string().nullable(),
   assignedToName: z.string().nullable(),
   assignedToColor: z.string().nullable(),
+  assignees: z.array(ScheduleItemAssigneeSchema).optional(),
   status: z.string(),
   completedAt: z.coerce.date().nullable(),
   workOrderNumber: z.string().nullable(),
