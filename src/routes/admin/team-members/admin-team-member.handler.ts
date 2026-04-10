@@ -17,9 +17,13 @@ import type { HandlerMapFromRoutes } from '~/types'
 export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_MEMBER_ROUTES> = {
   list: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     const businessId = await resolveAdminBusinessScope(c, user)
-    if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+    if (!businessId) {
+      return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+    }
     const data = await listMembers(businessId, RolePortalScope.ADMIN_PORTAL)
     return c.json(
       { message: 'Team members retrieved successfully', success: true, data: { data } },
@@ -28,29 +32,40 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
   },
   getById: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
-      if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       const { memberId } = c.req.valid('param')
       const member = await getMemberById(businessId, memberId, RolePortalScope.ADMIN_PORTAL)
-      if (!member) return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!member) {
+        return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       return c.json(
         { message: 'Member retrieved successfully', success: true, data: member },
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof MemberNotFoundError)
+      if (error instanceof MemberNotFoundError) {
         return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       return c.json({ message: 'Failed to retrieve member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
   add: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
-      if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       const body = c.req.valid('json')
       const member = await addMember(businessId, {
         name: body.name,
@@ -69,22 +84,28 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         HttpStatusCodes.CREATED
       )
     } catch (error) {
-      if (error instanceof RoleNotFoundError)
+      if (error instanceof RoleNotFoundError) {
         return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof EmailAlreadyUsedError)
+      }
+      if (error instanceof EmailAlreadyUsedError) {
         return c.json(
           { message: 'A team member with this email already exists in this business' },
           HttpStatusCodes.BAD_REQUEST
         )
+      }
       return c.json({ message: 'Failed to add team member' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
   update: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
-      if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       const { memberId } = c.req.valid('param')
       const body = c.req.valid('json')
       const member = await updateMember(businessId, memberId, {
@@ -102,10 +123,12 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof MemberNotFoundError)
+      if (error instanceof MemberNotFoundError) {
         return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
-      if (error instanceof RoleNotFoundError)
+      }
+      if (error instanceof RoleNotFoundError) {
         return c.json({ message: 'Role not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       return c.json(
         { message: 'Failed to update team member' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
@@ -114,10 +137,14 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
   },
   remove: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     try {
       const businessId = await resolveAdminBusinessScope(c, user)
-      if (!businessId) return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       const { memberId } = c.req.valid('param')
       await removeMember(businessId, memberId, RolePortalScope.ADMIN_PORTAL)
       return c.json(
@@ -125,8 +152,9 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof MemberNotFoundError)
+      if (error instanceof MemberNotFoundError) {
         return c.json({ message: 'Member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       return c.json(
         { message: 'Failed to remove team member' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR

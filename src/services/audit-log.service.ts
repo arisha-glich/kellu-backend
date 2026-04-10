@@ -44,12 +44,16 @@ const DEFAULT_AUDIT_MODULES = [
 
 function normalizeModuleValue(value: string): string {
   const v = value.trim().toLowerCase()
-  if (v === 'job' || v === 'jobs' || v === 'work_order' || v === 'work-order') return 'workorder'
+  if (v === 'job' || v === 'jobs' || v === 'work_order' || v === 'work-order') {
+    return 'workorder'
+  }
   return v
 }
 
 function buildActionWhere(action?: string): Prisma.AuditLogWhereInput | undefined {
-  if (!action) return undefined
+  if (!action) {
+    return undefined
+  }
   const a = action.trim().toUpperCase()
   if (a === 'LOGIN_LOGOUT') {
     return {
@@ -61,14 +65,22 @@ function buildActionWhere(action?: string): Prisma.AuditLogWhereInput | undefine
       ],
     }
   }
-  if (a === 'CREATED') return { action: { contains: 'create', mode: 'insensitive' } }
-  if (a === 'UPDATED') return { action: { contains: 'update', mode: 'insensitive' } }
-  if (a === 'DELETED') return { action: { contains: 'delete', mode: 'insensitive' } }
+  if (a === 'CREATED') {
+    return { action: { contains: 'create', mode: 'insensitive' } }
+  }
+  if (a === 'UPDATED') {
+    return { action: { contains: 'update', mode: 'insensitive' } }
+  }
+  if (a === 'DELETED') {
+    return { action: { contains: 'delete', mode: 'insensitive' } }
+  }
   return { action: { contains: action.trim(), mode: 'insensitive' } }
 }
 
 function buildModuleWhere(module?: string): Prisma.AuditLogWhereInput | undefined {
-  if (!module) return undefined
+  if (!module) {
+    return undefined
+  }
   const m = normalizeModuleValue(module)
   if (m === 'workorder') {
     return {
@@ -85,8 +97,12 @@ function buildModuleWhere(module?: string): Prisma.AuditLogWhereInput | undefine
 function toAuditJsonField(
   v: unknown
 ): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
-  if (v === undefined) return undefined
-  if (v === null) return Prisma.JsonNull
+  if (v === undefined) {
+    return undefined
+  }
+  if (v === null) {
+    return Prisma.JsonNull
+  }
   return v as Prisma.InputJsonValue
 }
 

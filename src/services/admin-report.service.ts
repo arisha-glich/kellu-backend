@@ -90,7 +90,9 @@ function businessRowWhere(
   base: Prisma.BusinessWhereInput,
   businessId?: string
 ): Prisma.BusinessWhereInput {
-  if (!businessId) return base
+  if (!businessId) {
+    return base
+  }
   return { ...base, id: businessId }
 }
 
@@ -98,7 +100,9 @@ function workOrderScopeWhere(
   base: Prisma.WorkOrderWhereInput,
   businessId?: string
 ): Prisma.WorkOrderWhereInput {
-  if (!businessId) return base
+  if (!businessId) {
+    return base
+  }
   return { ...base, businessId }
 }
 

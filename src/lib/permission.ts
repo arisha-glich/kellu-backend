@@ -161,24 +161,31 @@ const BUSINESS_OWNER_SESSION_READ_ONLY_RESOURCES = new Set(['user', 'users', 're
 
 const BUSINESS_OWNER_SESSION_EXCLUDED_RESOURCES = new Set(['business', 'session', 'sessions'])
 
+function pushBusinessOwnerSessionPairsForResource(
+  resource: string,
+  acts: readonly string[],
+  pairs: PermissionPair[]
+) {
+  if (BUSINESS_OWNER_SESSION_READ_ONLY_RESOURCES.has(resource)) {
+    for (const action of acts) {
+      if (action === 'read') {
+        pairs.push({ resource, action })
+      }
+    }
+    return
+  }
+  for (const action of acts) {
+    pairs.push({ resource, action })
+  }
+}
+
 export function buildBusinessOwnerSessionPermissions(): PermissionPair[] {
   const pairs: PermissionPair[] = []
   for (const [resource, actions] of Object.entries(statement)) {
     if (BUSINESS_OWNER_SESSION_EXCLUDED_RESOURCES.has(resource)) {
       continue
     }
-    const acts = actions as readonly string[]
-    if (BUSINESS_OWNER_SESSION_READ_ONLY_RESOURCES.has(resource)) {
-      for (const action of acts) {
-        if (action === 'read') {
-          pairs.push({ resource, action })
-        }
-      }
-    } else {
-      for (const action of acts) {
-        pairs.push({ resource, action })
-      }
-    }
+    pushBusinessOwnerSessionPairsForResource(resource, actions as readonly string[], pairs)
   }
   return pairs
 }

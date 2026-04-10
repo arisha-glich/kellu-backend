@@ -178,7 +178,7 @@ export const ROLE_HANDLER: HandlerMapFromRoutes<typeof ROLE_ROUTES> = {
         { message: 'Role created successfully', success: true, data: role },
         HttpStatusCodes.CREATED
       )
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         return c.json({ message: 'Role name already exists' }, HttpStatusCodes.CONFLICT)
       }

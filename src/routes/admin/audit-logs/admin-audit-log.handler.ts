@@ -10,7 +10,9 @@ const FORBIDDEN_ADMIN_PORTAL_ONLY =
 export const ADMIN_AUDIT_LOG_HANDLER: HandlerMapFromRoutes<typeof ADMIN_AUDIT_LOG_ROUTES> = {
   filters: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -28,7 +30,9 @@ export const ADMIN_AUDIT_LOG_HANDLER: HandlerMapFromRoutes<typeof ADMIN_AUDIT_LO
   },
   list: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }

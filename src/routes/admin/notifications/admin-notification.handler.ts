@@ -41,7 +41,9 @@ function canUpdateSettings(user: {
 export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIFICATION_ROUTES> = {
   listRules: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -65,7 +67,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   createRule: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -96,7 +100,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   getRule: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -116,7 +122,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   updateRule: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -145,7 +153,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   deleteRule: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -177,7 +187,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   getEmailForwarding: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -201,7 +213,9 @@ export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIF
 
   patchEmailForwarding: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }

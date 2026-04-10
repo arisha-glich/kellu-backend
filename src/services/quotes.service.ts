@@ -300,7 +300,9 @@ async function assertQuoteNotExpired(quoteId: string): Promise<void> {
     where: { id: quoteId },
     select: { quoteExpiresAt: true, quoteStatus: true },
   })
-  if (!row) throw new WorkOrderNotFoundError()
+  if (!row) {
+    throw new WorkOrderNotFoundError()
+  }
 
   // If already marked EXPIRED in DB
   if (row.quoteStatus === 'EXPIRED') {

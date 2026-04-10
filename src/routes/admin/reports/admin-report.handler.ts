@@ -33,7 +33,9 @@ function hasReportsReadPermission(user: {
 export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUTES> = {
   summary: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -84,7 +86,9 @@ export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUT
 
   businesses: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -122,7 +126,9 @@ export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUT
 
   workorders: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -160,7 +166,9 @@ export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUT
 
   invoices: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
@@ -198,7 +206,9 @@ export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUT
 
   revenue: async c => {
     const user = c.get('user')
-    if (!user) return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
     if (!(await hasAdminPortalAccess(user.id))) {
       return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
     }
