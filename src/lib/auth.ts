@@ -70,6 +70,39 @@ async function resolveUserPermissions(
   }))
 }
 
+/** Locale from the business this user owns (`Business.ownerId`). Session exposes this only for business owners. */
+async function resolveOwnedBusinessLocale(ownerUserId: string) {
+  const owned = await prisma.business.findFirst({
+    where: { ownerId: ownerUserId },
+    select: { timeZone: true, country: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (!owned) {
+    return { timeZone: null as string | null, country: null as string | null }
+  }
+  return { timeZone: owned.timeZone, country: owned.country }
+}
+
+async function resolveCustomSessionPermissions(
+  userId: string,
+  useAdminPortalSessionMatrix: boolean,
+  isPrimarySuperAdmin: boolean,
+  isAdminPortalTeamMember: boolean,
+  dbRole: UserRole,
+  dbIsOwner: boolean
+): Promise<PermissionPair[]> {
+  if (useAdminPortalSessionMatrix) {
+    return buildAdminPortalSessionPermissions()
+  }
+  if (isPrimarySuperAdmin || isAdminPortalTeamMember) {
+    return resolveUserPermissions(userId, true)
+  }
+  if (dbRole === UserRole.BUSINESS_OWNER && dbIsOwner) {
+    return buildBusinessOwnerSessionPermissions()
+  }
+  return resolveUserPermissions(userId, false)
+}
+
 export const auth = betterAuth({
   secret: resolveAuthSecret(),
   emailAndPassword: {
@@ -150,18 +183,14 @@ export const auth = betterAuth({
       /** Matrix is only for primary super admin without business membership. */
       const useAdminPortalSessionMatrix = isPrimarySuperAdmin && !activeMembership
 
-      let rawPermissions: PermissionPair[]
-      if (useAdminPortalSessionMatrix) {
-        rawPermissions = buildAdminPortalSessionPermissions()
-      } else if (isPrimarySuperAdmin || isAdminPortalTeamMember) {
-        rawPermissions = await resolveUserPermissions(user.id, true)
-      } else if (dbRole === UserRole.BUSINESS_OWNER && dbIsOwner) {
-        rawPermissions = buildBusinessOwnerSessionPermissions()
-      } else {
-        rawPermissions = await resolveUserPermissions(user.id, false)
-      }
-
-      const permissions = rawPermissions
+      const permissions = await resolveCustomSessionPermissions(
+        user.id,
+        useAdminPortalSessionMatrix,
+        isPrimarySuperAdmin,
+        isAdminPortalTeamMember,
+        dbRole,
+        dbIsOwner
+      )
 
       if (isPrimarySuperAdmin || isAdminPortalTeamMember) {
         return {
@@ -179,17 +208,39 @@ export const auth = betterAuth({
         }
       }
 
+      if (!dbIsOwner) {
+        return {
+          user: {
+            ...userWithoutPortalTeamFlag,
+            role: UserRole.BUSINESS_OWNER,
+            permissions,
+            isOwner: false,
+            isAdmin: false,
+          } as typeof user & {
+            permissions: PermissionPair[]
+            isOwner: boolean
+            isAdmin: boolean
+          },
+        }
+      }
+
+      const { timeZone, country } = await resolveOwnedBusinessLocale(user.id)
+
       return {
         user: {
           ...userWithoutPortalTeamFlag,
           role: UserRole.BUSINESS_OWNER,
           permissions,
-          isOwner: dbIsOwner,
+          isOwner: true,
           isAdmin: false,
+          timeZone,
+          country,
         } as typeof user & {
           permissions: PermissionPair[]
           isOwner: boolean
           isAdmin: boolean
+          timeZone: string | null
+          country: string | null
         },
       }
     }),

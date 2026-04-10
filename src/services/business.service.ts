@@ -79,6 +79,8 @@ export interface UpdateBusinessInput {
   address?: string
   website?: string
   status?: boolean
+  timeZone?: string
+  country?: string | null
 }
 
 /** Kelly Figma: Company Name, Business Email, Status, Total Jobs, Revenue, Users, Last Login */
@@ -172,6 +174,8 @@ function buildBusinessUpdateData(data: UpdateBusinessInput) {
     ...(data.address !== undefined && { address: data.address }),
     ...(data.website !== undefined && { webpage: data.website }),
     ...(data.status !== undefined && { isActive: data.status }),
+    ...(data.timeZone !== undefined && { timeZone: data.timeZone }),
+    ...(data.country !== undefined && { country: data.country }),
   }
 }
 
@@ -625,6 +629,8 @@ export async function updateBusiness(id: string, data: UpdateBusinessInput) {
     phone: updated.phone ?? '',
     address: updated.address,
     status: formatUpdateStatus(data, updated, updated.owner),
+    timeZone: updated.timeZone,
+    country: updated.country ?? null,
   }
 }
 

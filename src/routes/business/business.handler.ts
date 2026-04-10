@@ -130,6 +130,8 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         address: body.address,
         website: body.website,
         status: body.status,
+        timeZone: body.timeZone,
+        country: body.country,
       })
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
@@ -140,6 +142,8 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
           id: business.id,
           name: business.companyName,
           status: business.status,
+          timeZone: business.timeZone,
+          country: business.country,
         },
         userId: user.id,
         businessId: id,

@@ -12,6 +12,9 @@ export interface AppBindings {
           permissions?: Array<{ resource: string; action: string }>
           /** Primary platform admin only (not admin-portal team members). */
           isAdmin?: boolean
+          /** From the active business (membership or owned business); null for admin sessions. */
+          timeZone?: string | null
+          country?: string | null
         })
       | null
     session: typeof auth.$Infer.Session.session | null

@@ -153,6 +153,8 @@ export const UpdateBusinessResponseSchema = z.object({
   phone: z.string().nullable(),
   address: z.string().nullable(),
   status: z.string(),
+  timeZone: z.string(),
+  country: z.string().nullable(),
 })
 
 export const UpdateBusinessBodySchema = z
@@ -163,6 +165,8 @@ export const UpdateBusinessBodySchema = z
     address: z.string().optional(),
     website: z.string().url().optional().or(z.literal('')),
     status: z.boolean().optional(),
+    timeZone: z.string().optional(),
+    country: z.string().nullable().optional(),
   })
   .openapi({ description: 'Payload to update business information' })
 
