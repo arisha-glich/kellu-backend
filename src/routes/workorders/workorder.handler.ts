@@ -31,6 +31,7 @@ import {
   sendBookingConfirmation,
   sendJobFollowUpEmail,
   updateWorkOrder,
+  WorkOrderAssigneeNotFoundError,
   WorkOrderNotFoundError,
 } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
@@ -47,6 +48,19 @@ function resolveWorkOrderAssigneeId(body: {
     return body.assignedTo
   }
   return undefined
+}
+
+function resolveWorkOrderAssigneeIds(body: {
+  assignedToIds?: string[] | null
+  assignedToId?: string | null
+  assignedTo?: string | null
+}): string[] | undefined {
+  if (Array.isArray(body.assignedToIds)) {
+    const deduped = Array.from(new Set(body.assignedToIds.map(id => id.trim()).filter(Boolean)))
+    return deduped.length > 0 ? deduped : undefined
+  }
+  const single = resolveWorkOrderAssigneeId(body)
+  return single ? [single] : undefined
 }
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -241,6 +255,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         startTime: body.startTime,
         endTime: body.endTime,
         assignedToId: resolveWorkOrderAssigneeId(body) ?? null,
+        assignedToIds: resolveWorkOrderAssigneeIds(body),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
         invoiceClientMessage: body.invoiceClientMessage,
@@ -302,6 +317,12 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       }
       if (error instanceof ClientNotFoundError) {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof WorkOrderAssigneeNotFoundError) {
+        return c.json(
+          { message: 'One or more assigned team members were not found in this business' },
+          HttpStatusCodes.NOT_FOUND
+        )
       }
       console.error('Error creating work order:', error)
       return c.json(

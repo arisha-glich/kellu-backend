@@ -123,8 +123,8 @@ const BusinessCountrySchema = z
   .union([
     z
       .string()
-      .length(2, 'Country must be ISO 3166-1 alpha-2 (e.g. US, CA, GB)')
-      .regex(/^[A-Za-z]{2}$/, 'Country must be 2-letter ISO code')
+      .length(3, 'Country must be ISO 3166-1 alpha-2 (e.g. US, CA, GB)')
+      .regex(/^[A-Za-z]{3}$/, 'Country must be 3-letter ISO code')
       .transform(s => s.toUpperCase()),
     z.literal(''),
   ])

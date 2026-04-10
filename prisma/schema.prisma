@@ -227,10 +227,11 @@ model Member {
   roleId     String
   role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
-  assignedTasks      Task[]      @relation("TaskAssignee")
-  assignedWorkOrders WorkOrder[] @relation("WorkOrderAssignee")
-  assignedQuotes     Quote[]     @relation("QuoteAssignee")
-  assignedInvoices   Invoice[]
+  assignedTasks         Task[]                @relation("TaskAssignee")
+  assignedWorkOrders    WorkOrder[]           @relation("WorkOrderAssignee")
+  workOrderAssignments  WorkOrderAssignment[]
+  assignedQuotes        Quote[]               @relation("QuoteAssignee")
+  assignedInvoices      Invoice[]
 
   @@unique([userId, businessId])
   @@map("Member")
@@ -365,7 +366,8 @@ model WorkOrder {
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   assignedToId String?
-  assignedTo   Member?  @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   Member?               @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignees    WorkOrderAssignment[]
 
   quotesRelatedTo     Quote[] @relation("QuoteRelatedWorkOrder")
   quotesConvertedFrom Quote[] @relation("QuoteConvertedToWorkOrder")
@@ -412,6 +414,18 @@ model WorkOrder {
   invoices    Invoice[]
   reminderLogs ReminderLog[]
   @@unique([businessId, workOrderNumber])
+}
+
+model WorkOrderAssignment {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  memberId    String
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([workOrderId, memberId])
+  @@index([memberId])
 }
 
 // ─────────────────────────────────────────────

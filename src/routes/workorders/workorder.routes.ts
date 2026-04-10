@@ -154,9 +154,8 @@ export const CreateWorkOrderBodySchema = z
     scheduledAt: z.coerce.date().optional().nullable(),
     startTime: z.string().optional().nullable(),
     endTime: z.string().optional().nullable(),
-    assignedToId: z.string().optional().nullable(),
-    /** Same as assignedToId; accepted for clients that send the member id under this name. */
-    assignedTo: z.string().optional().nullable(),
+    /** Assign multiple team members to the same work order. */
+    assignedToIds: z.array(z.string().min(1)).optional(),
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),

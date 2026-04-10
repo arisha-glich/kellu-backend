@@ -29,6 +29,12 @@ export class ClientNotFoundError extends Error {
   }
 }
 
+export class WorkOrderAssigneeNotFoundError extends Error {
+  constructor() {
+    super('WORK_ORDER_ASSIGNEE_NOT_FOUND')
+  }
+}
+
 export interface WorkOrderListFilters {
   search?: string
   jobStatus?: JobStatus
@@ -56,6 +62,7 @@ export interface CreateWorkOrderInput {
   startTime?: string | null
   endTime?: string | null
   assignedToId?: string | null
+  assignedToIds?: string[]
   instructions?: string | null
   notes?: string | null
   invoiceClientMessage?: string | null
@@ -228,6 +235,17 @@ async function getDefaultTaxPercent(businessId: string): Promise<number> {
   return 0
 }
 
+function normalizeAssigneeIds(input: {
+  assignedToId?: string | null
+  assignedToIds?: string[]
+}): string[] {
+  const allIds = [...(input.assignedToIds ?? [])]
+  if (input.assignedToId) {
+    allIds.unshift(input.assignedToId)
+  }
+  return Array.from(new Set(allIds.map(id => id.trim()).filter(Boolean)))
+}
+
 /** List work orders with filters and pagination (§6.2). */
 export async function listWorkOrders(businessId: string, filters: WorkOrderListFilters = {}) {
   await ensureBusinessExists(businessId)
@@ -325,6 +343,11 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
     include: {
       client: true,
       assignedTo: { include: { user: { select: { id: true, name: true, email: true } } } },
+      assignees: {
+        include: {
+          member: { include: { user: { select: { id: true, name: true, email: true } } } },
+        },
+      },
       lineItems: true,
       payments: true,
       expenses: true,
@@ -373,6 +396,11 @@ async function sendWorkOrderCreatedNotificationEmails(
       include: {
         client: { select: { name: true, email: true, phone: true } },
         assignedTo: { include: { user: { select: { name: true, email: true } } } },
+        assignees: {
+          include: {
+            member: { include: { user: { select: { name: true, email: true } } } },
+          },
+        },
         business: { include: { settings: { select: { replyToEmail: true } } } },
         lineItems: true,
       },
@@ -383,7 +411,17 @@ async function sendWorkOrderCreatedNotificationEmails(
 
     const companyReplyTo =
       woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
-    const assignedName = woForEmail.assignedTo?.user?.name ?? 'Our team'
+    const assigneeNames = Array.from(
+      new Set(
+        woForEmail.assignees
+          .map(a => a.member.user.name?.trim())
+          .filter((name): name is string => !!name)
+      )
+    )
+    const assignedName =
+      assigneeNames.length > 0
+        ? assigneeNames.join(', ')
+        : (woForEmail.assignedTo?.user?.name ?? 'Our team')
     const dateStr = formatBookingDate(woForEmail.scheduledAt)
     const timeRangeStr = formatTimeRange(
       woForEmail.startTime,
@@ -418,11 +456,24 @@ async function sendWorkOrderCreatedNotificationEmails(
       })
     }
 
-    const assigneeEmail = woForEmail.assignedTo?.user?.email?.trim()
-    if (assigneeEmail) {
+    const assigneeEmails = Array.from(
+      new Set(
+        woForEmail.assignees
+          .map(a => a.member.user.email?.trim())
+          .filter((email): email is string => !!email)
+      )
+    )
+    if (assigneeEmails.length === 0 && woForEmail.assignedTo?.user?.email?.trim()) {
+      assigneeEmails.push(woForEmail.assignedTo.user.email.trim())
+    }
+    for (const assigneeEmail of assigneeEmails) {
       sendWorkOrderAssignedToTeamMemberEmail({
         to: assigneeEmail,
-        assigneeName: woForEmail.assignedTo?.user?.name ?? 'there',
+        assigneeName:
+          woForEmail.assignees.find(a => a.member.user.email?.trim() === assigneeEmail)?.member.user
+            .name ??
+          woForEmail.assignedTo?.user?.name ??
+          'there',
         businessName: woForEmail.business.name,
         companyReplyTo,
         companyLogoUrl: logoUrl,
@@ -455,10 +506,24 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   }
 
   const isAnyTime = input.isAnyTime ?? false
+  const assignedIds = normalizeAssigneeIds({
+    assignedToId: input.assignedToId,
+    assignedToIds: input.assignedToIds,
+  })
+  if (assignedIds.length > 0) {
+    const members = await prisma.member.findMany({
+      where: { businessId, id: { in: assignedIds } },
+      select: { id: true },
+    })
+    if (members.length !== assignedIds.length) {
+      throw new WorkOrderAssigneeNotFoundError()
+    }
+  }
+  const primaryAssignedToId = assignedIds[0] ?? null
   const jobStatus = deriveJobStatus({
     scheduledAt: input.scheduledAt,
     startTime: input.startTime,
-    assignedToId: input.assignedToId,
+    assignedToId: primaryAssignedToId,
     isAnyTime,
   })
   const workOrderNumber = `#${await nextWorkOrderNumber(businessId)}`
@@ -478,7 +543,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         scheduledAt: input.scheduledAt ?? null,
         startTime: isAnyTime ? null : (input.startTime ?? null),
         endTime: isAnyTime ? null : (input.endTime ?? null),
-        assignedToId: input.assignedToId ?? null,
+        assignedToId: primaryAssignedToId,
         invoiceObservations: input.invoiceClientMessage ?? null,
         invoiceTermsConditions: input.invoiceTermsConditions ?? null,
         jobStatus,
@@ -488,6 +553,13 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         discountType: input.discountType ?? null,
       },
     })
+
+    if (assignedIds.length > 0) {
+      await tx.workOrderAssignment.createMany({
+        data: assignedIds.map(memberId => ({ workOrderId: created.id, memberId })),
+        skipDuplicates: true,
+      })
+    }
 
     if (input.lineItems?.length) {
       await tx.lineItem.createMany({
