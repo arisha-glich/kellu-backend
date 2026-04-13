@@ -6,6 +6,7 @@ import { zodResponseSchema } from '~/lib/zod-helper'
 /** List filter only — maps to no status filter when ALL */
 const ClientStatusFilterEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP', 'ALL'])
 const ClientStatusOnlyEnum = z.enum(['ACTIVE', 'ARCHIVED', 'FOLLOW_UP'])
+const ClientMessageStatusEnum = z.enum(['SEND_OFFER', 'MAINTENANCE_FOLLOW_UP'])
 
 /** Normalize query typos/casing (e.g. `archived`, ` Archived `) for reliable filters. */
 function normalizeClientListStatusQuery(
@@ -143,6 +144,22 @@ export const UpdateClientBodySchema = z
   }))
   .openapi({ description: 'Update client fields' })
 
+export const ClientMessageTemplateBodySchema = z.object({
+  status: ClientMessageStatusEnum,
+})
+export const ClientMessageTemplateQuerySchema = z.object({
+  status: ClientMessageStatusEnum,
+})
+
+export const ClientMessageTemplateResponseSchema = z.object({
+  status: ClientMessageStatusEnum,
+  to: z.string().email().nullable(),
+  subjectTemplate: z.string(),
+  messageTemplate: z.string(),
+  subjectPreview: z.string(),
+  messagePreview: z.string(),
+})
+
 export const LeadSourceOptionSchema = z.object({
   value: z.string(),
   label: z.string(),
@@ -253,6 +270,52 @@ export const CLIENT_ROUTES = {
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ClientDetailSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  getMessageTemplate: createRoute({
+    method: 'get',
+    tags: ['Clients'],
+    path: '/{clientId}/message-template',
+    summary: 'Get latest stored client message template by status',
+    request: {
+      params: ClientOnlyParamsSchema,
+      query: ClientMessageTemplateQuerySchema,
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(ClientMessageTemplateResponseSchema),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  sendMessageTemplate: createRoute({
+    method: 'post',
+    tags: ['Clients'],
+    path: '/{clientId}/message-template',
+    summary: 'Get client message template for Send Offer or Maintenance follow-up',
+    request: {
+      params: ClientOnlyParamsSchema,
+      body: jsonContentRequired(
+        ClientMessageTemplateBodySchema,
+        'Message template payload with status'
+      ),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(ClientMessageTemplateResponseSchema),
+        'OK'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Client email missing'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

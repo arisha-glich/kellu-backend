@@ -1,6 +1,7 @@
-import type { ClientStatus, LeadSource } from '~/generated/prisma'
+import type { ClientStatus, LeadSource, Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
+import { emailService } from '~/services/email.service'
 import { sendClientProfileUpdateEmail } from '~/services/email-helpers'
 
 export class ClientNotFoundError extends Error {
@@ -12,6 +13,12 @@ export class ClientNotFoundError extends Error {
 export class EmailAlreadyUsedError extends Error {
   constructor() {
     super('EMAIL_ALREADY_USED')
+  }
+}
+
+export class ClientEmailRequiredError extends Error {
+  constructor() {
+    super('CLIENT_EMAIL_REQUIRED')
   }
 }
 
@@ -54,6 +61,24 @@ export interface ClientListItem {
 export interface ClientStatistics {
   newClientsLast30Days: number
   totalNewClientsYTD: number
+}
+
+export type ClientMessageStatus = 'SEND_OFFER' | 'MAINTENANCE_FOLLOW_UP'
+
+export interface ClientMessageTemplateResult {
+  status: ClientMessageStatus
+  to: string | null
+  subjectTemplate: string
+  messageTemplate: string
+  subjectPreview: string
+  messagePreview: string
+}
+
+interface ClientMessageTemplateVariables {
+  clientName: string
+  companyName: string
+  defaultEmail: string
+  currentDate: string
 }
 
 export interface ClientDetail {
@@ -416,4 +441,214 @@ export function getLeadSources(): { value: string; label: string }[] {
     { value: 'Referral', label: 'Referral' },
     { value: 'Other', label: 'Other' },
   ]
+}
+
+function formatCurrentDateForTemplate(d: Date): string {
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function buildTemplateContent(status: ClientMessageStatus): {
+  subjectTemplate: string
+  messageTemplate: string
+} {
+  if (status === 'SEND_OFFER') {
+    return {
+      subjectTemplate: 'Special offer from {{COMPANY_NAME}} - {{CURRENT_DATE}}',
+      messageTemplate: [
+        'Hi {{CLIENT_NAME}},',
+        '',
+        'We have a special offer for you.',
+        '',
+        'Get in touch with us at {{DEFAULT_EMAIL}} to learn more.',
+        '',
+        'Sincerely,',
+        '{{COMPANY_NAME}}',
+      ].join('\n'),
+    }
+  }
+
+  return {
+    subjectTemplate: 'Maintenance follow-up from {{COMPANY_NAME}}',
+    messageTemplate: [
+      'Hi {{CLIENT_NAME}},',
+      '',
+      'This is a friendly reminder about your scheduled maintenance.',
+      '',
+      'If you have any questions, contact us at {{DEFAULT_EMAIL}}.',
+      '',
+      'Best regards,',
+      '{{COMPANY_NAME}}',
+    ].join('\n'),
+  }
+}
+
+function applyClientTemplateVariables(
+  input: string,
+  data: ClientMessageTemplateVariables
+): string {
+  return input
+    .split('{{CLIENT_NAME}}')
+    .join(data.clientName)
+    .split('{{COMPANY_NAME}}')
+    .join(data.companyName)
+    .split('{{DEFAULT_EMAIL}}')
+    .join(data.defaultEmail)
+    .split('{{CURRENT_DATE}}')
+    .join(data.currentDate)
+}
+
+function toHtmlFromPlainText(text: string): string {
+  return text
+    .split('\n')
+    .map(line => (line.length > 0 ? `<p>${line}</p>` : '<br/>'))
+    .join('')
+}
+
+function buildClientMessageTemplateResult(
+  status: ClientMessageStatus,
+  to: string | null,
+  variables: ClientMessageTemplateVariables
+): ClientMessageTemplateResult {
+  const { subjectTemplate, messageTemplate } = buildTemplateContent(status)
+  return {
+    status,
+    to,
+    subjectTemplate,
+    messageTemplate,
+    subjectPreview: applyClientTemplateVariables(subjectTemplate, variables),
+    messagePreview: applyClientTemplateVariables(messageTemplate, variables),
+  }
+}
+
+export async function getLatestClientMessageTemplate(
+  clientId: string,
+  status: ClientMessageStatus
+): Promise<ClientMessageTemplateResult> {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      businessId: true,
+      business: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+
+  const latestLog = await prisma.auditLog.findFirst({
+    where: {
+      businessId: client.businessId,
+      entityType: 'CLIENT_MESSAGE',
+      entityId: client.id,
+      action: `CLIENT_MESSAGE_SENT_${status}`,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { newValues: true },
+  })
+
+  const logRecord = latestLog?.newValues as
+    | {
+        status?: ClientMessageStatus
+        to?: string | null
+        subjectTemplate?: string
+        messageTemplate?: string
+        subjectPreview?: string
+        messagePreview?: string
+      }
+    | null
+
+  if (
+    logRecord?.status === status &&
+    typeof logRecord.subjectTemplate === 'string' &&
+    typeof logRecord.messageTemplate === 'string' &&
+    typeof logRecord.subjectPreview === 'string' &&
+    typeof logRecord.messagePreview === 'string'
+  ) {
+    return {
+      status,
+      to: logRecord.to ?? client.email,
+      subjectTemplate: logRecord.subjectTemplate,
+      messageTemplate: logRecord.messageTemplate,
+      subjectPreview: logRecord.subjectPreview,
+      messagePreview: logRecord.messagePreview,
+    }
+  }
+
+  const variables = {
+    clientName: client.name,
+    companyName: client.business.name,
+    defaultEmail: client.business.email,
+    currentDate: formatCurrentDateForTemplate(new Date()),
+  }
+  return buildClientMessageTemplateResult(status, client.email, variables)
+}
+
+export async function getClientMessageTemplate(
+  clientId: string,
+  status: ClientMessageStatus,
+  senderUserId?: string
+): Promise<ClientMessageTemplateResult> {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      businessId: true,
+      business: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+  if (!client.email) {
+    throw new ClientEmailRequiredError()
+  }
+
+  const variables = {
+    clientName: client.name,
+    companyName: client.business.name,
+    defaultEmail: client.business.email,
+    currentDate: formatCurrentDateForTemplate(new Date()),
+  }
+  const messageData = buildClientMessageTemplateResult(status, client.email, variables)
+
+  await emailService.send({
+    to: client.email,
+    subject: messageData.subjectPreview,
+    html: toHtmlFromPlainText(messageData.messagePreview),
+    from: `${client.business.name} <${process.env.RESEND_FROM_EMAIL ?? 'noresponder@notificaciones.kellu.co'}>`,
+    replyTo: client.business.email,
+  })
+
+  await prisma.auditLog.create({
+    data: {
+      action: `CLIENT_MESSAGE_SENT_${status}`,
+      entityType: 'CLIENT_MESSAGE',
+      entityId: client.id,
+      businessId: client.businessId,
+      userId: senderUserId,
+      newValues: messageData as unknown as Prisma.InputJsonValue,
+    },
+  })
+
+  return messageData
 }

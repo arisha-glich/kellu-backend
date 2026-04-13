@@ -7,6 +7,9 @@ const envSchema = z.object({
   RESEND_FROM_EMAIL: z.string().email(),
   FRONTEND_URL: z.string().url(),
   APP_NAME: z.string(),
+  QUOTE_CLIENT_APPROVE_REDIRECT_URL: z.string().url(),
+  QUOTE_CLIENT_REJECT_REDIRECT_URL: z.string().url(),
+  DATABASE_URL: z.string().url(),
 })
 
 export async function parseENV() {

@@ -3,13 +3,16 @@ import { ClientStatus, UserRole } from '~/generated/prisma'
 import type { CLIENT_ROUTES } from '~/routes/clients/client.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
+  ClientEmailRequiredError,
   ClientNotFoundError,
   createClient,
   deleteClientByClientId,
   EmailAlreadyUsedError,
   getClientByClientId,
+  getClientMessageTemplate,
   getClientStatistics,
   getClients,
+  getLatestClientMessageTemplate,
   getLeadSources,
   updateClientByClientId,
 } from '~/services/client.service'
@@ -305,6 +308,92 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       }
       console.error('Error updating client:', error)
       return c.json({ message: 'Failed to update client' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  getMessageTemplate: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json(
+        { message: 'only business owners can view client message templates' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view client message templates' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId } = c.req.valid('param')
+      const query = c.req.valid('query')
+      const template = await getLatestClientMessageTemplate(clientId, query.status)
+      return c.json(
+        {
+          message: 'Client message template retrieved successfully',
+          success: true,
+          data: template,
+        },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error fetching client message template:', error)
+      return c.json(
+        { message: 'Failed to retrieve client message template' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  sendMessageTemplate: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json(
+        { message: 'only business owners can send client message templates' },
+        HttpStatusCodes.UNAUTHORIZED
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to send client message templates' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+      const template = await getClientMessageTemplate(clientId, body.status, user.id)
+      return c.json(
+        { message: 'Client message sent successfully', success: true, data: template },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof ClientEmailRequiredError) {
+        return c.json(
+          { message: 'Client email is required to send this message' },
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      console.error('Error fetching client message template:', error)
+      return c.json(
+        { message: 'Failed to retrieve client message template' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 

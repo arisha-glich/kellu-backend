@@ -755,7 +755,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
   },
   clientRespondGet: async c => {
     const { action, token, quoteId: quoteIdFromQuery } = c.req.valid('query')
-    const frontendDefault = (Bun.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+    const frontendDefault = (Bun.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '')
     const approvedBase =
       Bun.env.QUOTE_CLIENT_APPROVE_REDIRECT_URL?.trim() || `${frontendDefault}/quotes/accept-quote`
     const rejectedBase =
@@ -813,10 +813,10 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (rejectResolved.kind === 'not_found') {
         return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'not-found' }))
       }
-      if (rejectResolved.kind === 'expired') {
+      if (rejectResolved.kind === 'terminal') {
         return c.redirect(
           quoteClientPageUrl(rejectedBase, quoteIdFromQuery ?? undefined, {
-            quoteAction: 'expired',
+            quoteAction: 'already-responded',
           })
         )
       }

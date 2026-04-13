@@ -37,6 +37,7 @@ RUN bun install --frozen-lockfile --production && chown -R bunjs:bunjs /app
 
 COPY --from=build --chown=bunjs:bunjs /app/src ./src
 COPY --from=build --chown=bunjs:bunjs /app/tsconfig.json ./
+COPY --from=build --chown=bunjs:bunjs /app/prisma ./prisma
 
 USER bunjs
 
@@ -44,4 +45,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["bun", "src/index.ts"]
+CMD ["sh", "-c", "bun run db:deploy && bun src/index.ts"]
