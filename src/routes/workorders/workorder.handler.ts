@@ -20,22 +20,22 @@ import {
   createWorkOrderCustomerReminder,
   deleteWorkOrder,
   deleteWorkOrderAttachment,
+  deleteWorkOrderPayment,
   getJobFollowUpEmailComposeData,
   getWorkOrderById,
   getWorkOrderOverview,
+  getWorkOrderPayment,
   LineItemNotFoundError,
   listWorkOrderAttachments,
   listWorkOrderCustomerReminders,
   listWorkOrderPayments,
   listWorkOrders,
-  getWorkOrderPayment,
   PaymentNotFoundError,
-  updateWorkOrderPayment,
-  deleteWorkOrderPayment,
   registerPayment,
   sendBookingConfirmation,
   sendJobFollowUpEmail,
   updateWorkOrder,
+  updateWorkOrderPayment,
   WorkOrderAssigneeNotFoundError,
   WorkOrderNotFoundError,
 } from '~/services/workorder.service'
@@ -616,7 +616,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         ...(body.amount !== undefined && { amount: body.amount }),
         ...(body.paymentDate !== undefined && { paymentDate: body.paymentDate ?? null }),
         ...(body.paymentMethod !== undefined && { paymentMethod: body.paymentMethod }),
-        ...(body.referenceNumber !== undefined && { referenceNumber: body.referenceNumber ?? null }),
+        ...(body.referenceNumber !== undefined && {
+          referenceNumber: body.referenceNumber ?? null,
+        }),
         ...(body.note !== undefined && { note: body.note ?? null }),
       })
       return c.json(
@@ -631,10 +633,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error updating payment:', error)
-      return c.json(
-        { message: 'Failed to update payment' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to update payment' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 
@@ -668,10 +667,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error deleting payment:', error)
-      return c.json(
-        { message: 'Failed to delete payment' },
-        HttpStatusCodes.INTERNAL_SERVER_ERROR
-      )
+      return c.json({ message: 'Failed to delete payment' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
 

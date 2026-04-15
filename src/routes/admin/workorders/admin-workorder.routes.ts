@@ -10,12 +10,21 @@ const AdminWorkorderQuerySchema = z.object({
     .string()
     .optional()
     .openapi({ param: { name: 'businessId', in: 'query' } }),
-  search: z.string().optional().openapi({ param: { name: 'search', in: 'query' } }),
+  search: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'search', in: 'query' } }),
   status: AdminWorkorderStatusEnum.optional().openapi({
     param: { name: 'status', in: 'query' },
   }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const AdminWorkorderOverviewSchema = z.object({

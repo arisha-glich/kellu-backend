@@ -486,10 +486,7 @@ function buildTemplateContent(status: ClientMessageStatus): {
   }
 }
 
-function applyClientTemplateVariables(
-  input: string,
-  data: ClientMessageTemplateVariables
-): string {
+function applyClientTemplateVariables(input: string, data: ClientMessageTemplateVariables): string {
   return input
     .split('{{CLIENT_NAME}}')
     .join(data.clientName)
@@ -558,16 +555,14 @@ export async function getLatestClientMessageTemplate(
     select: { newValues: true },
   })
 
-  const logRecord = latestLog?.newValues as
-    | {
-        status?: ClientMessageStatus
-        to?: string | null
-        subjectTemplate?: string
-        messageTemplate?: string
-        subjectPreview?: string
-        messagePreview?: string
-      }
-    | null
+  const logRecord = latestLog?.newValues as {
+    status?: ClientMessageStatus
+    to?: string | null
+    subjectTemplate?: string
+    messageTemplate?: string
+    subjectPreview?: string
+    messagePreview?: string
+  } | null
 
   if (
     logRecord?.status === status &&

@@ -17,9 +17,18 @@ const AdminExpenseQuerySchema = z.object({
   status: AdminExpenseStatusEnum.optional().openapi({
     param: { name: 'status', in: 'query' },
   }),
-  search: z.string().optional().openapi({ param: { name: 'search', in: 'query' } }),
-  page: z.string().optional().openapi({ param: { name: 'page', in: 'query' } }),
-  limit: z.string().optional().openapi({ param: { name: 'limit', in: 'query' } }),
+  search: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'search', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
 })
 
 const AdminExpenseOverviewSchema = z.object({

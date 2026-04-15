@@ -171,7 +171,9 @@ async function getMembersByIdsInOrder(businessId: string, memberIds: string[]) {
     },
   })
   const byId = new Map(members.map(member => [member.id, member]))
-  return memberIds.map(id => byId.get(id)).filter((member): member is (typeof members)[number] => !!member)
+  return memberIds
+    .map(id => byId.get(id))
+    .filter((member): member is (typeof members)[number] => !!member)
 }
 
 async function validateTaskRelations(input: RelationInput, businessId: string): Promise<void> {
@@ -198,7 +200,14 @@ function mapTaskForApi<T extends { assignedToId?: string | null }>(task: T) {
   const assignedMember =
     'assignedTo' in task ? ((task as T & { assignedTo?: unknown }).assignedTo ?? null) : null
   const assignedToIds = assignedMember ? [assignedMember] : []
-  const { assignedTo: _assignedTo, ...rest } = task as T & { assignedTo?: unknown }
+  const {
+    assignedTo: _assignedTo,
+    assignedToId: _assignedToId,
+    ...rest
+  } = task as T & {
+    assignedTo?: unknown
+    assignedToId?: string | null
+  }
   return {
     ...rest,
     assignedToIds,
@@ -426,7 +435,6 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
   await ensureBusinessExists(businessId)
   await validateTaskRelations(input, businessId)
   const normalizedAssignedToIds = normalizeAssigneeIds({
-    assignedToId: input.assignedToId,
     assignedToIds: input.assignedToIds,
   })
 

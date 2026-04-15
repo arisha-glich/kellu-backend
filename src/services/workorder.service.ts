@@ -1212,7 +1212,11 @@ export async function listWorkOrderPayments(businessId: string, workOrderId: str
   })
 }
 
-export async function getWorkOrderPayment(businessId: string, workOrderId: string, paymentId: string) {
+export async function getWorkOrderPayment(
+  businessId: string,
+  workOrderId: string,
+  paymentId: string
+) {
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
@@ -1267,7 +1271,9 @@ export async function updateWorkOrderPayment(
         ...(data.amount !== undefined && { amount: data.amount }),
         ...(data.paymentDate !== undefined && { paymentDate: data.paymentDate ?? new Date() }),
         ...(data.paymentMethod !== undefined && {
-          paymentMethod: data.paymentMethod as Parameters<typeof prisma.payment.create>[0]['data']['paymentMethod'],
+          paymentMethod: data.paymentMethod as Parameters<
+            typeof prisma.payment.create
+          >[0]['data']['paymentMethod'],
         }),
         ...(data.referenceNumber !== undefined && { referenceNumber: data.referenceNumber }),
         ...(data.note !== undefined && { note: data.note }),
@@ -1299,7 +1305,11 @@ export async function updateWorkOrderPayment(
   return getWorkOrderById(businessId, workOrderId)
 }
 
-export async function deleteWorkOrderPayment(businessId: string, workOrderId: string, paymentId: string) {
+export async function deleteWorkOrderPayment(
+  businessId: string,
+  workOrderId: string,
+  paymentId: string
+) {
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },

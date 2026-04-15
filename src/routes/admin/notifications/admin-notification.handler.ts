@@ -2,6 +2,7 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { Prisma } from '~/generated/prisma'
 import { hasAdminPortalAccess } from '~/lib/portal-access'
 import type { ADMIN_NOTIFICATION_ROUTES } from '~/routes/admin/notifications/admin-notification.routes'
+import { getUnreadNotificationCount, listNotifications } from '~/services/notifications.service'
 import {
   createPlatformNotificationRule,
   deletePlatformNotificationRule,
@@ -9,7 +10,6 @@ import {
   listPlatformNotificationRules,
   updatePlatformNotificationRule,
 } from '~/services/platform-notification-rule.service'
-import { getUnreadNotificationCount, listNotifications } from '~/services/notifications.service'
 import {
   getEmailForwardingSettings,
   updateEmailForwardingSettings,

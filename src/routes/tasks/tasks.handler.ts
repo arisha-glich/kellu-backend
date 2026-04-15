@@ -20,9 +20,7 @@ import {
 } from '~/services/task.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
-function resolveTaskAssigneeIds(body: {
-  assignedToIds?: string[] | null
-}): string[] | undefined {
+function resolveTaskAssigneeIds(body: { assignedToIds?: string[] | null }): string[] | undefined {
   const incoming = [...(body.assignedToIds ?? [])]
   if (incoming.length === 0) {
     return undefined

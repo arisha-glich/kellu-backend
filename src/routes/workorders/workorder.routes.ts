@@ -659,7 +659,10 @@ export const WORK_ORDER_ROUTES = {
     request: { params: WorkOrderPaymentParamsSchema },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(PaymentSchema), 'OK'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or payment not found'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or payment not found'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -676,8 +679,14 @@ export const WORK_ORDER_ROUTES = {
       body: jsonContentRequired(UpdatePaymentBodySchema, 'Payment update payload'),
     },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Updated'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or payment not found'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Updated'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or payment not found'
+      ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -692,8 +701,14 @@ export const WORK_ORDER_ROUTES = {
     summary: 'Delete payment on work order',
     request: { params: WorkOrderPaymentParamsSchema },
     responses: {
-      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'Deleted'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order or payment not found'),
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(WorkOrderDetailResponseSchema),
+        'Deleted'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Work order or payment not found'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

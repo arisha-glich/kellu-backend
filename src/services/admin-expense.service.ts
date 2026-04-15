@@ -50,8 +50,7 @@ function buildExpenseWhere(filters: AdminExpenseDashboardFilters): Prisma.Expens
 
   const term = filters.search?.trim()
   if (term) {
-    const existingAnd =
-      where.AND == null ? [] : Array.isArray(where.AND) ? where.AND : [where.AND]
+    const existingAnd = where.AND == null ? [] : Array.isArray(where.AND) ? where.AND : [where.AND]
     where.AND = [
       ...existingAnd,
       {
