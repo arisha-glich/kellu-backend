@@ -66,6 +66,43 @@ const PriceListItemSchemaInWorkorder = z.object({
   updatedAt: z.coerce.date(),
 })
 
+/** Create expense. workOrderId optional (link when adding from Expenses module; omit when adding from work order). */
+const ExpenseCreateSchema = z
+  .object({
+    date: z.coerce.date(),
+    itemName: z.string().min(1, 'Item name is required'),
+    details: z.string().optional().nullable(),
+    total: z.number().min(0),
+    invoiceNumber: z.string().optional().nullable(),
+    attachmentUrl: z.string().optional().nullable().or(z.literal('')),
+    workOrderId: z.string().optional().nullable(),
+  })
+  .openapi({
+    description:
+      'Create expense. workOrderId optional (link when adding from Expenses module; omit when adding from work order).',
+  })
+
+const ExpensesInputSchema = z
+  .union([ExpenseCreateSchema, z.array(ExpenseCreateSchema)])
+  .transform(value => (Array.isArray(value) ? value : [value]))
+
+/** Create payment on work order (paymentDate defaults to now if omitted). */
+const PaymentCreateSchema = z
+  .object({
+    amount: z.number().positive(),
+    paymentDate: z.coerce.date().optional().nullable(),
+    paymentMethod: PaymentMethodEnum,
+    referenceNumber: z.string().optional().nullable(),
+    note: z.string().optional().nullable(),
+  })
+  .openapi({
+    description: 'Create payment on work order (paymentDate defaults to now if omitted)',
+  })
+
+const PaymentsInputSchema = z
+  .union([PaymentCreateSchema, z.array(PaymentCreateSchema)])
+  .transform(value => (Array.isArray(value) ? value : [value]))
+
 export const WorkOrderListQuerySchema = z.object({
   search: z
     .string()
@@ -159,6 +196,9 @@ export const CreateWorkOrderBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),
+    quoteClientMessage: z.string().optional().nullable(),
+    quoteTermsConditions: z.string().optional().nullable(),
+    applyQuoteTermsToFuture: z.boolean().optional().default(false),
     invoiceClientMessage: z.string().optional().nullable(),
     invoiceTermsConditions: z.string().optional().nullable(),
     applyInvoiceTermsToFuture: z.boolean().optional().default(false),
@@ -166,6 +206,8 @@ export const CreateWorkOrderBodySchema = z
     discountType: DiscountTypeEnum.optional().nullable(),
     taxPercent: z.number().optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
+    expenses: ExpensesInputSchema.optional(),
+    payments: PaymentsInputSchema.optional(),
   })
   .openapi({ description: 'Create work order payload' })
 

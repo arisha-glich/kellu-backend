@@ -702,7 +702,7 @@ export async function getBusinessJobs(businessId: string, page = 1, limit = 10) 
       skip,
       take: limit,
       include: {
-        assignedTo: { include: { user: { select: { name: true } } } },
+        primaryAssignee: { include: { user: { select: { name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -712,7 +712,7 @@ export async function getBusinessJobs(businessId: string, page = 1, limit = 10) 
   const data = workOrders.map(wo => ({
     id: wo.id,
     title: wo.title,
-    assignee: wo.assignedTo?.user?.name ?? null,
+    assignee: wo.primaryAssignee?.user?.name ?? null,
     scheduledAt: wo.scheduledAt ? wo.scheduledAt.toISOString() : null,
     status: wo.jobStatus,
   }))

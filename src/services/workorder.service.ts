@@ -67,8 +67,27 @@ export interface CreateWorkOrderInput {
   notes?: string | null
   invoiceClientMessage?: string | null
   invoiceTermsConditions?: string | null
+  applyInvoiceTermsToFuture?: boolean
+  quoteClientMessage?: string | null
+  quoteTermsConditions?: string | null
+  applyQuoteTermsToFuture?: boolean
   discount?: number
   discountType?: DiscountType | null
+  expenses?: Array<{
+    date: Date
+    itemName: string
+    details?: string | null
+    total: number
+    invoiceNumber?: string | null
+    attachmentUrl?: string | null
+  }>
+  payments?: Array<{
+    amount: number
+    paymentDate?: Date | null
+    paymentMethod: string
+    referenceNumber?: string | null
+    note?: string | null
+  }>
   taxPercent?: number | null
   lineItems?: Array<{
     name: string
@@ -82,6 +101,16 @@ export interface CreateWorkOrderInput {
 }
 
 export type UpdateWorkOrderInput = Partial<CreateWorkOrderInput>
+
+function normalizeCollectionInput<T>(value: T | T[] | null | undefined): T[] | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return []
+  }
+  return Array.isArray(value) ? value : [value]
+}
 
 /** When defined (including `[]`), replace `WorkOrderAssignment` rows and primary; when `undefined`, leave assignees unchanged. */
 function assigneeIdsFromUpdateInput(input: UpdateWorkOrderInput): string[] | undefined {
@@ -441,6 +470,7 @@ function lineItemsSummaryForWorkOrderEmail(
 }
 
 /** Client + assigned team member emails after work order creation (failures logged only). */
+//// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multiple email payloads and assignee loops
 async function sendWorkOrderCreatedNotificationEmails(
   businessId: string,
   woId: string
@@ -552,6 +582,7 @@ async function sendWorkOrderCreatedNotificationEmails(
 /** Create work order (§6.3). Sets invoice_status=NOT_SENT, derives job status. */
 export async function createWorkOrder(businessId: string, input: CreateWorkOrderInput) {
   await ensureBusinessExists(businessId)
+
   const client = await prisma.client.findFirst({
     where: { id: input.clientId, businessId },
     select: { id: true },
@@ -565,6 +596,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
     assignedToId: input.assignedToId,
     assignedToIds: input.assignedToIds,
   })
+
   if (assignedIds.length > 0) {
     const members = await prisma.member.findMany({
       where: { businessId, id: { in: assignedIds } },
@@ -574,6 +606,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       throw new WorkOrderAssigneeNotFoundError()
     }
   }
+
   const primaryAssignedToId = assignedIds[0] ?? null
   const jobStatus = deriveJobStatus({
     scheduledAt: input.scheduledAt,
@@ -584,6 +617,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   const workOrderNumber = `#${await nextWorkOrderNumber(businessId)}`
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
+  // ✅ Transaction only creates records — no recalculation inside
   const wo = await prisma.$transaction(async tx => {
     const created = await tx.workOrder.create({
       data: {
@@ -631,9 +665,11 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       })
     }
 
-    await recalculateFinancials(created.id, taxPercent, tx)
     return created
   })
+
+  // ✅ Recalculate AFTER transaction commits — no timeout risk
+  await recalculateFinancials(wo.id, taxPercent)
 
   const result = await getWorkOrderById(businessId, wo.id)
   await sendWorkOrderCreatedNotificationEmails(businessId, wo.id)
@@ -641,6 +677,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
 }
 
 /** Update work order (§6.3). Recalculates financials and can re-derive job status. */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: schedule merge, batch transaction, nested replaces
 export async function updateWorkOrder(
   businessId: string,
   workOrderId: string,
@@ -672,6 +709,23 @@ export async function updateWorkOrder(
       throw new WorkOrderAssigneeNotFoundError()
     }
   }
+
+  if (input.clientId != null) {
+    const client = await prisma.client.findFirst({
+      where: { id: input.clientId, businessId },
+      select: { id: true },
+    })
+    if (!client) {
+      throw new ClientNotFoundError()
+    }
+  }
+
+  const normalizedExpenses = normalizeCollectionInput(
+    input.expenses as CreateWorkOrderInput['expenses']
+  )
+  const normalizedPayments = normalizeCollectionInput(
+    input.payments as CreateWorkOrderInput['payments']
+  )
 
   const scheduleFieldsTouched =
     input.scheduledAt !== undefined ||
@@ -707,7 +761,7 @@ export async function updateWorkOrder(
 
   const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
     ...(input.title != null && { title: input.title }),
-    ...(input.clientId != null && { clientId: input.clientId }),
+    ...(input.clientId != null && { client: { connect: { id: input.clientId } } }),
     ...(input.address != null && { address: input.address }),
     ...(input.instructions !== undefined && { instructions: input.instructions }),
     ...(input.notes !== undefined && { notes: input.notes }),
@@ -719,7 +773,10 @@ export async function updateWorkOrder(
       input.isAnyTime !== true && { startTime: input.startTime }),
     ...(input.endTime !== undefined && input.isAnyTime !== true && { endTime: input.endTime }),
     ...(assigneeIdsToApply !== undefined && {
-      primaryAssigneeId: assigneeIdsToApply[0] ?? null,
+      primaryAssignee:
+        assigneeIdsToApply[0] != null
+          ? { connect: { id: assigneeIdsToApply[0] } }
+          : { disconnect: true },
     }),
     ...(input.invoiceClientMessage !== undefined && {
       invoiceObservations: input.invoiceClientMessage,
@@ -763,6 +820,48 @@ export async function updateWorkOrder(
                     price: li.price,
                     cost: li.cost ?? null,
                     priceListItemId: li.priceListItemId ?? null,
+                  })),
+                }),
+              ]
+            : []),
+        ]
+      : []),
+    ...(normalizedExpenses !== undefined
+      ? [
+          prisma.expense.deleteMany({ where: { workOrderId } }),
+          ...(normalizedExpenses.length > 0
+            ? [
+                prisma.expense.createMany({
+                  data: normalizedExpenses.map(exp => ({
+                    businessId,
+                    workOrderId,
+                    date: exp.date,
+                    itemName: exp.itemName,
+                    details: exp.details ?? null,
+                    total: exp.total,
+                    invoiceNumber: exp.invoiceNumber ?? null,
+                    attachmentUrl: exp.attachmentUrl ?? null,
+                  })),
+                }),
+              ]
+            : []),
+        ]
+      : []),
+    ...(normalizedPayments !== undefined
+      ? [
+          prisma.payment.deleteMany({ where: { workOrderId } }),
+          ...(normalizedPayments.length > 0
+            ? [
+                prisma.payment.createMany({
+                  data: normalizedPayments.map(payment => ({
+                    workOrderId,
+                    amount: payment.amount,
+                    paymentDate: payment.paymentDate ?? new Date(),
+                    paymentMethod: payment.paymentMethod as Parameters<
+                      typeof prisma.payment.create
+                    >[0]['data']['paymentMethod'],
+                    referenceNumber: payment.referenceNumber ?? null,
+                    note: payment.note ?? null,
                   })),
                 }),
               ]
@@ -1373,6 +1472,7 @@ export async function getJobFollowUpEmailComposeData(businessId: string, workOrd
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: attachment selection, fetch, and optional copy send
 export async function sendJobFollowUpEmail(
   businessId: string,
   workOrderId: string,

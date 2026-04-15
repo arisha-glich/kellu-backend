@@ -652,3 +652,76 @@ export async function getClientMessageTemplate(
 
   return messageData
 }
+
+export async function listClientCustomerReminders(businessId: string, clientId: string) {
+  await ensureBusinessExists(businessId)
+  const clientRecord = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true, reminderDate: true, reminderNote: true },
+  })
+  if (!clientRecord) {
+    throw new ClientNotFoundError()
+  }
+
+  const reminderLogs = await prisma.reminderLog.findMany({
+    where: { businessId, clientId: clientRecord.id, reminderType: 'CLIENT_FOLLOW_UP' },
+    orderBy: { sentAt: 'desc' },
+  })
+
+  return {
+    upcomingReminder:
+      clientRecord.reminderDate != null
+        ? {
+            dateTime: clientRecord.reminderDate,
+            note: clientRecord.reminderNote ?? null,
+          }
+        : null,
+    reminders: reminderLogs.map(item => ({
+      id: item.id,
+      dateTime: item.sentAt,
+      note: null,
+      channel: item.channel,
+      createdAt: item.createdAt,
+    })),
+  }
+}
+
+export async function createClientCustomerReminder(
+  businessId: string,
+  clientId: string,
+  data: { dateTime: Date; note?: string | null }
+) {
+  await ensureBusinessExists(businessId)
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true, name: true, email: true },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.client.update({
+      where: { id: client.id },
+      data: {
+        reminderDate: data.dateTime,
+        reminderNote: data.note ?? null,
+        status: 'FOLLOW_UP',
+      },
+    })
+
+    await tx.reminderLog.create({
+      data: {
+        reminderType: 'CLIENT_FOLLOW_UP',
+        sentAt: data.dateTime,
+        channel: 'EMAIL',
+        entityType: 'CLIENT',
+        entityId: clientId,
+        clientId: client.id,
+        businessId,
+      },
+    })
+  })
+
+  return listClientCustomerReminders(businessId, clientId)
+}

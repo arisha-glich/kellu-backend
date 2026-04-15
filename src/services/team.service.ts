@@ -175,6 +175,7 @@ export async function getMemberById(
 }
 
 /** Add a team member: creates User (with isOwner=false), Account (credential), and Member. */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: onboarding flow handles multiple user-existence branches and safeguards
 export async function addMember(
   businessId: string,
   input: AddMemberInput
@@ -266,10 +267,9 @@ export async function addMember(
     return reloaded as MemberWithUserAndRole
   }
 
+  const hashedPassword = await hashPassword(input.password)
   // New user — create User + Account + Member inside a transaction
   const member = await prisma.$transaction(async tx => {
-    const hashedPassword = await hashPassword(input.password)
-
     const newUser = await tx.user.create({
       data: {
         name: input.name,

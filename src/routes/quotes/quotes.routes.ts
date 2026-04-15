@@ -82,6 +82,12 @@ export const SendQuoteBodySchema = z
   })
   .openapi({ description: 'Send quote to client' })
 
+export const UpdateQuoteStatusBodySchema = z
+  .object({
+    quoteStatus: QuoteStatusEnum,
+  })
+  .openapi({ description: 'Set quote status directly (business owner only)' })
+
 export const ClientQuoteRespondQuerySchema = z.object({
   action: z.enum(['approve', 'reject']).openapi({
     param: { name: 'action', in: 'query' },
@@ -430,21 +436,21 @@ export const QUOTE_ROUTES = {
     },
   }),
 
-  create: createRoute({
-    method: 'post',
-    tags: ['Quotes'],
-    path: '/',
-    summary: 'Create new quote ("Save Quote" button → creates WorkOrder with quoteRequired=true)',
-    request: { body: jsonContentRequired(CreateQuoteBodySchema, 'Create quote payload') },
-    responses: {
-      [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Created'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
-      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
-      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
-      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
-    },
-  }),
+  // create: createRoute({
+  //   method: 'post',
+  //   tags: ['Quotes'],
+  //   path: '/',
+  //   summary: 'Create new quote ("Save Quote" button → creates WorkOrder with quoteRequired=true)',
+  //   request: { body: jsonContentRequired(CreateQuoteBodySchema, 'Create quote payload') },
+  //   responses: {
+  //     [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Created'),
+  //     [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
+  //     [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+  //     [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+  //     [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+  //     [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+  //   },
+  // }),
 
   update: createRoute({
     method: 'patch',
@@ -458,6 +464,24 @@ export const QUOTE_ROUTES = {
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Updated'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  updateStatus: createRoute({
+    method: 'patch',
+    tags: ['Quotes'],
+    path: '/{quoteId}/status',
+    summary: 'Update quote status (business owner only)',
+    request: {
+      params: QuoteParamsSchema,
+      body: jsonContentRequired(UpdateQuoteStatusBodySchema, 'Update quote status payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Status updated'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
@@ -570,6 +594,7 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Quote approved'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Terminal state'),
+      [HttpStatusCodes.GONE]: jsonContent(zodResponseSchema(), 'Quote expired -7 days have passed'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -586,6 +611,7 @@ export const QUOTE_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Quote rejected'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Terminal state'),
+      [HttpStatusCodes.GONE]: jsonContent(zodResponseSchema(), 'Quote expired -7 days have passed'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

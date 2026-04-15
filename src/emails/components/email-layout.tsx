@@ -86,7 +86,7 @@ export function EmailLayout({ children, preview, logoUrl, headerTitle }: EmailLa
     process.env.BETTER_AUTH_URL ||
     process.env.BASE_URL ||
     process.env.FRONTEND_URL ||
-    'http://kellu.co'
+    'http://localhost:3000'
 
   const effectiveLogoUrl = logoUrl?.trim() || defaultLogoUrl
   const showLogo = !!effectiveLogoUrl

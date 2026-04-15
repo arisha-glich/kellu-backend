@@ -14,6 +14,7 @@ import {
   sendInvoiceAssignedToTeamMemberEmail,
   sendInvoiceCreatedClientEmail,
 } from '~/services/email-helpers'
+import { WorkOrderNotFoundError } from '~/services/workorder.service'
 
 export class InvoiceNotFoundError extends Error {
   constructor() {
@@ -467,6 +468,16 @@ export async function createInvoice(
     throw new ClientNotFoundError()
   }
 
+  if (input.workOrderId) {
+    const wo = await prisma.workOrder.findFirst({
+      where: { id: input.workOrderId, businessId },
+      select: { id: true },
+    })
+    if (!wo) {
+      throw new WorkOrderNotFoundError()
+    }
+  }
+
   if (input.assignedToId) {
     const member = await prisma.member.findFirst({
       where: { id: input.assignedToId, businessId },
@@ -551,6 +562,53 @@ export async function sendInvoice(businessId: string, invoiceId: string) {
       sentAt,
       dueAt,
     },
+  })
+
+  return getInvoiceById(businessId, invoiceId)
+}
+
+export async function updateInvoiceStatus(
+  businessId: string,
+  invoiceId: string,
+  status: InvoiceStatus
+) {
+  await ensureBusinessExists(businessId)
+
+  const inv = await prisma.invoice.findFirst({
+    where: { id: invoiceId, businessId },
+    select: { id: true, sentAt: true, dueAt: true },
+  })
+  if (!inv) {
+    throw new InvoiceNotFoundError()
+  }
+
+  const now = new Date()
+  const data: Prisma.InvoiceUpdateInput = { status }
+
+  if (status === 'AWAITING_PAYMENT') {
+    const settings = await prisma.businessSettings.findUnique({
+      where: { businessId },
+      select: { invoiceDueDays: true },
+    })
+    const dueDays = settings?.invoiceDueDays ?? 3
+    const sentAt = inv.sentAt ?? now
+    const dueAt = inv.dueAt ?? new Date(sentAt)
+    if (!inv.dueAt) {
+      dueAt.setDate(dueAt.getDate() + dueDays)
+    }
+    data.sentAt = sentAt
+    data.dueAt = dueAt
+  }
+  if (status === 'CANCELLED') {
+    data.cancelledAt = now
+  }
+  if (status === 'BAD_DEBT') {
+    data.badDebtAt = now
+  }
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data,
   })
 
   return getInvoiceById(businessId, invoiceId)
@@ -688,6 +746,7 @@ export async function getInvoiceEmailComposeData(businessId: string, invoiceId: 
  * Send invoice email (modal "Send Email"). Attaches selected PDFs from invoice / linked work order.
  * If invoice status is NOT_SENT, also marks invoice as sent (AWAITING_PAYMENT, sentAt, dueAt).
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multipart + attachment fetch + optional mark-sent branches
 export async function sendInvoiceEmail(
   businessId: string,
   invoiceId: string,

@@ -8,11 +8,39 @@ import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { sendTaskCreatedEmail } from '~/services/email-helpers'
 
+// ─── Errors ──────────────────────────────────────────────────────────────────
+
 export class TaskNotFoundError extends Error {
   constructor() {
     super('TASK_NOT_FOUND')
   }
 }
+
+export class ClientNotFoundError extends Error {
+  constructor() {
+    super('CLIENT_NOT_FOUND')
+  }
+}
+
+export class WorkOrderNotFoundError extends Error {
+  constructor() {
+    super('WORK_ORDER_NOT_FOUND')
+  }
+}
+
+export class MemberNotFoundError extends Error {
+  constructor() {
+    super('MEMBER_NOT_FOUND')
+  }
+}
+
+export class TaskAlreadyCompletedError extends Error {
+  constructor() {
+    super('TASK_ALREADY_COMPLETED')
+  }
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface TaskListFilters {
   search?: string
@@ -49,6 +77,8 @@ export interface UpdateTaskInput {
   isAnyTime?: boolean
 }
 
+// ─── Guard helpers ───────────────────────────────────────────────────────────
+
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({
     where: { id: businessId },
@@ -58,6 +88,64 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
     throw new BusinessNotFoundError()
   }
 }
+
+async function ensureTaskExists(taskId: string, businessId: string): Promise<void> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, businessId },
+    select: { id: true },
+  })
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
+}
+
+async function ensureClientExists(clientId: string, businessId: string): Promise<void> {
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+}
+
+async function ensureWorkOrderExists(workOrderId: string, businessId: string): Promise<void> {
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+}
+
+async function ensureMemberExists(memberId: string, businessId: string): Promise<void> {
+  const member = await prisma.member.findFirst({
+    where: { id: memberId, businessId },
+    select: { id: true },
+  })
+  if (!member) {
+    throw new MemberNotFoundError()
+  }
+}
+
+// ─── Shared FK validation ────────────────────────────────────────────────────
+
+interface RelationInput {
+  clientId?: string | null
+  workOrderId?: string | null
+  assignedToId?: string | null
+}
+
+async function validateTaskRelations(input: RelationInput, businessId: string): Promise<void> {
+  await Promise.all([
+    input.clientId ? ensureClientExists(input.clientId, businessId) : null,
+    input.workOrderId ? ensureWorkOrderExists(input.workOrderId, businessId) : null,
+    input.assignedToId ? ensureMemberExists(input.assignedToId, businessId) : null,
+  ])
+}
+
+// ─── DB fetch ────────────────────────────────────────────────────────────────
 
 async function getTaskById(businessId: string, taskId: string) {
   const task = await prisma.task.findFirst({
@@ -80,36 +168,167 @@ async function getTaskById(businessId: string, taskId: string) {
   return task
 }
 
-/**
- * List tasks with search, status filter, sort, pagination.
- */
+// ─── Email helpers ───────────────────────────────────────────────────────────
+
+function formatTaskDateString(scheduledAt: Date | null): string {
+  if (!scheduledAt) {
+    return 'To be confirmed'
+  }
+  return scheduledAt.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function formatTaskTimeRange(
+  isAnyTime: boolean,
+  startTime: string | null,
+  endTime: string | null
+): string {
+  if (isAnyTime) {
+    return 'Anytime'
+  }
+  if (startTime && endTime) {
+    return `${startTime} - ${endTime}`
+  }
+  return startTime ?? endTime ?? 'To be confirmed'
+}
+
+async function sendTaskCreatedEmailIfApplicable(taskId: string, businessId: string): Promise<void> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, businessId },
+    include: {
+      client: { select: { name: true, email: true } },
+      assignedTo: { include: { user: { select: { name: true } } } },
+      business: { include: { settings: { select: { replyToEmail: true } } } },
+    },
+  })
+
+  if (!task?.client?.email) {
+    return
+  }
+  if (!task.business) {
+    return
+  }
+
+  const companyReplyTo = task.business.settings?.replyToEmail?.trim() || task.business.email
+
+  sendTaskCreatedEmail({
+    to: task.client.email,
+    clientName: task.client.name,
+    businessName: task.business.name,
+    companyReplyTo,
+    companyLogoUrl: task.business.logoUrl ?? undefined,
+    title: task.title,
+    address: task.address ?? '—',
+    date: formatTaskDateString(task.scheduledAt),
+    timeRange: formatTaskTimeRange(task.isAnyTime, task.startTime, task.endTime),
+    assignedTeamMemberName: task.assignedTo?.user?.name ?? 'Our team',
+    instructions: task.instructions ?? undefined,
+  })
+}
+
+// ─── Query builder ────────────────────────────────────────────────────────────
+
+function buildTaskWhereInput(businessId: string, filters: TaskListFilters): Prisma.TaskWhereInput {
+  const where: Prisma.TaskWhereInput = { businessId }
+  if (filters.taskStatus) {
+    where.taskStatus = filters.taskStatus
+  }
+
+  const term = filters.search?.trim()
+  if (term) {
+    where.OR = [
+      { title: { contains: term, mode: 'insensitive' } },
+      { address: { contains: term, mode: 'insensitive' } },
+      { instructions: { contains: term, mode: 'insensitive' } },
+      { client: { name: { contains: term, mode: 'insensitive' } } },
+    ]
+  }
+  return where
+}
+
+// ─── Update data builders (split to keep each under complexity limit) ─────────
+
+// Handles scalar fields only (title, address, instructions, scheduledAt, startTime, endTime, isAnyTime)
+function buildScalarUpdateFields(input: UpdateTaskInput): Prisma.TaskUpdateInput {
+  const data: Prisma.TaskUpdateInput = {}
+  if (input.title != null) {
+    data.title = input.title
+  }
+  if (input.address !== undefined) {
+    data.address = input.address ?? null
+  }
+  if (input.instructions !== undefined) {
+    data.instructions = input.instructions ?? null
+  }
+  if (input.scheduledAt !== undefined) {
+    data.scheduledAt = input.scheduledAt ?? null
+  }
+  if (input.startTime !== undefined) {
+    data.startTime = input.startTime ?? null
+  }
+  if (input.endTime !== undefined) {
+    data.endTime = input.endTime ?? null
+  }
+  if (input.isAnyTime !== undefined) {
+    data.isAnyTime = input.isAnyTime
+  }
+  return data
+}
+
+// Handles relation fields only (clientId, workOrderId, assignedToId)
+function buildRelationUpdateFields(input: UpdateTaskInput): Prisma.TaskUpdateInput {
+  const data: Prisma.TaskUpdateInput = {}
+  if (input.clientId !== undefined) {
+    data.client = input.clientId ? { connect: { id: input.clientId } } : { disconnect: true }
+  }
+  if (input.workOrderId !== undefined) {
+    data.workOrder = input.workOrderId
+      ? { connect: { id: input.workOrderId } }
+      : { disconnect: true }
+  }
+  if (input.assignedToId !== undefined) {
+    data.assignedTo = input.assignedToId
+      ? { connect: { id: input.assignedToId } }
+      : { disconnect: true }
+  }
+  return data
+}
+
+// Merges scalar + relation into one update payload
+function buildTaskUpdateData(input: UpdateTaskInput): Prisma.TaskUpdateInput {
+  return {
+    ...buildScalarUpdateFields(input),
+    ...buildRelationUpdateFields(input),
+  }
+}
+
+// ─── Task status fetch helper ────────────────────────────────────────────────
+
+async function fetchTaskForStatusUpdate(taskId: string, businessId: string) {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, businessId },
+    select: { id: true, taskStatus: true },
+  })
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
+  if (task.taskStatus === 'COMPLETED') {
+    throw new TaskAlreadyCompletedError()
+  }
+  return task
+}
+
+// ─── Service Functions ────────────────────────────────────────────────────────
+
 export async function listTasks(businessId: string, filters: TaskListFilters = {}) {
   await ensureBusinessExists(businessId)
 
-  const {
-    search,
-    taskStatus,
-    page = 1,
-    limit = 10,
-    sortBy = 'scheduledAt',
-    order = 'asc',
-  } = filters
+  const { page = 1, limit = 10, sortBy = 'scheduledAt', order = 'asc' } = filters
   const skip = (page - 1) * limit
-
-  const where: Prisma.TaskWhereInput = { businessId }
-
-  if (taskStatus) {
-    where.taskStatus = taskStatus
-  }
-
-  if (search?.trim()) {
-    where.OR = [
-      { title: { contains: search.trim(), mode: 'insensitive' } },
-      { address: { contains: search.trim(), mode: 'insensitive' } },
-      { instructions: { contains: search.trim(), mode: 'insensitive' } },
-      { client: { name: { contains: search.trim(), mode: 'insensitive' } } },
-    ]
-  }
+  const where = buildTaskWhereInput(businessId, filters)
 
   const [items, total] = await Promise.all([
     prisma.task.findMany({
@@ -119,9 +338,7 @@ export async function listTasks(businessId: string, filters: TaskListFilters = {
       orderBy: { [sortBy]: order },
       include: {
         client: { select: { id: true, name: true, email: true, phone: true } },
-        assignedTo: {
-          select: { id: true, user: { select: { name: true, email: true } } },
-        },
+        assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } },
       },
     }),
     prisma.task.count({ where }),
@@ -138,49 +355,14 @@ export async function listTasks(businessId: string, filters: TaskListFilters = {
   }
 }
 
-/**
- * Get a single task by ID.
- */
 export async function getTask(businessId: string, taskId: string) {
   await ensureBusinessExists(businessId)
   return getTaskById(businessId, taskId)
 }
 
-/**
- * Create a new task (standalone or linked to a work order).
- */
 export async function createTask(businessId: string, input: CreateTaskInput) {
   await ensureBusinessExists(businessId)
-
-  if (input.clientId) {
-    const client = await prisma.client.findFirst({
-      where: { id: input.clientId, businessId },
-      select: { id: true },
-    })
-    if (!client) {
-      throw new Error('CLIENT_NOT_FOUND')
-    }
-  }
-
-  if (input.workOrderId) {
-    const wo = await prisma.workOrder.findFirst({
-      where: { id: input.workOrderId, businessId },
-      select: { id: true },
-    })
-    if (!wo) {
-      throw new Error('WORK_ORDER_NOT_FOUND')
-    }
-  }
-
-  if (input.assignedToId) {
-    const member = await prisma.member.findFirst({
-      where: { id: input.assignedToId, businessId },
-      select: { id: true },
-    })
-    if (!member) {
-      throw new Error('MEMBER_NOT_FOUND')
-    }
-  }
+  await validateTaskRelations(input, businessId)
 
   const task = await prisma.task.create({
     data: {
@@ -199,200 +381,69 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
     },
   })
 
-  const result = await getTaskById(businessId, task.id)
-  const clientEmail = result.client?.email?.trim()
-  if (clientEmail && result.client) {
-    try {
-      const taskForEmail = await prisma.task.findFirst({
-        where: { id: task.id, businessId },
-        include: {
-          client: { select: { name: true, email: true } },
-          assignedTo: { include: { user: { select: { name: true } } } },
-          business: { include: { settings: { select: { replyToEmail: true } } } },
-        },
-      })
-      if (taskForEmail?.client?.email && taskForEmail.business) {
-        const companyReplyTo =
-          taskForEmail.business.settings?.replyToEmail?.trim() || taskForEmail.business.email
-        const assignedName = taskForEmail.assignedTo?.user?.name ?? 'Our team'
-        const dateStr = taskForEmail.scheduledAt
-          ? taskForEmail.scheduledAt.toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })
-          : 'To be confirmed'
-        const timeRangeStr = taskForEmail.isAnyTime
-          ? 'Anytime'
-          : taskForEmail.startTime && taskForEmail.endTime
-            ? `${taskForEmail.startTime} - ${taskForEmail.endTime}`
-            : (taskForEmail.startTime ?? taskForEmail.endTime ?? 'To be confirmed')
-        sendTaskCreatedEmail({
-          to: taskForEmail.client.email,
-          clientName: taskForEmail.client.name,
-          businessName: taskForEmail.business.name,
-          companyReplyTo,
-          companyLogoUrl: taskForEmail.business.logoUrl ?? undefined,
-          title: taskForEmail.title,
-          address: taskForEmail.address ?? '—',
-          date: dateStr,
-          timeRange: timeRangeStr,
-          assignedTeamMemberName: assignedName,
-          instructions: taskForEmail.instructions ?? undefined,
-        })
-      }
-    } catch (e) {
-      console.error('[TASK] Failed to send task created email:', e)
-    }
+  try {
+    await sendTaskCreatedEmailIfApplicable(task.id, businessId)
+  } catch (e) {
+    console.error('[TASK] Failed to send task created email:', e)
   }
 
-  return result
+  return getTaskById(businessId, task.id)
 }
 
-/**
- * Update task fields. Status is only changed via start/complete actions.
- */
 export async function updateTask(businessId: string, taskId: string, input: UpdateTaskInput) {
   await ensureBusinessExists(businessId)
-
-  const existing = await prisma.task.findFirst({
-    where: { id: taskId, businessId },
-    select: { id: true },
-  })
-  if (!existing) {
-    throw new TaskNotFoundError()
-  }
-
-  if (input.clientId != null) {
-    if (input.clientId) {
-      const client = await prisma.client.findFirst({
-        where: { id: input.clientId, businessId },
-        select: { id: true },
-      })
-      if (!client) {
-        throw new Error('CLIENT_NOT_FOUND')
-      }
-    }
-  }
-
-  if (input.workOrderId != null && input.workOrderId) {
-    const wo = await prisma.workOrder.findFirst({
-      where: { id: input.workOrderId, businessId },
-      select: { id: true },
-    })
-    if (!wo) {
-      throw new Error('WORK_ORDER_NOT_FOUND')
-    }
-  }
-
-  if (input.assignedToId != null && input.assignedToId) {
-    const member = await prisma.member.findFirst({
-      where: { id: input.assignedToId, businessId },
-      select: { id: true },
-    })
-    if (!member) {
-      throw new Error('MEMBER_NOT_FOUND')
-    }
-  }
+  await ensureTaskExists(taskId, businessId)
+  await validateTaskRelations(
+    {
+      clientId: input.clientId || null,
+      workOrderId: input.workOrderId || null,
+      assignedToId: input.assignedToId || null,
+    },
+    businessId
+  )
 
   await prisma.task.update({
     where: { id: taskId },
-    data: {
-      ...(input.title != null && { title: input.title }),
-      ...(input.address !== undefined && { address: input.address ?? null }),
-      ...(input.instructions !== undefined && { instructions: input.instructions ?? null }),
-      ...(input.clientId !== undefined && { clientId: input.clientId ?? null }),
-      ...(input.workOrderId !== undefined && { workOrderId: input.workOrderId ?? null }),
-      ...(input.assignedToId !== undefined && { assignedToId: input.assignedToId ?? null }),
-      ...(input.scheduledAt !== undefined && { scheduledAt: input.scheduledAt ?? null }),
-      ...(input.startTime !== undefined && { startTime: input.startTime ?? null }),
-      ...(input.endTime !== undefined && { endTime: input.endTime ?? null }),
-      ...(input.isAnyTime !== undefined && { isAnyTime: input.isAnyTime }),
-    },
+    data: buildTaskUpdateData(input),
   })
 
   return getTaskById(businessId, taskId)
 }
 
-/**
- * Delete a task.
- */
 export async function deleteTask(businessId: string, taskId: string) {
   await ensureBusinessExists(businessId)
-
-  const existing = await prisma.task.findFirst({
-    where: { id: taskId, businessId },
-    select: { id: true },
-  })
-  if (!existing) {
-    throw new TaskNotFoundError()
-  }
-
+  await ensureTaskExists(taskId, businessId)
   await prisma.task.delete({ where: { id: taskId } })
 }
 
-/**
- * Start task — set status to IN_PROGRESS and record startedAt.
- */
 export async function startTask(businessId: string, taskId: string) {
   await ensureBusinessExists(businessId)
+  await fetchTaskForStatusUpdate(taskId, businessId)
 
-  const task = await prisma.task.findFirst({
-    where: { id: taskId, businessId },
-    select: { id: true, taskStatus: true },
-  })
-  if (!task) {
-    throw new TaskNotFoundError()
-  }
-  if (task.taskStatus === 'COMPLETED') {
-    throw new Error('TASK_ALREADY_COMPLETED')
-  }
-
-  const now = new Date()
   await prisma.task.update({
     where: { id: taskId },
-    data: {
-      taskStatus: 'IN_PROGRESS',
-      startedAt: now,
-    },
+    data: { taskStatus: 'IN_PROGRESS', startedAt: new Date() },
   })
 
   return getTaskById(businessId, taskId)
 }
 
-/**
- * Complete task — set status to COMPLETED, isCompleted true, completedAt now.
- */
 export async function completeTask(businessId: string, taskId: string) {
   await ensureBusinessExists(businessId)
+  await fetchTaskForStatusUpdate(taskId, businessId)
 
-  const task = await prisma.task.findFirst({
-    where: { id: taskId, businessId },
-    select: { id: true, taskStatus: true },
-  })
-  if (!task) {
-    throw new TaskNotFoundError()
-  }
-  if (task.taskStatus === 'COMPLETED') {
-    throw new Error('TASK_ALREADY_COMPLETED')
-  }
-
-  const now = new Date()
   await prisma.task.update({
     where: { id: taskId },
     data: {
       taskStatus: 'COMPLETED',
       isCompleted: true,
-      completedAt: now,
+      completedAt: new Date(),
     },
   })
 
   return getTaskById(businessId, taskId)
 }
 
-/**
- * Task status overview counts (for dashboard block).
- */
 export async function getTaskOverview(businessId: string) {
   await ensureBusinessExists(businessId)
 

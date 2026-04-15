@@ -6,6 +6,7 @@ import {
   ClientEmailRequiredError,
   ClientNotFoundError,
   createClient,
+  createClientCustomerReminder,
   deleteClientByClientId,
   EmailAlreadyUsedError,
   getClientByClientId,
@@ -14,6 +15,7 @@ import {
   getClients,
   getLatestClientMessageTemplate,
   getLeadSources,
+  listClientCustomerReminders,
   updateClientByClientId,
 } from '~/services/client.service'
 import { hasPermission } from '~/services/permission.service'
@@ -428,6 +430,102 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       }
       console.error('Error deleting client:', error)
       return c.json({ message: 'Failed to delete client' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+  listCustomerReminders: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view client reminders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId } = c.req.valid('param')
+      const data = await listClientCustomerReminders(businessId, clientId)
+      return c.json(
+        { message: 'Customer reminders retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error listing customer reminders:', error)
+      return c.json(
+        { message: 'Failed to retrieve customer reminders' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  createCustomerReminder: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to create client reminders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+
+      const date = new Date(body.date)
+      const [hours, minutes] =
+        body.time
+          .trim()
+          .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+          ?.slice(1) ?? []
+
+      if (!hours || !minutes) {
+        return c.json({ message: 'Invalid time format' }, HttpStatusCodes.BAD_REQUEST)
+      }
+
+      let h = Number.parseInt(hours, 10)
+      const m = Number.parseInt(minutes, 10)
+      const hasMeridiem = /AM|PM/i.test(body.time)
+      if (hasMeridiem) {
+        const isPm = /PM/i.test(body.time)
+        if (h === 12) {
+          h = isPm ? 12 : 0
+        } else if (isPm) {
+          h += 12
+        }
+      }
+      date.setHours(h, m, 0, 0)
+
+      const data = await createClientCustomerReminder(businessId, clientId, {
+        dateTime: date,
+        note: body.note ?? null,
+      })
+      return c.json(
+        { message: 'Customer reminder saved successfully', success: true, data },
+        HttpStatusCodes.CREATED
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error creating customer reminder:', error)
+      return c.json(
+        { message: 'Failed to create customer reminder' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 }

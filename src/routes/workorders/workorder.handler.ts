@@ -210,6 +210,9 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       if (error instanceof WorkOrderNotFoundError) {
         return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
@@ -359,14 +362,25 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         notes: body.internalNotes ?? body.notes,
         invoiceClientMessage: body.invoiceClientMessage,
         invoiceTermsConditions: body.invoiceTermsConditions,
+        applyInvoiceTermsToFuture: body.applyInvoiceTermsToFuture,
+        quoteClientMessage: body.quoteClientMessage,
+        quoteTermsConditions: body.quoteTermsConditions,
+        applyQuoteTermsToFuture: body.applyQuoteTermsToFuture,
         discount: body.discount,
         discountType: body.discountType,
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
+        expenses: body.expenses,
+        payments: body.payments,
       })
       if (body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
           invoiceTermsConditions: body.invoiceTermsConditions ?? null,
+        })
+      }
+      if (body.applyQuoteTermsToFuture) {
+        await updateCurrentBusinessSettings(businessId, {
+          quoteTermsConditions: body.quoteTermsConditions ?? null,
         })
       }
       const { ipAddress, userAgent } = getClientMeta(c)

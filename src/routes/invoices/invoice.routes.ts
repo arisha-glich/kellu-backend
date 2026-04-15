@@ -147,6 +147,12 @@ export const SendInvoiceEmailBodySchema = z
       'Email invoice modal: compose fields, selectable attachments, optional extra base64 files',
   })
 
+export const UpdateInvoiceStatusBodySchema = z
+  .object({
+    status: InvoiceStatusEnum,
+  })
+  .openapi({ description: 'Set invoice status directly (business owner only)' })
+
 const LineItemCreateSchema = z.object({
   name: z.string().min(1),
   itemType: z.enum(['SERVICE', 'PRODUCT']).optional().default('SERVICE'),
@@ -248,6 +254,24 @@ export const INVOICE_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(zodResponseSchema(InvoiceDetailSchema), 'Created'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or client not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Validation error'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  updateStatus: createRoute({
+    method: 'patch',
+    tags: ['Invoices'],
+    path: '/{invoiceId}/status',
+    summary: 'Update invoice status (business owner only)',
+    request: {
+      params: InvoiceParamsSchema,
+      body: jsonContentRequired(UpdateInvoiceStatusBodySchema, 'Update invoice status payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(InvoiceDetailSchema), 'Status updated'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Invoice not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

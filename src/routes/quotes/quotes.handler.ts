@@ -1,4 +1,5 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { UserRole } from '~/generated/prisma'
 import type { QUOTE_ROUTES } from '~/routes/quotes/quotes.routes'
 import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
@@ -8,7 +9,6 @@ import {
   approveQuote,
   clientApproveQuoteByToken,
   clientRejectQuoteByQuoteId,
-  createQuote,
   deleteQuote,
   getQuote,
   getQuoteEmailComposeData,
@@ -24,8 +24,9 @@ import {
   sendQuoteEmail,
   setQuoteAwaitingResponse,
   updateQuote,
+  updateQuoteStatus,
 } from '~/services/quotes.service'
-import { ClientNotFoundError, WorkOrderNotFoundError } from '~/services/workorder.service'
+import { WorkOrderNotFoundError } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -165,99 +166,100 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
 
-  create: async c => {
-    const user = c.get('user')
-    if (!user) {
-      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
-    }
-    try {
-      const businessId = await getBusinessIdByUserId(user.id)
-      if (!businessId) {
-        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      }
-      if (!(await hasPermission(user.id, businessId, 'quotes', 'create'))) {
-        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
-      }
+  // create: async c => {
+  //   const user = c.get('user')
+  //   if (!user) {
+  //     return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+  //   }
+  //   try {
+  //     const businessId = await getBusinessIdByUserId(user.id)
+  //     if (!businessId) {
+  //       return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+  //     }
+  //     if (!(await hasPermission(user.id, businessId, 'quotes', 'create'))) {
+  //       return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+  //     }
 
-      const body = c.req.valid('json')
-      const quote = await createQuote(businessId, {
-        title: body.title,
-        clientId: body.clientId,
-        address: body.address,
-        assignedToId: body.assignedToId,
-        instructions: body.instructions,
-        notes: body.notes,
-        quoteTermsConditions: body.quoteTermsConditions,
-        workOrderId: body.workOrderId,
-        lineItems: body.lineItems,
-      })
-      const { ipAddress, userAgent } = getClientMeta(c)
-      await createAuditLog({
-        action: 'QUOTE_CREATED',
-        module: 'quote',
-        entityId: quote.id,
-        newValues: {
-          id: quote.id,
-          quoteNumber: quote.quoteNumber,
-          title: quote.title,
-          status: quote.quoteStatus,
-        },
-        userId: user.id,
-        businessId,
-        ipAddress,
-        userAgent,
-      })
-      if (quote.client.email) {
-        try {
-          await sendQuoteEmail(businessId, quote.id, {
-            requesterEmail: user.email,
-          })
-        } catch (emailError) {
-          console.error('Quote auto-email on create failed:', emailError)
-        }
-      }
+  //     const body = c.req.valid('json')
+  //     const quote = await createQuote(businessId, {
+  //       title: body.title,
+  //       clientId: body.clientId,
+  //       address: body.address,
+  //       assignedToId: body.assignedToId,
+  //       instructions: body.instructions,
+  //       notes: body.notes,
+  //       quoteTermsConditions: body.quoteTermsConditions,
+  //       workOrderId: body.workOrderId,
+  //       lineItems: body.lineItems,
+  //     })
+  //     const { ipAddress, userAgent } = getClientMeta(c)
+  //     await createAuditLog({
+  //       action: 'QUOTE_CREATED',
+  //       module: 'quote',
+  //       entityId: quote.id,
+  //       newValues: {
+  //         id: quote.id,
+  //         quoteNumber: quote.quoteNumber,
+  //         title: quote.title,
+  //         status: quote.quoteStatus,
+  //       },
+  //       userId: user.id,
+  //       businessId,
+  //       ipAddress,
+  //       userAgent,
+  //     })
+  //     if (quote.client.email) {
+  //       try {
+  //         await sendQuoteEmail(businessId, quote.id, {
+  //           requesterEmail: user.email,
+  //         })
+  //       } catch (emailError) {
+  //         console.error('Quote auto-email on create failed:', emailError)
+  //       }
+  //     }
 
-      try {
-        await createUserNotification({
-          userId: user.id,
-          type: 'QUOTE_CREATED',
-          title: `You created a quote - ${quote.total != null ? `$${Number(quote.total).toFixed(2)}` : ''}`,
-          message: `${quote.quoteNumber ?? 'Quote'} - ${quote.title}`,
-          metadata: {
-            quoteId: quote.id,
-            quoteNumber: quote.quoteNumber,
-            title: quote.title,
-            total: quote.total != null ? Number(quote.total) : null,
-          },
-        })
-        await sendUserOperationEmail({
-          to: user.email,
-          userName: user.name,
-          actionTitle: 'Quote created successfully',
-          actionMessage: `Your quote "${quote.title}" was created successfully.`,
-        })
-      } catch (notifyError) {
-        console.error('Quote create notification/email failed:', notifyError)
-      }
-      return c.json(
-        { message: 'Quote created successfully', success: true, data: quote },
-        HttpStatusCodes.CREATED
-      )
-    } catch (error) {
-      if (error instanceof BusinessNotFoundError) {
-        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-      }
-      if (error instanceof ClientNotFoundError) {
-        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
-      }
-      if (error instanceof WorkOrderNotFoundError) {
-        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
-      }
-      console.error('Error creating quote:', error)
-      return c.json({ message: 'Failed to create quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
-    }
-  },
+  //     try {
+  //       await createUserNotification({
+  //         userId: user.id,
+  //         type: 'QUOTE_CREATED',
+  //         title: `You created a quote - ${quote.total != null ? `$${Number(quote.total).toFixed(2)}` : ''}`,
+  //         message: `${quote.quoteNumber ?? 'Quote'} - ${quote.title}`,
+  //         metadata: {
+  //           quoteId: quote.id,
+  //           quoteNumber: quote.quoteNumber,
+  //           title: quote.title,
+  //           total: quote.total != null ? Number(quote.total) : null,
+  //         },
+  //       })
+  //       await sendUserOperationEmail({
+  //         to: user.email,
+  //         userName: user.name,
+  //         actionTitle: 'Quote created successfully',
+  //         actionMessage: `Your quote "${quote.title}" was created successfully.`,
+  //       })
+  //     } catch (notifyError) {
+  //       console.error('Quote create notification/email failed:', notifyError)
+  //     }
+  //     return c.json(
+  //       { message: 'Quote created successfully', success: true, data: quote },
+  //       HttpStatusCodes.CREATED
+  //     )
+  //   } catch (error) {
+  //     if (error instanceof BusinessNotFoundError) {
+  //       return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+  //     }
+  //     if (error instanceof ClientNotFoundError) {
+  //       return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
+  //     }
+  //     if (error instanceof WorkOrderNotFoundError) {
+  //       return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+  //     }
+  //     console.error('Error creating quote:', error)
+  //     return c.json({ message: 'Failed to create quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+  //   }
+  // },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: large optional body field mapping
   update: async c => {
     const user = c.get('user')
     if (!user) {
@@ -322,6 +324,56 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
       console.error('Error updating quote:', error)
       return c.json({ message: 'Failed to update quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  updateStatus: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (user.role !== UserRole.BUSINESS_OWNER) {
+      return c.json(
+        { message: 'Only business owners can change quote status' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'quotes', 'update'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+
+      const { quoteId } = c.req.valid('param')
+      const { quoteStatus } = c.req.valid('json')
+      const quote = await updateQuoteStatus(businessId, quoteId, quoteStatus)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'QUOTE_STATUS_UPDATED',
+        module: 'quote',
+        entityId: quote.id,
+        newValues: { status: quote.quoteStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
+      return c.json(
+        { message: 'Quote status updated successfully', success: true, data: quote },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error updating quote status:', error)
+      return c.json(
+        { message: 'Failed to update quote status' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 
@@ -402,6 +454,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: auth, notifications, and error mapping
   send: async c => {
     const user = c.get('user')
     if (!user) {
@@ -469,6 +522,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multipart + JSON branches and notifications
   sendEmail: async c => {
     const user = c.get('user')
     if (!user) {
@@ -706,6 +760,15 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (error instanceof WorkOrderNotFoundError) {
         return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof QuoteExpiredError) {
+        return c.json(
+          {
+            message:
+              'Your quote time is expired. You can not approve a quote after the 7-day response window.',
+          },
+          HttpStatusCodes.GONE
+        )
+      }
       if (error instanceof QuoteTerminalStateError) {
         return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)
       }
@@ -746,6 +809,15 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (error instanceof WorkOrderNotFoundError) {
         return c.json({ message: 'Quote not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof QuoteExpiredError) {
+        return c.json(
+          {
+            message:
+              'Your quote time is expired. You can not reject a quote after the 7-day response window.',
+          },
+          HttpStatusCodes.GONE
+        )
+      }
       if (error instanceof QuoteTerminalStateError) {
         return c.json({ message: 'Quote is in a terminal state' }, HttpStatusCodes.BAD_REQUEST)
       }
@@ -753,6 +825,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       return c.json({ message: 'Failed to reject quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: client token redirect flow with nested URL helper
   clientRespondGet: async c => {
     const { action, token, quoteId: quoteIdFromQuery } = c.req.valid('query')
     const frontendDefault = (Bun.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '')
@@ -788,8 +861,8 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       } catch (error) {
         if (error instanceof QuoteExpiredError) {
           return c.redirect(
-            quoteClientPageUrl(rejectedBase, quoteIdFromQuery ?? undefined, {
-              quoteAction: 'expired',
+            quoteClientPageUrl(approvedBase, quoteIdFromQuery ?? undefined, {
+              quoteAction: 'expired-approve',
             })
           )
         }
@@ -812,6 +885,13 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     if (rejectResolved.ok === false) {
       if (rejectResolved.kind === 'not_found') {
         return c.redirect(quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'not-found' }))
+      }
+      if (rejectResolved.kind === 'expired') {
+        return c.redirect(
+          quoteClientPageUrl(rejectedBase, quoteIdFromQuery ?? undefined, {
+            quoteAction: 'expired-reject',
+          })
+        )
       }
       if (rejectResolved.kind === 'terminal') {
         return c.redirect(
@@ -869,7 +949,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         return c.json(
           {
             message:
-              'You cannot reject this quote because the 7-day response window has passed. Please contact the business for a new quote.',
+              'You cannot reject-quote because the 7-day response window has passed. Please contact the business for a new quote.',
           },
           HttpStatusCodes.GONE
         )

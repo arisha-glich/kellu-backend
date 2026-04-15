@@ -166,6 +166,29 @@ export const LeadSourceOptionSchema = z.object({
 })
 
 export const LeadSourcesResponseSchema = z.array(LeadSourceOptionSchema)
+const ClientReminderSchema = z.object({
+  id: z.string(),
+  dateTime: z.coerce.date(),
+  note: z.string().nullable(),
+  channel: z.string(),
+  createdAt: z.coerce.date(),
+})
+
+const ClientReminderOverviewSchema = z.object({
+  upcomingReminder: z
+    .object({
+      dateTime: z.coerce.date(),
+      note: z.string().nullable(),
+    })
+    .nullable(),
+  reminders: z.array(ClientReminderSchema),
+})
+
+const CreateClientReminderBodySchema = z.object({
+  date: z.coerce.date(),
+  time: z.string().min(1),
+  note: z.string().optional().nullable(),
+})
 
 export const CLIENT_ROUTES = {
   list: createRoute({
@@ -334,6 +357,44 @@ export const CLIENT_ROUTES = {
         zodResponseSchema(z.object({ deleted: z.boolean() })),
         'Deleted'
       ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  listCustomerReminders: createRoute({
+    method: 'get',
+    tags: ['Clients'],
+    path: '/{clientId}/customer-reminders',
+    summary: 'List customer reminders for this client',
+    request: { params: ClientOnlyParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: ClientReminderOverviewSchema })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  createCustomerReminder: createRoute({
+    method: 'post',
+    tags: ['Clients'],
+    path: '/{clientId}/customer-reminders',
+    summary: 'Create customer reminder for this client',
+    request: {
+      params: ClientOnlyParamsSchema,
+      body: jsonContentRequired(CreateClientReminderBodySchema, 'Create client reminder payload'),
+    },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(z.object({ data: ClientReminderOverviewSchema })),
+        'Created'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid time format'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

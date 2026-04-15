@@ -88,6 +88,7 @@ export const TEAM_HANDLER: HandlerMapFromRoutes<typeof TEAM_ROUTES> = {
 
   add: async c => {
     const user = c.get('user')
+    console.log('user', user)
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }

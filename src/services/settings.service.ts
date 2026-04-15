@@ -119,6 +119,7 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 }
 
 /** Get current business settings (profile + company + settings) for the logged-in user's business. */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: response mapping object intentionally explicit for API contract clarity
 export async function getCurrentBusinessSettings(
   businessId: string
 ): Promise<CurrentSettingsResult> {
@@ -185,6 +186,7 @@ export async function getCurrentBusinessSettings(
 }
 
 /** Update current business profile and/or settings. Creates BusinessSettings if missing. */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: many optional independent patch fields for business/settings payload
 export async function updateCurrentBusinessSettings(
   businessId: string,
   input: UpdateSettingsInput

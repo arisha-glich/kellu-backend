@@ -4,6 +4,7 @@
  */
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { UserRole } from '~/generated/prisma'
 import type { INVOICE_ROUTES } from '~/routes/invoices/invoice.routes'
 import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
@@ -17,9 +18,11 @@ import {
   listInvoices,
   sendInvoice,
   sendInvoiceEmail,
+  updateInvoiceStatus,
 } from '~/services/invoice.service'
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
+import { WorkOrderNotFoundError } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -159,7 +162,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
           HttpStatusCodes.FORBIDDEN
         )
       }
-      const body = await c.req.valid('json')
+      const body = c.req.valid('json')
       const invoice = await createInvoice(businessId, {
         title: body.title,
         clientId: body.clientId,
@@ -218,11 +221,70 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
       if (error instanceof ClientNotFoundError) {
         return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
       }
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
       if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND') {
         return c.json({ message: 'Team member not found' }, HttpStatusCodes.NOT_FOUND)
       }
       console.error('Error creating invoice:', error)
       return c.json({ message: 'Failed to create invoice' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  updateStatus: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (user.role !== UserRole.BUSINESS_OWNER) {
+      return c.json(
+        { message: 'Only business owners can change invoice status' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'invoices', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to update invoice status' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+
+      const { invoiceId } = c.req.valid('param')
+      const { status } = c.req.valid('json')
+      const invoice = await updateInvoiceStatus(businessId, invoiceId, status)
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'INVOICE_STATUS_UPDATED',
+        module: 'invoice',
+        entityId: invoice.id,
+        newValues: { status: invoice.status },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
+      return c.json(
+        { message: 'Invoice status updated successfully', success: true, data: invoice },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof InvoiceNotFoundError) {
+        return c.json({ message: 'Invoice not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error updating invoice status:', error)
+      return c.json(
+        { message: 'Failed to update invoice status' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 
@@ -339,6 +401,7 @@ export const INVOICE_HANDLER: HandlerMapFromRoutes<typeof INVOICE_ROUTES> = {
     }
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multipart parsing and attachment assembly
   sendEmail: async c => {
     const user = c.get('user')
     if (!user) {
