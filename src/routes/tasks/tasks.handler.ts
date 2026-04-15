@@ -21,29 +21,14 @@ import {
 import type { HandlerMapFromRoutes } from '~/types'
 
 function resolveTaskAssigneeIds(body: {
-  assignedToId?: string | null
   assignedToIds?: string[] | null
 }): string[] | undefined {
   const incoming = [...(body.assignedToIds ?? [])]
-  if (body.assignedToId) {
-    incoming.unshift(body.assignedToId)
-  }
   if (incoming.length === 0) {
     return undefined
   }
   const deduped = Array.from(new Set(incoming.map(id => id.trim()).filter(Boolean)))
   return deduped.length > 0 ? deduped : undefined
-}
-
-function resolveTaskPrimaryAssigneeId(body: {
-  assignedToId?: string | null
-  assignedToIds?: string[] | null
-}): string | null | undefined {
-  const ids = resolveTaskAssigneeIds(body)
-  if (ids === undefined) {
-    return undefined
-  }
-  return ids[0] ?? null
 }
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -165,10 +150,10 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
       const assignedToIds = resolveTaskAssigneeIds(body)
       const task = await createTask(businessId, {
         title: body.title,
-        clientId: body.clientId ?? null,
+        clientId: body.clientId,
         address: body.address ?? null,
         instructions: body.instructions ?? null,
-        assignedToId: resolveTaskPrimaryAssigneeId(body) ?? null,
+        assignedToId: assignedToIds?.[0] ?? null,
         assignedToIds,
         workOrderId: body.workOrderId ?? null,
         scheduledAt: body.scheduledAt ?? null,
@@ -226,14 +211,13 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
       const { taskId } = c.req.valid('param')
       const body = c.req.valid('json')
       const assignedToIds = resolveTaskAssigneeIds(body)
-      const primaryAssigneeId = resolveTaskPrimaryAssigneeId(body)
       const task = await updateTask(businessId, taskId, {
         ...(body.title != null && { title: body.title }),
-        ...(body.clientId !== undefined && { clientId: body.clientId ?? null }),
+        ...(body.clientId !== undefined && { clientId: body.clientId }),
         ...(body.address !== undefined && { address: body.address ?? null }),
         ...(body.instructions !== undefined && { instructions: body.instructions ?? null }),
-        ...(body.assignedToId !== undefined || body.assignedToIds !== undefined
-          ? { assignedToId: primaryAssigneeId ?? null, assignedToIds: assignedToIds ?? [] }
+        ...(body.assignedToIds !== undefined
+          ? { assignedToId: assignedToIds?.[0] ?? null, assignedToIds: assignedToIds ?? [] }
           : {}),
         ...(body.workOrderId !== undefined && { workOrderId: body.workOrderId ?? null }),
         ...(body.scheduledAt !== undefined && { scheduledAt: body.scheduledAt ?? null }),

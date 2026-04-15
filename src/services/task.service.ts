@@ -53,7 +53,7 @@ export interface TaskListFilters {
 
 export interface CreateTaskInput {
   title: string
-  clientId?: string | null
+  clientId: string
   address?: string | null
   instructions?: string | null
   assignedToId?: string | null
@@ -137,14 +137,72 @@ interface RelationInput {
   clientId?: string | null
   workOrderId?: string | null
   assignedToId?: string | null
+  assignedToIds?: string[]
+}
+
+function normalizeAssigneeIds(input: {
+  assignedToId?: string | null
+  assignedToIds?: string[]
+}): string[] {
+  const ids = [...(input.assignedToIds ?? [])]
+  if (input.assignedToId) {
+    ids.unshift(input.assignedToId)
+  }
+  return Array.from(new Set(ids.map(id => id.trim()).filter(Boolean)))
+}
+
+async function getMembersByIdsInOrder(businessId: string, memberIds: string[]) {
+  if (memberIds.length === 0) {
+    return []
+  }
+  const members = await prisma.member.findMany({
+    where: {
+      businessId,
+      id: { in: memberIds },
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+  const byId = new Map(members.map(member => [member.id, member]))
+  return memberIds.map(id => byId.get(id)).filter((member): member is (typeof members)[number] => !!member)
 }
 
 async function validateTaskRelations(input: RelationInput, businessId: string): Promise<void> {
-  await Promise.all([
+  const assigneeIds = normalizeAssigneeIds({
+    assignedToId: input.assignedToId,
+    assignedToIds: input.assignedToIds,
+  })
+  const assigneeCountPromise =
+    assigneeIds.length > 0
+      ? prisma.member.count({ where: { businessId, id: { in: assigneeIds } } })
+      : Promise.resolve(0)
+  const [, , , assigneeCount] = await Promise.all([
     input.clientId ? ensureClientExists(input.clientId, businessId) : null,
     input.workOrderId ? ensureWorkOrderExists(input.workOrderId, businessId) : null,
     input.assignedToId ? ensureMemberExists(input.assignedToId, businessId) : null,
+    assigneeCountPromise,
   ])
+  if (assigneeIds.length > 0 && assigneeCount !== assigneeIds.length) {
+    throw new MemberNotFoundError()
+  }
+}
+
+function mapTaskForApi<T extends { assignedToId?: string | null }>(task: T) {
+  const assignedMember =
+    'assignedTo' in task ? ((task as T & { assignedTo?: unknown }).assignedTo ?? null) : null
+  const assignedToIds = assignedMember ? [assignedMember] : []
+  const { assignedTo: _assignedTo, ...rest } = task as T & { assignedTo?: unknown }
+  return {
+    ...rest,
+    assignedToIds,
+  }
 }
 
 // ─── DB fetch ────────────────────────────────────────────────────────────────
@@ -167,7 +225,7 @@ async function getTaskById(businessId: string, taskId: string) {
   if (!task) {
     throw new TaskNotFoundError()
   }
-  return task
+  return mapTaskForApi(task)
 }
 
 // ─── Email helpers ───────────────────────────────────────────────────────────
@@ -340,14 +398,16 @@ export async function listTasks(businessId: string, filters: TaskListFilters = {
       orderBy: { [sortBy]: order },
       include: {
         client: { select: { id: true, name: true, email: true, phone: true } },
-        assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } },
+        assignedTo: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
       },
     }),
     prisma.task.count({ where }),
   ])
 
   return {
-    data: items,
+    data: items.map(item => mapTaskForApi(item)),
     pagination: {
       page,
       limit,
@@ -365,6 +425,10 @@ export async function getTask(businessId: string, taskId: string) {
 export async function createTask(businessId: string, input: CreateTaskInput) {
   await ensureBusinessExists(businessId)
   await validateTaskRelations(input, businessId)
+  const normalizedAssignedToIds = normalizeAssigneeIds({
+    assignedToId: input.assignedToId,
+    assignedToIds: input.assignedToIds,
+  })
 
   const task = await prisma.task.create({
     data: {
@@ -374,7 +438,7 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       instructions: input.instructions ?? null,
       clientId: input.clientId ?? null,
       workOrderId: input.workOrderId ?? null,
-      assignedToId: input.assignedToId ?? null,
+      assignedToId: normalizedAssignedToIds[0] ?? null,
       scheduledAt: input.scheduledAt ?? null,
       startTime: input.startTime ?? null,
       endTime: input.endTime ?? null,
@@ -389,7 +453,9 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
     console.error('[TASK] Failed to send task created email:', e)
   }
 
-  return getTaskById(businessId, task.id)
+  const created = await getTaskById(businessId, task.id)
+  const assignedMembers = await getMembersByIdsInOrder(businessId, normalizedAssignedToIds)
+  return { ...created, assignedToIds: assignedMembers }
 }
 
 export async function updateTask(businessId: string, taskId: string, input: UpdateTaskInput) {
@@ -400,16 +466,35 @@ export async function updateTask(businessId: string, taskId: string, input: Upda
       clientId: input.clientId || null,
       workOrderId: input.workOrderId || null,
       assignedToId: input.assignedToId || null,
+      assignedToIds: input.assignedToIds,
     },
     businessId
   )
 
-  await prisma.task.update({
-    where: { id: taskId },
-    data: buildTaskUpdateData(input),
+  const normalizedAssignedToIds = normalizeAssigneeIds({
+    assignedToId: input.assignedToId,
+    assignedToIds: input.assignedToIds,
   })
 
-  return getTaskById(businessId, taskId)
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      ...buildTaskUpdateData(input),
+      ...(input.assignedToIds !== undefined && {
+        assignedTo:
+          normalizedAssignedToIds[0] != null
+            ? { connect: { id: normalizedAssignedToIds[0] } }
+            : { disconnect: true },
+      }),
+    },
+  })
+
+  const updated = await getTaskById(businessId, taskId)
+  if (input.assignedToIds !== undefined) {
+    const assignedMembers = await getMembersByIdsInOrder(businessId, normalizedAssignedToIds)
+    return { ...updated, assignedToIds: assignedMembers }
+  }
+  return updated
 }
 
 export async function deleteTask(businessId: string, taskId: string) {

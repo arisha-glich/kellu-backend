@@ -13,10 +13,9 @@ const TaskStatusEnum = z.enum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELL
 export const CreateTaskBodySchema = z
   .object({
     title: z.string().min(1, 'Title is required'),
-    clientId: z.string().optional().nullable(),
+    clientId: z.string().min(1, 'Client is required'),
     address: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
-    assignedToId: z.string().optional().nullable(),
     assignedToIds: z.array(z.string().min(1)).optional(),
     workOrderId: z.string().optional().nullable(),
     scheduledAt: z.coerce.date().optional().nullable(),
@@ -29,10 +28,9 @@ export const CreateTaskBodySchema = z
 export const UpdateTaskBodySchema = z
   .object({
     title: z.string().min(1).optional(),
-    clientId: z.string().optional().nullable(),
+    clientId: z.string().optional(),
     address: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
-    assignedToId: z.string().optional().nullable(),
     assignedToIds: z.array(z.string().min(1)).optional(),
     workOrderId: z.string().optional().nullable(),
     scheduledAt: z.coerce.date().optional().nullable(),
@@ -79,27 +77,21 @@ const ClientRefSchema = z.object({
   address: z.string().nullable(),
 })
 
-const AssignedToSchema = z.object({
+const TaskAssignedMemberSchema = z.object({
   id: z.string(),
-  user: z.object({ name: z.string().nullable(), email: z.string() }),
-})
-
-const TaskAssigneeMemberSchema = z.object({
-  id: z.string(),
+  isActive: z.boolean(),
+  includeInNotificationsWhenAssigned: z.boolean(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
   calendarColor: z.string().nullable(),
+  userId: z.string(),
+  businessId: z.string(),
+  roleId: z.string(),
   user: z.object({
     id: z.string(),
     name: z.string().nullable(),
     email: z.string(),
   }),
-})
-
-const TaskAssigneeRowSchema = z.object({
-  id: z.string(),
-  taskId: z.string(),
-  memberId: z.string(),
-  createdAt: z.coerce.date(),
-  member: TaskAssigneeMemberSchema,
 })
 
 const TaskDetailSchema = z.object({
@@ -118,8 +110,7 @@ const TaskDetailSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   client: ClientRefSchema.nullable(),
-  assignedTo: AssignedToSchema.nullable(),
-  assignees: z.array(TaskAssigneeRowSchema),
+  assignedToIds: z.array(TaskAssignedMemberSchema),
   workOrder: z
     .object({
       id: z.string(),
@@ -137,7 +128,7 @@ const TaskListItemSchema = TaskDetailSchema.pick({
   scheduledAt: true,
   createdAt: true,
   client: true,
-  assignedTo: true,
+  assignedToIds: true,
 })
 
 const PaginationSchema = z.object({
