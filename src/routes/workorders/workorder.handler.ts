@@ -26,7 +26,12 @@ import {
   LineItemNotFoundError,
   listWorkOrderAttachments,
   listWorkOrderCustomerReminders,
+  listWorkOrderPayments,
   listWorkOrders,
+  getWorkOrderPayment,
+  PaymentNotFoundError,
+  updateWorkOrderPayment,
+  deleteWorkOrderPayment,
   registerPayment,
   sendBookingConfirmation,
   sendJobFollowUpEmail,
@@ -515,6 +520,161 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
     }
   },
 
+  listPayments: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view payments on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId } = c.req.valid('param')
+      const payments = await listWorkOrderPayments(businessId, workOrderId)
+      return c.json(
+        { message: 'Payments retrieved successfully', success: true, data: payments },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error listing payments:', error)
+      return c.json(
+        { message: 'Failed to retrieve payments' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  getPayment: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view payment on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId, paymentId } = c.req.valid('param')
+      const payment = await getWorkOrderPayment(businessId, workOrderId, paymentId)
+      return c.json(
+        { message: 'Payment retrieved successfully', success: true, data: payment },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError || error instanceof PaymentNotFoundError) {
+        return c.json({ message: 'Work order or payment not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error getting payment:', error)
+      return c.json(
+        { message: 'Failed to retrieve payment' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  updatePayment: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to update payments on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId, paymentId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+      const workOrder = await updateWorkOrderPayment(businessId, workOrderId, paymentId, {
+        ...(body.amount !== undefined && { amount: body.amount }),
+        ...(body.paymentDate !== undefined && { paymentDate: body.paymentDate ?? null }),
+        ...(body.paymentMethod !== undefined && { paymentMethod: body.paymentMethod }),
+        ...(body.referenceNumber !== undefined && { referenceNumber: body.referenceNumber ?? null }),
+        ...(body.note !== undefined && { note: body.note ?? null }),
+      })
+      return c.json(
+        { message: 'Payment updated successfully', success: true, data: workOrder },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError || error instanceof PaymentNotFoundError) {
+        return c.json({ message: 'Work order or payment not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error updating payment:', error)
+      return c.json(
+        { message: 'Failed to update payment' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  deletePayment: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to delete payments on work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { workOrderId, paymentId } = c.req.valid('param')
+      const workOrder = await deleteWorkOrderPayment(businessId, workOrderId, paymentId)
+      return c.json(
+        { message: 'Payment deleted successfully', success: true, data: workOrder },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError || error instanceof PaymentNotFoundError) {
+        return c.json({ message: 'Work order or payment not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error deleting payment:', error)
+      return c.json(
+        { message: 'Failed to delete payment' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
   sendBookingConfirmation: async c => {
     const user = c.get('user')
     if (!user) {
@@ -978,6 +1138,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
     }
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multipart parsing and attachment handling flow
   sendJobFollowUpEmail: async c => {
     const user = c.get('user')
     if (!user) {

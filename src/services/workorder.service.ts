@@ -35,6 +35,12 @@ export class WorkOrderAssigneeNotFoundError extends Error {
   }
 }
 
+export class PaymentNotFoundError extends Error {
+  constructor() {
+    super('PAYMENT_NOT_FOUND')
+  }
+}
+
 export interface WorkOrderListFilters {
   search?: string
   jobStatus?: JobStatus
@@ -1183,6 +1189,149 @@ export async function registerPayment(
       await tx.workOrder.update({
         where: { id: workOrderId },
         data: { invoiceStatus: 'PAID' },
+      })
+    }
+  })
+
+  return getWorkOrderById(businessId, workOrderId)
+}
+
+export async function listWorkOrderPayments(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  return prisma.payment.findMany({
+    where: { workOrderId },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }],
+  })
+}
+
+export async function getWorkOrderPayment(businessId: string, workOrderId: string, paymentId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, workOrderId },
+  })
+  if (!payment) {
+    throw new PaymentNotFoundError()
+  }
+  return payment
+}
+
+export async function updateWorkOrderPayment(
+  businessId: string,
+  workOrderId: string,
+  paymentId: string,
+  data: {
+    amount?: number
+    paymentDate?: Date | null
+    paymentMethod?: string
+    referenceNumber?: string | null
+    note?: string | null
+  }
+) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const existing = await prisma.payment.findFirst({
+    where: { id: paymentId, workOrderId },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new PaymentNotFoundError()
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: {
+        ...(data.amount !== undefined && { amount: data.amount }),
+        ...(data.paymentDate !== undefined && { paymentDate: data.paymentDate ?? new Date() }),
+        ...(data.paymentMethod !== undefined && {
+          paymentMethod: data.paymentMethod as Parameters<typeof prisma.payment.create>[0]['data']['paymentMethod'],
+        }),
+        ...(data.referenceNumber !== undefined && { referenceNumber: data.referenceNumber }),
+        ...(data.note !== undefined && { note: data.note }),
+      },
+    })
+
+    await recalculateFinancials(workOrderId, 0, tx)
+
+    const updated = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      select: { balance: true, invoiceStatus: true },
+    })
+    if (!updated) {
+      return
+    }
+    if (toNum(updated.balance) <= 0 && updated.invoiceStatus !== 'PAID') {
+      await tx.workOrder.update({
+        where: { id: workOrderId },
+        data: { invoiceStatus: 'PAID' },
+      })
+    } else if (toNum(updated.balance) > 0 && updated.invoiceStatus === 'PAID') {
+      await tx.workOrder.update({
+        where: { id: workOrderId },
+        data: { invoiceStatus: 'AWAITING_PAYMENT' },
+      })
+    }
+  })
+
+  return getWorkOrderById(businessId, workOrderId)
+}
+
+export async function deleteWorkOrderPayment(businessId: string, workOrderId: string, paymentId: string) {
+  await ensureBusinessExists(businessId)
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!wo) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const existing = await prisma.payment.findFirst({
+    where: { id: paymentId, workOrderId },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new PaymentNotFoundError()
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.payment.delete({ where: { id: paymentId } })
+    await recalculateFinancials(workOrderId, 0, tx)
+
+    const updated = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      select: { balance: true, invoiceStatus: true },
+    })
+    if (!updated) {
+      return
+    }
+    if (toNum(updated.balance) > 0 && updated.invoiceStatus === 'PAID') {
+      await tx.workOrder.update({
+        where: { id: workOrderId },
+        data: { invoiceStatus: 'AWAITING_PAYMENT' },
       })
     }
   })
