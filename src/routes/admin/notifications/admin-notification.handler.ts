@@ -9,6 +9,7 @@ import {
   listPlatformNotificationRules,
   updatePlatformNotificationRule,
 } from '~/services/platform-notification-rule.service'
+import { getUnreadNotificationCount, listNotifications } from '~/services/notifications.service'
 import {
   getEmailForwardingSettings,
   updateEmailForwardingSettings,
@@ -39,6 +40,67 @@ function canUpdateSettings(user: {
 }
 
 export const ADMIN_NOTIFICATION_HANDLER: HandlerMapFromRoutes<typeof ADMIN_NOTIFICATION_ROUTES> = {
+  listFeed: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
+    if (!canReadSettings(user)) {
+      return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+    }
+    try {
+      const query = c.req.valid('query')
+      const page = query.page ? Number.parseInt(query.page, 10) : 1
+      const limit = query.limit ? Number.parseInt(query.limit, 10) : 20
+      const data = await listNotifications(user.id, {
+        page,
+        limit,
+        search: query.search,
+        type: query.type,
+        unreadOnly: query.unreadOnly,
+      })
+      return c.json(
+        { message: 'Admin notifications retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      console.error('Error listing admin notifications:', error)
+      return c.json(
+        { message: 'Failed to retrieve admin notifications' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  unreadCount: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
+    if (!canReadSettings(user)) {
+      return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+    }
+    try {
+      const unread = await getUnreadNotificationCount(user.id)
+      return c.json(
+        { message: 'Unread count retrieved successfully', success: true, data: { unread } },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      console.error('Error fetching admin unread notification count:', error)
+      return c.json(
+        { message: 'Failed to retrieve unread count' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
   listRules: async c => {
     const user = c.get('user')
     if (!user) {

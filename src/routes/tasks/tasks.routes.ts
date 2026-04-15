@@ -7,14 +7,8 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { jsonContent, jsonContentRequired } from 'stoker/openapi/helpers'
 import { zodResponseSchema } from '~/lib/zod-helper'
 
-const TaskStatusEnum = z.enum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'])
+const TaskStatusEnum = z.enum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED','UNSCHEDULED'])
 
-export const TaskParamsSchema = z.object({
-  taskId: z.string().openapi({
-    param: { name: 'taskId', in: 'path' },
-    description: 'Task ID',
-  }),
-})
 
 export const CreateTaskBodySchema = z
   .object({
@@ -23,6 +17,7 @@ export const CreateTaskBodySchema = z
     address: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     assignedToId: z.string().optional().nullable(),
+    assignedToIds: z.array(z.string().min(1)).optional(),
     workOrderId: z.string().optional().nullable(),
     scheduledAt: z.coerce.date().optional().nullable(),
     startTime: z.string().optional().nullable(),
@@ -38,6 +33,7 @@ export const UpdateTaskBodySchema = z
     address: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     assignedToId: z.string().optional().nullable(),
+    assignedToIds: z.array(z.string().min(1)).optional(),
     workOrderId: z.string().optional().nullable(),
     scheduledAt: z.coerce.date().optional().nullable(),
     startTime: z.string().optional().nullable(),
@@ -88,6 +84,24 @@ const AssignedToSchema = z.object({
   user: z.object({ name: z.string().nullable(), email: z.string() }),
 })
 
+const TaskAssigneeMemberSchema = z.object({
+  id: z.string(),
+  calendarColor: z.string().nullable(),
+  user: z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    email: z.string(),
+  }),
+})
+
+const TaskAssigneeRowSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  memberId: z.string(),
+  createdAt: z.coerce.date(),
+  member: TaskAssigneeMemberSchema,
+})
+
 const TaskDetailSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -105,6 +119,7 @@ const TaskDetailSchema = z.object({
   updatedAt: z.coerce.date(),
   client: ClientRefSchema.nullable(),
   assignedTo: AssignedToSchema.nullable(),
+  assignees: z.array(TaskAssigneeRowSchema),
   workOrder: z
     .object({
       id: z.string(),
@@ -140,6 +155,13 @@ const TaskListResponseSchema = z.object({
 const TaskOverviewItemSchema = z.object({
   status: TaskStatusEnum,
   count: z.number().int(),
+})
+
+export const TaskParamsSchema = z.object({
+  taskId: z.string().openapi({
+    param: { name: 'taskId', in: 'path' },
+    description: 'Task ID',
+  }),
 })
 
 export const TASK_ROUTES = {

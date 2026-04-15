@@ -52,6 +52,50 @@ const EmailForwardingSchema = z.object({
   clientEmailCopyTo: z.string().nullable(),
 })
 
+const AdminNotificationFeedQuerySchema = z.object({
+  search: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'search', in: 'query' } }),
+  type: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'type', in: 'query' } }),
+  unreadOnly: z
+    .string()
+    .optional()
+    .transform(v => v === 'true' || v === '1')
+    .openapi({ param: { name: 'unreadOnly', in: 'query' } }),
+  page: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'page', in: 'query' } }),
+  limit: z
+    .string()
+    .optional()
+    .openapi({ param: { name: 'limit', in: 'query' } }),
+})
+
+const AdminNotificationFeedItemSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  title: z.string(),
+  message: z.string().nullable(),
+  readAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+})
+
+const AdminNotificationFeedResponseSchema = z.object({
+  data: z.array(AdminNotificationFeedItemSchema),
+  pagination: z.object({
+    page: z.number().int(),
+    limit: z.number().int(),
+    total: z.number().int(),
+    totalPages: z.number().int(),
+  }),
+})
+
 const PatchEmailForwardingBodySchema = z
   .object({
     clientEmailCopyEnabled: z.boolean().optional(),
@@ -70,6 +114,35 @@ const adminNotificationErrors = {
 } as const
 
 export const ADMIN_NOTIFICATION_ROUTES = {
+  listFeed: createRoute({
+    method: 'get',
+    tags: ['Admin Notifications'],
+    path: '/feed',
+    summary: 'Admin: list in-app notifications feed for current admin user',
+    request: { query: AdminNotificationFeedQuerySchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(AdminNotificationFeedResponseSchema),
+        'OK'
+      ),
+      ...adminNotificationErrors,
+    },
+  }),
+
+  unreadCount: createRoute({
+    method: 'get',
+    tags: ['Admin Notifications'],
+    path: '/feed/unread-count',
+    summary: 'Admin: unread notification count for current admin user',
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ unread: z.number().int() })),
+        'OK'
+      ),
+      ...adminNotificationErrors,
+    },
+  }),
+
   listRules: createRoute({
     method: 'get',
     tags: ['Admin Notifications'],

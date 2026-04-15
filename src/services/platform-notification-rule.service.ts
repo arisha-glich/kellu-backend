@@ -2,6 +2,7 @@ import prisma from '~/lib/prisma'
 
 /** Machine keys referenced by application code for gating automations. */
 export const PlatformNotificationEventKey = {
+  NEW_BUSINESS_LOGIN: 'NEW_BUSINESS_LOGIN',
   WORK_ORDER_COMPLETED: 'WORK_ORDER_COMPLETED',
   USER_INVITATION: 'USER_INVITATION',
   QUOTE_REJECTED_BY_CLIENT: 'QUOTE_REJECTED_BY_CLIENT',
@@ -11,11 +12,7 @@ export const PlatformNotificationEventKey = {
 } as const
 
 /** Removed from product; deleted from DB whenever defaults are ensured. */
-const DEPRECATED_EVENT_KEYS = [
-  'NEW_BUSINESS_REGISTRATION',
-  'PAYMENT_RECEIVED',
-  'FAILED_LOGIN_ALERT',
-] as const
+const DEPRECATED_EVENT_KEYS = ['PAYMENT_RECEIVED', 'FAILED_LOGIN_ALERT'] as const
 
 export type PlatformNotificationEventKeyType =
   (typeof PlatformNotificationEventKey)[keyof typeof PlatformNotificationEventKey]
@@ -27,6 +24,13 @@ const DEFAULT_RULES: Array<{
   isActive: boolean
   sortOrder: number
 }> = [
+  {
+    eventKey: PlatformNotificationEventKey.NEW_BUSINESS_LOGIN,
+    eventName: 'New Business Login',
+    triggerDescription: 'On new business login',
+    isActive: true,
+    sortOrder: 5,
+  },
   {
     eventKey: PlatformNotificationEventKey.WORK_ORDER_COMPLETED,
     eventName: 'Job Completed',

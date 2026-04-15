@@ -57,6 +57,7 @@ export interface CreateTaskInput {
   address?: string | null
   instructions?: string | null
   assignedToId?: string | null
+  assignedToIds?: string[]
   workOrderId?: string | null
   scheduledAt?: Date | null
   startTime?: string | null
@@ -70,6 +71,7 @@ export interface UpdateTaskInput {
   address?: string | null
   instructions?: string | null
   assignedToId?: string | null
+  assignedToIds?: string[]
   workOrderId?: string | null
   scheduledAt?: Date | null
   startTime?: string | null
