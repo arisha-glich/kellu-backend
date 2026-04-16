@@ -37,7 +37,7 @@ export interface CreateExpenseInput {
   details?: string | null
   total: number
   invoiceNumber?: string | null
-  attachmentUrl?: string | null
+  attachmentUrl?: string[] | null
   workOrderId?: string | null
 }
 
@@ -50,7 +50,7 @@ export interface ExpenseWithWorkOrder {
   details: string | null
   total: Prisma.Decimal
   invoiceNumber: string | null
-  attachmentUrl: string | null
+  attachmentUrl: string[] | null
   createdAt: Date
   updatedAt: Date
   businessId: string
@@ -222,7 +222,7 @@ export async function createExpense(
       details: input.details ?? null,
       total: new Prisma.Decimal(toDecimalSafe(input.total)),
       invoiceNumber: input.invoiceNumber ?? null,
-      attachmentUrl: input.attachmentUrl ?? null,
+      attachmentUrl: input.attachmentUrl?.join(',') ?? null,
       workOrderId: input.workOrderId ?? null,
     },
     include: {
@@ -290,7 +290,7 @@ export async function updateExpense(
     data.invoiceNumber = input.invoiceNumber
   }
   if (input.attachmentUrl !== undefined) {
-    data.attachmentUrl = input.attachmentUrl
+    data.attachmentUrl = input.attachmentUrl?.join(',') ?? undefined
   }
   if (input.workOrderId !== undefined) {
     data.workOrder = input.workOrderId

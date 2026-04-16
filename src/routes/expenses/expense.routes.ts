@@ -92,7 +92,7 @@ const ExpenseItemSchema = z.object({
   details: z.string().nullable(),
   total: z.union([z.number(), z.string()]),
   invoiceNumber: z.string().nullable(),
-  attachmentUrl: z.string().nullable(),
+  attachmentUrl: z.array(z.string()).optional().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   businessId: z.string(),
@@ -119,12 +119,12 @@ export const CreateExpenseBodySchema = z
     details: z.string().optional().nullable(),
     total: z.number().min(0),
     invoiceNumber: z.string().optional().nullable(),
-    attachmentUrl: z.string().optional().nullable().or(z.literal('')),
+    attachmentUrl: z.array(z.string()).optional().nullable(),
     workOrderId: z.string().optional().nullable(),
   })
   .transform(d => ({
     ...d,
-    attachmentUrl: d.attachmentUrl === '' ? null : (d.attachmentUrl ?? null),
+    attachmentUrl: d.attachmentUrl?.length === 0 ? null : (d.attachmentUrl ?? undefined),
   }))
   .openapi({
     description:
@@ -138,12 +138,12 @@ export const UpdateExpenseBodySchema = z
     details: z.string().optional().nullable(),
     total: z.number().min(0).optional(),
     invoiceNumber: z.string().optional().nullable(),
-    attachmentUrl: z.string().optional().nullable().or(z.literal('')),
+    attachmentUrl: z.array(z.string()).optional().nullable(),
     workOrderId: z.string().optional().nullable(),
   })
   .transform(d => ({
     ...d,
-    attachmentUrl: d.attachmentUrl === '' ? null : (d.attachmentUrl ?? null),
+    attachmentUrl: d.attachmentUrl?.length === 0 ? null : (d.attachmentUrl ?? undefined),
   }))
   .openapi({ description: 'Update expense (partial)' })
 

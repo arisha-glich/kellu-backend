@@ -2,6 +2,7 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { RolePortalScope } from '~/generated/prisma'
 import { resolveAdminBusinessScope } from '~/routes/admin/_helpers'
 import type { ADMIN_TEAM_MEMBER_ROUTES } from '~/routes/admin/team-members/admin-team-member.routes'
+import { createUserNotification } from '~/services/notifications.service'
 import {
   addMember,
   EmailAlreadyUsedError,
@@ -79,6 +80,24 @@ export const ADMIN_TEAM_MEMBER_HANDLER: HandlerMapFromRoutes<typeof ADMIN_TEAM_M
         emailDescription: body.emailDescription,
         portalType: 'admin',
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'ADMIN_TEAM_MEMBER_CREATED',
+          title: `You added a team member - ${member.user.name}`,
+          message: `${member.user.email} - ${member.role.displayName ?? member.role.name}`,
+          metadata: {
+            memberId: member.id,
+            memberName: member.user.name,
+            memberEmail: member.user.email,
+            roleId: member.role.id,
+            roleName: member.role.displayName ?? member.role.name,
+            portal: 'admin',
+          },
+        })
+      } catch (notifyError) {
+        console.error('Admin team member notification failed:', notifyError)
+      }
       return c.json(
         { message: 'Team member added successfully', success: true, data: member },
         HttpStatusCodes.CREATED

@@ -134,7 +134,7 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         details: body.details,
         total: body.total,
         invoiceNumber: body.invoiceNumber,
-        attachmentUrl: body.attachmentUrl,
+        attachmentUrl: body.attachmentUrl ? [body.attachmentUrl.join(',')] : undefined,
         workOrderId: body.workOrderId,
       })
       return c.json(
@@ -177,7 +177,7 @@ export const EXPENSE_HANDLER: HandlerMapFromRoutes<typeof EXPENSE_ROUTES> = {
         details: body.details,
         total: body.total,
         invoiceNumber: body.invoiceNumber,
-        attachmentUrl: body.attachmentUrl,
+        attachmentUrl: body.attachmentUrl?.join(',') ? [body.attachmentUrl.join(',')] : undefined,
         workOrderId: body.workOrderId,
       })
       return c.json(
