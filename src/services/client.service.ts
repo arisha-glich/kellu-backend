@@ -21,6 +21,11 @@ export class ClientEmailRequiredError extends Error {
     super('CLIENT_EMAIL_REQUIRED')
   }
 }
+export class ClientReminderNotFoundError extends Error {
+  constructor() {
+    super('CLIENT_REMINDER_NOT_FOUND')
+  }
+}
 
 export interface CreateClientInput {
   name: string
@@ -674,8 +679,7 @@ export async function listClientCustomerReminders(businessId: string, clientId: 
     reminders: reminderLogs.map(item => ({
       id: item.id,
       dateTime: item.sentAt,
-      note: null,
-      channel: item.channel,
+      note: item.note ?? null,
       createdAt: item.createdAt,
     })),
   }
@@ -709,6 +713,7 @@ export async function createClientCustomerReminder(
       data: {
         reminderType: 'CLIENT_FOLLOW_UP',
         sentAt: data.dateTime,
+        note: data.note ?? null,
         channel: 'EMAIL',
         entityType: 'CLIENT',
         entityId: clientId,
@@ -719,4 +724,112 @@ export async function createClientCustomerReminder(
   })
 
   return listClientCustomerReminders(businessId, clientId)
+}
+
+export async function getClientCustomerReminderById(
+  businessId: string,
+  clientId: string,
+  reminderId: string
+) {
+  await ensureBusinessExists(businessId)
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+
+  const reminder = await prisma.reminderLog.findFirst({
+    where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
+  })
+  if (!reminder) {
+    throw new ClientReminderNotFoundError()
+  }
+
+  return {
+    id: reminder.id,
+    dateTime: reminder.sentAt,
+    note: reminder.note ?? null,
+    createdAt: reminder.createdAt,
+  }
+}
+
+export async function updateClientCustomerReminderById(
+  businessId: string,
+  clientId: string,
+  reminderId: string,
+  data: { dateTime?: Date; note?: string | null }
+) {
+  await ensureBusinessExists(businessId)
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true, reminderDate: true },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+
+  const existing = await prisma.reminderLog.findFirst({
+    where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
+  })
+  if (!existing) {
+    throw new ClientReminderNotFoundError()
+  }
+
+  const nextDateTime = data.dateTime ?? existing.sentAt
+  await prisma.$transaction(async tx => {
+    await tx.reminderLog.update({
+      where: { id: existing.id },
+      data: {
+        sentAt: nextDateTime,
+        ...(data.note !== undefined && { note: data.note ?? null }),
+      },
+    })
+
+    if (client.reminderDate != null && client.reminderDate.getTime() === existing.sentAt.getTime()) {
+      await tx.client.update({
+        where: { id: client.id },
+        data: {
+          reminderDate: nextDateTime,
+          ...(data.note !== undefined && { reminderNote: data.note ?? null }),
+        },
+      })
+    }
+  })
+
+  return getClientCustomerReminderById(businessId, clientId, reminderId)
+}
+
+export async function deleteClientCustomerReminderById(
+  businessId: string,
+  clientId: string,
+  reminderId: string
+) {
+  await ensureBusinessExists(businessId)
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { id: true, reminderDate: true },
+  })
+  if (!client) {
+    throw new ClientNotFoundError()
+  }
+
+  const existing = await prisma.reminderLog.findFirst({
+    where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
+    select: { id: true, sentAt: true },
+  })
+  if (!existing) {
+    throw new ClientReminderNotFoundError()
+  }
+
+  await prisma.$transaction(async tx => {
+    await tx.reminderLog.delete({ where: { id: existing.id } })
+    if (client.reminderDate != null && client.reminderDate.getTime() === existing.sentAt.getTime()) {
+      await tx.client.update({
+        where: { id: client.id },
+        data: { reminderDate: null, reminderNote: null },
+      })
+    }
+  })
 }

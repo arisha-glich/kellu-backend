@@ -232,6 +232,7 @@ model Member {
   assignedTasks         Task[]                @relation("TaskAssignee")
   primaryAssignedWorkOrders WorkOrder[]       @relation("WorkOrderPrimaryAssignee")
   workOrderAssignments  WorkOrderAssignment[]
+  taskAssignments       TaskAssignment[]
   assignedQuotes        Quote[]               @relation("QuoteAssignee")
   assignedInvoices      Invoice[]
 
@@ -666,6 +667,19 @@ model Task {
   workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   assignedToId String?
   assignedTo   Member?   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignees    TaskAssignment[]
+}
+
+model TaskAssignment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, memberId])
+  @@index([memberId])
 }
 
 // ─────────────────────────────────────────────
@@ -798,6 +812,7 @@ model ReminderLog {
   id           String              @id @default(cuid())
   reminderType String
   sentAt       DateTime
+  note         String?             @db.Text
   channel      NotificationChannel
   entityType   String
   entityId     String

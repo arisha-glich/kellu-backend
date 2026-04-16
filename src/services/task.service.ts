@@ -197,20 +197,27 @@ async function validateTaskRelations(input: RelationInput, businessId: string): 
 }
 
 function mapTaskForApi<T extends { assignedToId?: string | null }>(task: T) {
-  const assignedMember =
-    'assignedTo' in task ? ((task as T & { assignedTo?: unknown }).assignedTo ?? null) : null
-  const assignedToIds = assignedMember ? [assignedMember] : []
+  const taskWithRelations = task as T & {
+    assignedTo?: unknown
+    assignees?: Array<{ member: unknown }>
+  }
+  const assignedMembersFromAssignments =
+    taskWithRelations.assignees?.map(assignment => assignment.member) ?? []
+  const assignedMembers =
+    assignedMembersFromAssignments.length > 0
+      ? assignedMembersFromAssignments
+      : taskWithRelations.assignedTo
+        ? [taskWithRelations.assignedTo]
+        : []
   const {
     assignedTo: _assignedTo,
     assignedToId: _assignedToId,
+    assignees: _assignees,
     ...rest
-  } = task as T & {
-    assignedTo?: unknown
-    assignedToId?: string | null
-  }
+  } = taskWithRelations
   return {
     ...rest,
-    assignedToIds,
+    assignedToIds: assignedMembers,
   }
 }
 
@@ -225,6 +232,13 @@ async function getTaskById(businessId: string, taskId: string) {
       },
       assignedTo: {
         include: { user: { select: { id: true, name: true, email: true } } },
+      },
+      assignees: {
+        include: {
+          member: {
+            include: { user: { select: { id: true, name: true, email: true } } },
+          },
+        },
       },
       workOrder: {
         select: { id: true, workOrderNumber: true, title: true },
@@ -270,6 +284,13 @@ async function sendTaskCreatedEmailIfApplicable(taskId: string, businessId: stri
     include: {
       client: { select: { name: true, email: true } },
       assignedTo: { include: { user: { select: { name: true } } } },
+      assignees: {
+        include: {
+          member: {
+            include: { user: { select: { name: true } } },
+          },
+        },
+      },
       business: { include: { settings: { select: { replyToEmail: true } } } },
     },
   })
@@ -293,7 +314,8 @@ async function sendTaskCreatedEmailIfApplicable(taskId: string, businessId: stri
     address: task.address ?? '—',
     date: formatTaskDateString(task.scheduledAt),
     timeRange: formatTaskTimeRange(task.isAnyTime, task.startTime, task.endTime),
-    assignedTeamMemberName: task.assignedTo?.user?.name ?? 'Our team',
+    assignedTeamMemberName:
+      task.assignees[0]?.member?.user?.name ?? task.assignedTo?.user?.name ?? 'Our team',
     instructions: task.instructions ?? undefined,
   })
 }
@@ -410,6 +432,13 @@ export async function listTasks(businessId: string, filters: TaskListFilters = {
         assignedTo: {
           include: { user: { select: { id: true, name: true, email: true } } },
         },
+        assignees: {
+          include: {
+            member: {
+              include: { user: { select: { id: true, name: true, email: true } } },
+            },
+          },
+        },
       },
     }),
     prisma.task.count({ where }),
@@ -447,6 +476,15 @@ export async function createTask(businessId: string, input: CreateTaskInput) {
       clientId: input.clientId ?? null,
       workOrderId: input.workOrderId ?? null,
       assignedToId: normalizedAssignedToIds[0] ?? null,
+      assignees:
+        normalizedAssignedToIds.length > 0
+          ? {
+              createMany: {
+                data: normalizedAssignedToIds.map(memberId => ({ memberId })),
+                skipDuplicates: true,
+              },
+            }
+          : undefined,
       scheduledAt: input.scheduledAt ?? null,
       startTime: input.startTime ?? null,
       endTime: input.endTime ?? null,
@@ -484,17 +522,28 @@ export async function updateTask(businessId: string, taskId: string, input: Upda
     assignedToIds: input.assignedToIds,
   })
 
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      ...buildTaskUpdateData(input),
-      ...(input.assignedToIds !== undefined && {
-        assignedTo:
-          normalizedAssignedToIds[0] != null
-            ? { connect: { id: normalizedAssignedToIds[0] } }
-            : { disconnect: true },
-      }),
-    },
+  await prisma.$transaction(async tx => {
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        ...buildTaskUpdateData(input),
+        ...(input.assignedToIds !== undefined && {
+          assignedTo:
+            normalizedAssignedToIds[0] != null
+              ? { connect: { id: normalizedAssignedToIds[0] } }
+              : { disconnect: true },
+        }),
+      },
+    })
+    if (input.assignedToIds !== undefined) {
+      await tx.taskAssignment.deleteMany({ where: { taskId } })
+      if (normalizedAssignedToIds.length > 0) {
+        await tx.taskAssignment.createMany({
+          data: normalizedAssignedToIds.map(memberId => ({ taskId, memberId })),
+          skipDuplicates: true,
+        })
+      }
+    }
   })
 
   const updated = await getTaskById(businessId, taskId)

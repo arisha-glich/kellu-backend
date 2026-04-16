@@ -40,6 +40,14 @@ export const ClientOnlyParamsSchema = z.object({
     .string()
     .openapi({ param: { name: 'clientId', in: 'path' }, description: 'Client ID' }),
 })
+const ClientReminderParamsSchema = z.object({
+  clientId: z
+    .string()
+    .openapi({ param: { name: 'clientId', in: 'path' }, description: 'Client ID' }),
+  reminderId: z
+    .string()
+    .openapi({ param: { name: 'reminderId', in: 'path' }, description: 'Reminder ID' }),
+})
 export const ClientListQuerySchema = z.object({
   search: z
     .string()
@@ -170,7 +178,6 @@ const ClientReminderSchema = z.object({
   id: z.string(),
   dateTime: z.coerce.date(),
   note: z.string().nullable(),
-  channel: z.string(),
   createdAt: z.coerce.date(),
 })
 
@@ -189,6 +196,15 @@ const CreateClientReminderBodySchema = z.object({
   time: z.string().min(1),
   note: z.string().optional().nullable(),
 })
+const UpdateClientReminderBodySchema = z
+  .object({
+    date: z.coerce.date().optional(),
+    time: z.string().min(1).optional(),
+    note: z.string().optional().nullable(),
+  })
+  .refine(body => Object.keys(body).length > 0, {
+    message: 'At least one field is required',
+  })
 
 export const CLIENT_ROUTES = {
   list: createRoute({
@@ -396,6 +412,70 @@ export const CLIENT_ROUTES = {
       ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid time format'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  getCustomerReminderById: createRoute({
+    method: 'get',
+    tags: ['Clients'],
+    path: '/{clientId}/customer-reminders/{reminderId}',
+    summary: 'Get customer reminder by id for this client',
+    request: { params: ClientReminderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: ClientReminderSchema })),
+        'OK'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Client or reminder not found'
+      ),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  updateCustomerReminder: createRoute({
+    method: 'patch',
+    tags: ['Clients'],
+    path: '/{clientId}/customer-reminders/{reminderId}',
+    summary: 'Update customer reminder for this client',
+    request: {
+      params: ClientReminderParamsSchema,
+      body: jsonContentRequired(UpdateClientReminderBodySchema, 'Update client reminder payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: ClientReminderSchema })),
+        'Updated'
+      ),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid time format'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Client or reminder not found'
+      ),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+  deleteCustomerReminder: createRoute({
+    method: 'delete',
+    tags: ['Clients'],
+    path: '/{clientId}/customer-reminders/{reminderId}',
+    summary: 'Delete customer reminder for this client',
+    request: { params: ClientReminderParamsSchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(z.object({ data: z.object({ deleted: z.boolean() }) })),
+        'Deleted'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Client or reminder not found'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

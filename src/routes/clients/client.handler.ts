@@ -5,11 +5,14 @@ import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/busines
 import {
   ClientEmailRequiredError,
   ClientNotFoundError,
+  ClientReminderNotFoundError,
   createClient,
   createClientCustomerReminder,
   deleteClientByClientId,
+  deleteClientCustomerReminderById,
   EmailAlreadyUsedError,
   getClientByClientId,
+  getClientCustomerReminderById,
   getClientMessageTemplate,
   getClientStatistics,
   getClients,
@@ -17,6 +20,7 @@ import {
   getLeadSources,
   listClientCustomerReminders,
   updateClientByClientId,
+  updateClientCustomerReminderById,
 } from '~/services/client.service'
 import { hasPermission } from '~/services/permission.service'
 import type { HandlerMapFromRoutes } from '~/types'
@@ -28,6 +32,29 @@ function listStatusForService(
     return undefined
   }
   return status
+}
+
+function parseReminderTime(baseDate: Date, time: string): Date | null {
+  const trimmed = time.trim()
+  const [hours, minutes] = trimmed.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)?.slice(1) ?? []
+  if (!hours || !minutes) {
+    return null
+  }
+
+  let h = Number.parseInt(hours, 10)
+  const m = Number.parseInt(minutes, 10)
+  const hasMeridiem = /AM|PM/i.test(trimmed)
+  if (hasMeridiem) {
+    const isPm = /PM/i.test(trimmed)
+    if (h === 12) {
+      h = isPm ? 12 : 0
+    } else if (isPm) {
+      h += 12
+    }
+  }
+  const date = new Date(baseDate)
+  date.setHours(h, m, 0, 0)
+  return date
 }
 
 export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
@@ -484,33 +511,12 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       }
       const { clientId } = c.req.valid('param')
       const body = await c.req.valid('json')
-
-      const date = new Date(body.date)
-      const [hours, minutes] =
-        body.time
-          .trim()
-          .match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-          ?.slice(1) ?? []
-
-      if (!hours || !minutes) {
+      const dateTime = parseReminderTime(new Date(body.date), body.time)
+      if (!dateTime) {
         return c.json({ message: 'Invalid time format' }, HttpStatusCodes.BAD_REQUEST)
       }
-
-      let h = Number.parseInt(hours, 10)
-      const m = Number.parseInt(minutes, 10)
-      const hasMeridiem = /AM|PM/i.test(body.time)
-      if (hasMeridiem) {
-        const isPm = /PM/i.test(body.time)
-        if (h === 12) {
-          h = isPm ? 12 : 0
-        } else if (isPm) {
-          h += 12
-        }
-      }
-      date.setHours(h, m, 0, 0)
-
       const data = await createClientCustomerReminder(businessId, clientId, {
-        dateTime: date,
+        dateTime,
         note: body.note ?? null,
       })
       return c.json(
@@ -524,6 +530,120 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       console.error('Error creating customer reminder:', error)
       return c.json(
         { message: 'Failed to create customer reminder' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+  getCustomerReminderById: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'read'))) {
+        return c.json(
+          { message: 'You do not have permission to view client reminders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId, reminderId } = c.req.valid('param')
+      const data = await getClientCustomerReminderById(businessId, clientId, reminderId)
+      return c.json(
+        { message: 'Customer reminder retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError || error instanceof ClientReminderNotFoundError) {
+        return c.json({ message: 'Client or reminder not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error retrieving customer reminder:', error)
+      return c.json(
+        { message: 'Failed to retrieve customer reminder' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+  updateCustomerReminder: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to update client reminders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId, reminderId } = c.req.valid('param')
+      const body = await c.req.valid('json')
+      const dateBase = body.date ? new Date(body.date) : new Date()
+      const parsedDateTime = body.time ? parseReminderTime(dateBase, body.time) : body.date
+      if (body.time && !parsedDateTime) {
+        return c.json({ message: 'Invalid time format' }, HttpStatusCodes.BAD_REQUEST)
+      }
+      const dateTime: Date | undefined = parsedDateTime instanceof Date ? parsedDateTime : undefined
+
+      const data = await updateClientCustomerReminderById(businessId, clientId, reminderId, {
+        dateTime,
+        note: body.note,
+      })
+      return c.json(
+        { message: 'Customer reminder updated successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError || error instanceof ClientReminderNotFoundError) {
+        return c.json({ message: 'Client or reminder not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error updating customer reminder:', error)
+      return c.json(
+        { message: 'Failed to update customer reminder' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+  deleteCustomerReminder: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'clients', 'delete'))) {
+        return c.json(
+          { message: 'You do not have permission to delete client reminders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      const { clientId, reminderId } = c.req.valid('param')
+      await deleteClientCustomerReminderById(businessId, clientId, reminderId)
+      return c.json(
+        {
+          message: 'Customer reminder deleted successfully',
+          success: true,
+          data: { deleted: true },
+        },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof ClientNotFoundError || error instanceof ClientReminderNotFoundError) {
+        return c.json({ message: 'Client or reminder not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error deleting customer reminder:', error)
+      return c.json(
+        { message: 'Failed to delete customer reminder' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }
