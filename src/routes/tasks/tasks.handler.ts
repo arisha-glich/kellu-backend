@@ -6,6 +6,7 @@ import * as HttpStatusCodes from 'stoker/http-status-codes'
 import type { TASK_ROUTES } from '~/routes/tasks/tasks.routes'
 import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
+import { createUserNotification } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import {
   completeTask,
@@ -34,6 +35,20 @@ function getClientMeta(c: { req: { header: (k: string) => string | undefined } }
   const ipAddress = forwarded?.split(',')[0]?.trim() || null
   const userAgent = c.req.header('user-agent') ?? null
   return { ipAddress, userAgent }
+}
+
+async function createTaskOperationNotification(input: {
+  userId: string
+  type: 'TASK_CREATED' | 'TASK_UPDATED' | 'TASK_DELETED'
+  title: string
+  message?: string | null
+  metadata: Record<string, unknown>
+}) {
+  try {
+    await createUserNotification(input)
+  } catch (error) {
+    console.error('Task notification failed:', error)
+  }
 }
 
 export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
@@ -170,6 +185,18 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         ipAddress,
         userAgent,
       })
+      await createTaskOperationNotification({
+        userId: user.id,
+        type: 'TASK_CREATED',
+        title: `You created a task - ${task.title}`,
+        message: task.client?.name ?? null,
+        metadata: {
+          taskId: task.id,
+          title: task.title,
+          taskStatus: task.taskStatus,
+          clientName: task.client?.name ?? null,
+        },
+      })
       return c.json(
         { message: 'Task created successfully', success: true, data: task },
         HttpStatusCodes.CREATED
@@ -234,6 +261,18 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         ipAddress,
         userAgent,
       })
+      await createTaskOperationNotification({
+        userId: user.id,
+        type: 'TASK_UPDATED',
+        title: `You updated a task - ${task.title}`,
+        message: task.client?.name ?? null,
+        metadata: {
+          taskId: task.id,
+          title: task.title,
+          taskStatus: task.taskStatus,
+          clientName: task.client?.name ?? null,
+        },
+      })
       return c.json(
         { message: 'Task updated successfully', success: true, data: task },
         HttpStatusCodes.OK
@@ -271,6 +310,15 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
       }
 
       const { taskId } = c.req.valid('param')
+      let taskTitleForNotification = 'Task'
+      let taskClientNameForNotification: string | null = null
+      try {
+        const taskToDelete = await getTask(businessId, taskId)
+        taskTitleForNotification = taskToDelete.title
+        taskClientNameForNotification = taskToDelete.client?.name ?? null
+      } catch {
+        // Ignore metadata fetch errors and continue delete flow.
+      }
       await deleteTask(businessId, taskId)
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
@@ -281,6 +329,17 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         businessId,
         ipAddress,
         userAgent,
+      })
+      await createTaskOperationNotification({
+        userId: user.id,
+        type: 'TASK_DELETED',
+        title: `You deleted a task - ${taskTitleForNotification}`,
+        message: taskClientNameForNotification,
+        metadata: {
+          taskId,
+          title: taskTitleForNotification,
+          clientName: taskClientNameForNotification,
+        },
       })
       return c.json(
         { message: 'Task deleted successfully', success: true as const },

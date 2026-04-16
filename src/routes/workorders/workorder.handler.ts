@@ -404,6 +404,21 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         ipAddress,
         userAgent,
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'WORKORDER_UPDATED',
+          title: `You updated a work order - ${workOrder.title}`,
+          message: `${workOrder.workOrderNumber ?? 'Work order'} - ${workOrder.client?.name ?? ''}`,
+          metadata: {
+            workOrderId: workOrder.id,
+            workOrderNumber: workOrder.workOrderNumber,
+            clientName: workOrder.client?.name ?? null,
+          },
+        })
+      } catch (notifyError) {
+        console.error('Work order update notification failed:', notifyError)
+      }
       return c.json(
         { message: 'Work order updated successfully', success: true, data: workOrder },
         HttpStatusCodes.OK
@@ -446,6 +461,17 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         )
       }
       const { workOrderId } = c.req.valid('param')
+      let deletedWorkOrderTitle = 'Work order'
+      let deletedWorkOrderNumber: string | null = null
+      let deletedClientName: string | null = null
+      try {
+        const toDelete = await getWorkOrderById(businessId, workOrderId)
+        deletedWorkOrderTitle = toDelete.title
+        deletedWorkOrderNumber = toDelete.workOrderNumber
+        deletedClientName = toDelete.client?.name ?? null
+      } catch {
+        // Ignore metadata fetch failure and continue delete flow.
+      }
       await deleteWorkOrder(businessId, workOrderId)
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
@@ -457,6 +483,21 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         ipAddress,
         userAgent,
       })
+      try {
+        await createUserNotification({
+          userId: user.id,
+          type: 'WORKORDER_DELETED',
+          title: `You deleted a work order - ${deletedWorkOrderTitle}`,
+          message: `${deletedWorkOrderNumber ?? 'Work order'} - ${deletedClientName ?? ''}`,
+          metadata: {
+            workOrderId,
+            workOrderNumber: deletedWorkOrderNumber,
+            clientName: deletedClientName,
+          },
+        })
+      } catch (notifyError) {
+        console.error('Work order delete notification failed:', notifyError)
+      }
       return c.json(
         { message: 'Work order deleted successfully', success: true, data: { deleted: true } },
         HttpStatusCodes.OK

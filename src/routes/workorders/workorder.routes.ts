@@ -28,7 +28,15 @@ const InvoiceStatusEnum = z.enum([
 const DiscountTypeEnum = z.enum(['PERCENTAGE', 'AMOUNT'])
 const ItemTypeEnum = z.enum(['SERVICE', 'PRODUCT'])
 const PaymentMethodEnum = z.enum(['CASH', 'CARD', 'TRANSFER', 'MERCADOPAGO', 'TRANSBANK', 'OTHER'])
-
+const OptionalNullableNumberFromInputSchema = z.preprocess(value => {
+  if (value === '' || value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return null
+  }
+  return value
+}, z.coerce.number().optional().nullable())
 export const WorkOrderParamsSchema = z.object({
   workOrderId: z
     .string()
