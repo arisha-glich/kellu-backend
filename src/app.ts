@@ -18,13 +18,12 @@ import scheduleRouter from '~/routes/schedule'
 import settingsRouter from '~/routes/settings'
 import taskRouter from '~/routes/tasks'
 import teamRouter from '~/routes/team'
-import router from '~/routes/test'
 import workorderRouter from '~/routes/workorders'
 import type { AppOpenAPI } from '~/types'
 
 export function registerRoutes(app: AppOpenAPI) {
   return app
-    .route('/test', router)
+
     .route('/api/businesses', businessRouter)
     .route('/api/businesses', insightsRouter)
     .route('/api/clients', clientRouter)
