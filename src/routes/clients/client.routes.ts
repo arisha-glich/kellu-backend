@@ -428,10 +428,7 @@ export const CLIENT_ROUTES = {
         zodResponseSchema(z.object({ data: ClientReminderSchema })),
         'OK'
       ),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(
-        zodResponseSchema(),
-        'Client or reminder not found'
-      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client or reminder not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -452,10 +449,7 @@ export const CLIENT_ROUTES = {
         'Updated'
       ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Invalid time format'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(
-        zodResponseSchema(),
-        'Client or reminder not found'
-      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client or reminder not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
@@ -472,10 +466,7 @@ export const CLIENT_ROUTES = {
         zodResponseSchema(z.object({ data: z.object({ deleted: z.boolean() }) })),
         'Deleted'
       ),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(
-        zodResponseSchema(),
-        'Client or reminder not found'
-      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client or reminder not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

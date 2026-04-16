@@ -787,7 +787,10 @@ export async function updateClientCustomerReminderById(
       },
     })
 
-    if (client.reminderDate != null && client.reminderDate.getTime() === existing.sentAt.getTime()) {
+    if (
+      client.reminderDate != null &&
+      client.reminderDate.getTime() === existing.sentAt.getTime()
+    ) {
       await tx.client.update({
         where: { id: client.id },
         data: {
@@ -825,7 +828,10 @@ export async function deleteClientCustomerReminderById(
 
   await prisma.$transaction(async tx => {
     await tx.reminderLog.delete({ where: { id: existing.id } })
-    if (client.reminderDate != null && client.reminderDate.getTime() === existing.sentAt.getTime()) {
+    if (
+      client.reminderDate != null &&
+      client.reminderDate.getTime() === existing.sentAt.getTime()
+    ) {
       await tx.client.update({
         where: { id: client.id },
         data: { reminderDate: null, reminderNote: null },

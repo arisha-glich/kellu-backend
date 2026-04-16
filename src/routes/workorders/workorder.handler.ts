@@ -913,7 +913,7 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         details: body.details,
         total: body.total,
         invoiceNumber: body.invoiceNumber,
-        attachmentUrl: body.attachmentUrl,
+        attachmentUrl: body.attachmentUrl ? [body.attachmentUrl] : null,
       })
       return c.json(
         { message: 'Expense created successfully', success: true, data: expense },
