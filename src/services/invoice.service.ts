@@ -656,20 +656,6 @@ export async function getInvoiceEmailComposeData(businessId: string, invoiceId: 
     throw new InvoiceNotFoundError()
   }
 
-  const quotePdfForWo =
-    inv.workOrderId != null
-      ? await prisma.quote.findFirst({
-          where: {
-            OR: [
-              { relatedWorkOrderId: inv.workOrderId },
-              { convertedToWorkOrderId: inv.workOrderId },
-            ],
-            lastQuotePdfUrl: { not: null },
-          },
-          select: { lastQuotePdfUrl: true },
-        })
-      : null
-
   const displayName = inv.business.name?.trim() || 'Company'
   const from = clientToCustomerFrom(displayName)
   const replyTo = inv.business.settings?.replyToEmail?.trim() || inv.business.email
@@ -684,17 +670,6 @@ export async function getInvoiceEmailComposeData(businessId: string, invoiceId: 
       label: 'Invoice.pdf',
       filename: 'Invoice.pdf',
       source: 'INVOICE_PDF',
-      sizeBytes: null,
-      selectedByDefault: true,
-    })
-  }
-
-  if (quotePdfForWo?.lastQuotePdfUrl) {
-    attachments.push({
-      id: 'quote_pdf',
-      label: 'Quote.pdf',
-      filename: 'Quote.pdf',
-      source: 'QUOTE_PDF',
       sizeBytes: null,
       selectedByDefault: true,
     })
@@ -787,20 +762,6 @@ export async function sendInvoiceEmail(
     throw new InvoiceNotFoundError()
   }
 
-  const quotePdfForWoSend =
-    inv.workOrderId != null
-      ? await prisma.quote.findFirst({
-          where: {
-            OR: [
-              { relatedWorkOrderId: inv.workOrderId },
-              { convertedToWorkOrderId: inv.workOrderId },
-            ],
-            lastQuotePdfUrl: { not: null },
-          },
-          select: { lastQuotePdfUrl: true },
-        })
-      : null
-
   const toEmail = (options?.to ?? inv.client.email)?.trim()
   if (!toEmail) {
     throw new Error('Client has no email address. Add an email to the client to send the invoice.')
@@ -841,10 +802,6 @@ export async function sendInvoiceEmail(
   }
 
   if (inv.workOrder) {
-    if (selectedIds.has('quote_pdf') && quotePdfForWoSend?.lastQuotePdfUrl) {
-      const content = await fetchUrlAsBuffer(quotePdfForWoSend.lastQuotePdfUrl)
-      pushAttachment('Quote.pdf', content, 'application/pdf')
-    }
     if (selectedIds.has('work_order_summary_pdf') && inv.workOrder.lastJobReportPdfUrl) {
       const content = await fetchUrlAsBuffer(inv.workOrder.lastJobReportPdfUrl)
       pushAttachment('Work order summary.pdf', content, 'application/pdf')
