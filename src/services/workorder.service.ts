@@ -1036,6 +1036,176 @@ export async function updateWorkOrder(
 
   await recalculateFinancials(workOrderId, taxPercent)
 
+  // On update, if quote/invoice is explicitly required, ensure linked records exist.
+  if (input.quoteRequired === true || input.invoiceRequired === true) {
+    const [existingQuote, existingInvoice, woSnapshot, businessSettings] = await Promise.all([
+      input.quoteRequired === true
+        ? prisma.quote.findFirst({
+            where: { businessId, workOrderId },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      input.invoiceRequired === true
+        ? prisma.invoice.findFirst({
+            where: { businessId, workOrderId },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      prisma.workOrder.findFirst({
+        where: { id: workOrderId, businessId },
+        select: {
+          id: true,
+          title: true,
+          address: true,
+          clientId: true,
+          primaryAssigneeId: true,
+          quoteTermsConditions: true,
+          invoiceTermsConditions: true,
+          invoiceObservations: true,
+          lineItems: {
+            select: {
+              name: true,
+              itemType: true,
+              description: true,
+              quantity: true,
+              price: true,
+              cost: true,
+              priceListItemId: true,
+            },
+          },
+        },
+      }),
+      prisma.businessSettings.findUnique({
+        where: { businessId },
+        select: {
+          quoteTermsConditions: true,
+          invoiceTermsConditions: true,
+        },
+      }),
+    ])
+
+    if (woSnapshot) {
+      if (input.quoteRequired === true && !existingQuote) {
+        const quoteNumber = `#${await nextQuoteNumber(businessId)}`
+        const quoteTerms =
+          woSnapshot.quoteTermsConditions ??
+          businessSettings?.quoteTermsConditions ??
+          DEFAULT_QUOTE_TERMS_CONDITIONS
+
+        await prisma.$transaction(async tx => {
+          const createdQuote = await tx.quote.create({
+            data: {
+              businessId,
+              clientId: woSnapshot.clientId,
+              workOrderId: woSnapshot.id,
+              quoteRequired: true,
+              title: woSnapshot.title,
+              address: woSnapshot.address,
+              assignedToId: woSnapshot.primaryAssigneeId,
+              quoteNumber,
+              quoteStatus: 'NOT_SENT',
+              quoteTermsConditions: quoteTerms,
+              isScheduleLater: true,
+              discount: new Prisma.Decimal(0),
+              discountType: null,
+            },
+          })
+
+          let quoteSubtotal = 0
+          let quoteCostTotal = 0
+          if (woSnapshot.lineItems.length > 0) {
+            await tx.lineItem.createMany({
+              data: woSnapshot.lineItems.map(li => ({
+                quoteId: createdQuote.id,
+                name: li.name,
+                itemType: li.itemType,
+                description: li.description ?? null,
+                quantity: li.quantity,
+                price: toNum(li.price),
+                cost: li.cost != null ? toNum(li.cost) : null,
+                priceListItemId: li.priceListItemId ?? null,
+              })),
+            })
+            for (const li of woSnapshot.lineItems) {
+              quoteSubtotal += li.quantity * toNum(li.price)
+              quoteCostTotal += li.quantity * toNum(li.cost)
+            }
+          }
+
+          await tx.quote.update({
+            where: { id: createdQuote.id },
+            data: {
+              subtotal: new Prisma.Decimal(quoteSubtotal),
+              cost: new Prisma.Decimal(quoteCostTotal),
+              tax: new Prisma.Decimal(0),
+              total: new Prisma.Decimal(quoteSubtotal),
+              amountPaid: new Prisma.Decimal(0),
+              balance: new Prisma.Decimal(quoteSubtotal),
+            },
+          })
+        })
+      }
+
+      if (input.invoiceRequired === true && !existingInvoice) {
+        const invoiceNumber = `#${await nextInvoiceNumber(businessId)}`
+        const invoiceTerms =
+          woSnapshot.invoiceTermsConditions ??
+          businessSettings?.invoiceTermsConditions ??
+          DEFAULT_INVOICE_TERMS_CONDITIONS
+
+        await prisma.$transaction(async tx => {
+          const createdInvoice = await tx.invoice.create({
+            data: {
+              businessId,
+              clientId: woSnapshot.clientId,
+              workOrderId: woSnapshot.id,
+              invoiceRequired: true,
+              title: woSnapshot.title,
+              address: woSnapshot.address,
+              assignedToId: woSnapshot.primaryAssigneeId,
+              invoiceNumber,
+              status: 'NOT_SENT',
+              observations: woSnapshot.invoiceObservations ?? null,
+              termsConditions: invoiceTerms,
+              discount: new Prisma.Decimal(0),
+              discountType: null,
+              amountPaid: new Prisma.Decimal(0),
+            },
+          })
+
+          let invoiceSubtotal = 0
+          if (woSnapshot.lineItems.length > 0) {
+            await tx.lineItem.createMany({
+              data: woSnapshot.lineItems.map(li => ({
+                invoiceId: createdInvoice.id,
+                name: li.name,
+                itemType: li.itemType,
+                description: li.description ?? null,
+                quantity: li.quantity,
+                price: toNum(li.price),
+                cost: li.cost != null ? toNum(li.cost) : null,
+                priceListItemId: li.priceListItemId ?? null,
+              })),
+            })
+            for (const li of woSnapshot.lineItems) {
+              invoiceSubtotal += li.quantity * toNum(li.price)
+            }
+          }
+
+          await tx.invoice.update({
+            where: { id: createdInvoice.id },
+            data: {
+              subtotal: new Prisma.Decimal(invoiceSubtotal),
+              tax: new Prisma.Decimal(0),
+              total: new Prisma.Decimal(invoiceSubtotal),
+              balance: new Prisma.Decimal(invoiceSubtotal),
+            },
+          })
+        })
+      }
+    }
+  }
+
   return getWorkOrderById(businessId, workOrderId)
 }
 

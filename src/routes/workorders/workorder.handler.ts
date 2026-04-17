@@ -378,6 +378,8 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         assignedToIds: body.assignedToIds,
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
+        quoteRequired: body.quoteRequired,
+        invoiceRequired: body.invoiceRequired,
         invoiceClientMessage: body.invoiceClientMessage,
         invoiceTermsConditions: body.invoiceTermsConditions,
         applyInvoiceTermsToFuture: body.applyInvoiceTermsToFuture,
