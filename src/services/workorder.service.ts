@@ -16,6 +16,10 @@ import {
   sendWorkOrderAssignedToTeamMemberEmail,
   sendWorkOrderCreatedEmail,
 } from '~/services/email-helpers'
+import {
+  DEFAULT_INVOICE_TERMS_CONDITIONS,
+  DEFAULT_QUOTE_TERMS_CONDITIONS,
+} from '~/services/settings.service'
 
 export class WorkOrderNotFoundError extends Error {
   constructor() {
@@ -614,6 +618,21 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   }
 
   const primaryAssignedToId = assignedIds[0] ?? null
+  const businessSettings = await prisma.businessSettings.findUnique({
+    where: { businessId },
+    select: {
+      quoteTermsConditions: true,
+      invoiceTermsConditions: true,
+    },
+  })
+  const resolvedQuoteTermsConditions =
+    input.quoteTermsConditions ??
+    businessSettings?.quoteTermsConditions ??
+    DEFAULT_QUOTE_TERMS_CONDITIONS
+  const resolvedInvoiceTermsConditions =
+    input.invoiceTermsConditions ??
+    businessSettings?.invoiceTermsConditions ??
+    DEFAULT_INVOICE_TERMS_CONDITIONS
   const jobStatus = deriveJobStatus({
     scheduledAt: input.scheduledAt,
     startTime: input.startTime,
@@ -639,8 +658,9 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
         startTime: isAnyTime ? null : (input.startTime ?? null),
         endTime: isAnyTime ? null : (input.endTime ?? null),
         primaryAssigneeId: primaryAssignedToId,
+        quoteTermsConditions: resolvedQuoteTermsConditions,
         invoiceObservations: input.invoiceClientMessage ?? null,
-        invoiceTermsConditions: input.invoiceTermsConditions ?? null,
+        invoiceTermsConditions: resolvedInvoiceTermsConditions,
         jobStatus,
         invoiceStatus: 'NOT_SENT',
         workOrderNumber,
@@ -789,6 +809,9 @@ export async function updateWorkOrder(
     }),
     ...(input.invoiceTermsConditions !== undefined && {
       invoiceTermsConditions: input.invoiceTermsConditions,
+    }),
+    ...(input.quoteTermsConditions !== undefined && {
+      quoteTermsConditions: input.quoteTermsConditions,
     }),
     ...(input.discount !== undefined && { discount: input.discount }),
     ...(input.discountType !== undefined && { discountType: input.discountType }),

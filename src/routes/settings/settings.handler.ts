@@ -69,6 +69,14 @@ export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
       }
 
       const body = c.req.valid('json')
+      const quoteTermsConditions =
+        body.quoteTermsConditions ??
+        body.settings?.quoteTermsConditions ??
+        body.data?.settings?.quoteTermsConditions
+      const invoiceTermsConditions =
+        body.invoiceTermsConditions ??
+        body.settings?.invoiceTermsConditions ??
+        body.data?.settings?.invoiceTermsConditions
       const data = await updateCurrentBusinessSettings(businessId, {
         ...(body.fullName !== undefined && { fullName: body.fullName }),
         ...(body.email !== undefined && { email: body.email }),
@@ -102,11 +110,11 @@ export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
         ...(body.onlinePaymentLink !== undefined && {
           onlinePaymentLink: body.onlinePaymentLink || null,
         }),
-        ...(body.quoteTermsConditions !== undefined && {
-          quoteTermsConditions: body.quoteTermsConditions,
+        ...(quoteTermsConditions !== undefined && {
+          quoteTermsConditions,
         }),
-        ...(body.invoiceTermsConditions !== undefined && {
-          invoiceTermsConditions: body.invoiceTermsConditions,
+        ...(invoiceTermsConditions !== undefined && {
+          invoiceTermsConditions,
         }),
         ...(body.whatsappSender !== undefined && { whatsappSender: body.whatsappSender }),
         ...(body.defaultTaxRate !== undefined && { defaultTaxRate: body.defaultTaxRate }),

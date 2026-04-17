@@ -9,6 +9,10 @@ import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { sendSettingsUpdatedEmail } from '~/services/email-helpers'
 
+export const DEFAULT_QUOTE_TERMS_CONDITIONS = `This quote is valid for 7 days from the issue date. Work will begin once the quote is approved. Any additional work requested outside the quoted scope may be billed separately.`
+
+export const DEFAULT_INVOICE_TERMS_CONDITIONS = `Payment is due within 3 days of invoice date unless otherwise agreed in writing. Late payments may be subject to service delays. Please include the invoice number with your payment for faster processing.`
+
 export interface CurrentSettingsResult {
   /** Personal profile (owner user) */
   personalProfile: {
@@ -174,8 +178,10 @@ export async function getCurrentBusinessSettings(
       accountNumber: settings?.accountNumber ?? null,
       paymentEmail: settings?.paymentEmail ?? null,
       onlinePaymentLink: settings?.onlinePaymentLink ?? null,
-      quoteTermsConditions: settings?.quoteTermsConditions ?? null,
-      invoiceTermsConditions: settings?.invoiceTermsConditions ?? null,
+      quoteTermsConditions:
+        settings?.quoteTermsConditions?.trim() || DEFAULT_QUOTE_TERMS_CONDITIONS,
+      invoiceTermsConditions:
+        settings?.invoiceTermsConditions?.trim() || DEFAULT_INVOICE_TERMS_CONDITIONS,
       whatsappSender: settings?.whatsappSender ?? null,
       defaultTaxRate: settings?.defaultTaxRate != null ? Number(settings.defaultTaxRate) : null,
       taxIdRut: settings?.rutNumber ?? null,
@@ -287,6 +293,21 @@ export async function updateCurrentBusinessSettings(
         ...settingsInput,
       },
       update: settingsInput,
+    })
+  }
+
+  // Keep work orders aligned with latest business-level quote/invoice terms when settings change.
+  if (input.quoteTermsConditions !== undefined || input.invoiceTermsConditions !== undefined) {
+    await prisma.workOrder.updateMany({
+      where: { businessId },
+      data: {
+        ...(input.quoteTermsConditions !== undefined && {
+          quoteTermsConditions: input.quoteTermsConditions,
+        }),
+        ...(input.invoiceTermsConditions !== undefined && {
+          invoiceTermsConditions: input.invoiceTermsConditions,
+        }),
+      },
     })
   }
 

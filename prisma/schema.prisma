@@ -395,6 +395,7 @@ model WorkOrder {
   invoiceCorrelative     String?
   invoiceWhatsappStatus  String?
   invoiceObservations    String?       @db.Text
+  quoteTermsConditions   String?       @db.Text
   invoiceTermsConditions String?       @db.Text
 
   // Financial

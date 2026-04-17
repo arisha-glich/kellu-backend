@@ -10,7 +10,11 @@ import { createExpenseForWorkOrder, listExpensesByWorkOrder } from '~/services/e
 import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import { listPriceListItems } from '~/services/price-list.service'
-import { updateCurrentBusinessSettings } from '~/services/settings.service'
+import {
+  DEFAULT_INVOICE_TERMS_CONDITIONS,
+  DEFAULT_QUOTE_TERMS_CONDITIONS,
+  updateCurrentBusinessSettings,
+} from '~/services/settings.service'
 import {
   addLineItemsToWorkOrder,
   addLineItemToPriceList,
@@ -261,6 +265,8 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         }),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
+        quoteClientMessage: body.quoteClientMessage,
+        quoteTermsConditions: body.quoteTermsConditions,
         invoiceClientMessage: body.invoiceClientMessage,
         invoiceTermsConditions: body.invoiceTermsConditions,
         discount: body.discount,
@@ -268,9 +274,14 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
       })
+      if (body.applyQuoteTermsToFuture) {
+        await updateCurrentBusinessSettings(businessId, {
+          quoteTermsConditions: body.quoteTermsConditions ?? DEFAULT_QUOTE_TERMS_CONDITIONS,
+        })
+      }
       if (body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          invoiceTermsConditions: body.invoiceTermsConditions ?? null,
+          invoiceTermsConditions: body.invoiceTermsConditions ?? DEFAULT_INVOICE_TERMS_CONDITIONS,
         })
       }
       const { ipAddress, userAgent } = getClientMeta(c)
@@ -380,12 +391,12 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       })
       if (body.applyInvoiceTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          invoiceTermsConditions: body.invoiceTermsConditions ?? null,
+          invoiceTermsConditions: body.invoiceTermsConditions ?? DEFAULT_INVOICE_TERMS_CONDITIONS,
         })
       }
       if (body.applyQuoteTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {
-          quoteTermsConditions: body.quoteTermsConditions ?? null,
+          quoteTermsConditions: body.quoteTermsConditions ?? DEFAULT_QUOTE_TERMS_CONDITIONS,
         })
       }
       const { ipAddress, userAgent } = getClientMeta(c)

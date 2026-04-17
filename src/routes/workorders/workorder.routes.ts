@@ -354,6 +354,8 @@ export const WorkOrderDetailResponseSchema = z.object({
   instructions: z.string().nullable(),
   notes: z.string().nullable(),
   invoiceObservations: z.string().nullable(),
+  quoteTermsConditions: z.string().nullable(),
+  invoiceTermsConditions: z.string().nullable(),
   isScheduleLater: z.boolean(),
   isAnyTime: z.boolean(),
   scheduledAt: z.coerce.date().nullable(),

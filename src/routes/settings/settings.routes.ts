@@ -97,6 +97,22 @@ const UpdateSettingsBodySchema = z
     onlinePaymentLink: z.string().url().nullable().or(z.literal('')).optional(),
     quoteTermsConditions: z.string().nullable().optional(),
     invoiceTermsConditions: z.string().nullable().optional(),
+    settings: z
+      .object({
+        quoteTermsConditions: z.string().nullable().optional(),
+        invoiceTermsConditions: z.string().nullable().optional(),
+      })
+      .optional(),
+    data: z
+      .object({
+        settings: z
+          .object({
+            quoteTermsConditions: z.string().nullable().optional(),
+            invoiceTermsConditions: z.string().nullable().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
     whatsappSender: z.string().nullable().optional(),
     defaultTaxRate: z.number().min(0).max(100).nullable().optional(),
     taxIdRut: z.string().nullable().optional(),
