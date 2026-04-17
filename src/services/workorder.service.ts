@@ -114,6 +114,9 @@ export interface CreateWorkOrderInput {
 
 export type UpdateWorkOrderInput = Partial<CreateWorkOrderInput>
 
+const CREATE_WORKORDER_TX_MAX_WAIT_MS = 20_000
+const CREATE_WORKORDER_TX_TIMEOUT_MS = 60_000
+
 function normalizeCollectionInput<T>(value: T | T[] | null | undefined): T[] | undefined {
   if (value === undefined) {
     return undefined
@@ -673,8 +676,9 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
 
   // ✅ Transaction only creates records — no recalculation inside
-  const wo = await prisma.$transaction(async tx => {
-    const created = await tx.workOrder.create({
+  const wo = await prisma.$transaction(
+    async tx => {
+      const created = await tx.workOrder.create({
       data: {
         businessId,
         clientId: input.clientId,
@@ -826,8 +830,13 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       })
     }
 
-    return created
-  })
+      return created
+    },
+    {
+      maxWait: CREATE_WORKORDER_TX_MAX_WAIT_MS,
+      timeout: CREATE_WORKORDER_TX_TIMEOUT_MS,
+    }
+  )
 
   // ✅ Recalculate AFTER transaction commits — no timeout risk
   await recalculateFinancials(wo.id, taxPercent)
