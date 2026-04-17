@@ -290,6 +290,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         ...(body.quoteTermsConditions !== undefined && {
           quoteTermsConditions: body.quoteTermsConditions ?? null,
         }),
+        ...(body.quoteRequired !== undefined && { quoteRequired: body.quoteRequired }),
         ...(body.discount !== undefined && { discount: body.discount }),
         ...(body.discountType !== undefined && { discountType: body.discountType ?? null }),
         ...(body.lineItems !== undefined && { lineItems: body.lineItems }),

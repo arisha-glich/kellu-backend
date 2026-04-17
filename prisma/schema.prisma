@@ -371,9 +371,7 @@ model WorkOrder {
   primaryAssigneeId String? @map("assignedToId")
   primaryAssignee   Member? @relation("WorkOrderPrimaryAssignee", fields: [primaryAssigneeId], references: [id], onDelete: SetNull)
   assignees    WorkOrderAssignment[]
-
-  quotesRelatedTo     Quote[] @relation("QuoteRelatedWorkOrder")
-  quotesConvertedFrom Quote[] @relation("QuoteConvertedToWorkOrder")
+  quotes       Quote[]
 
   // Job workflow
   jobStatus                 JobStatus @default(UNSCHEDULED)
@@ -458,14 +456,9 @@ model Quote {
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   assignedToId String?
   assignedTo   Member?  @relation("QuoteAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  /** Optional link to an existing job work order (e.g. quote for that job). */
-  relatedWorkOrderId String?
-  relatedWorkOrder   WorkOrder? @relation("QuoteRelatedWorkOrder", fields: [relatedWorkOrderId], references: [id], onDelete: SetNull)
-
-  /** Filled when the quote is converted against a concrete work order. */
-  convertedToWorkOrderId String?
-  convertedToWorkOrder   WorkOrder? @relation("QuoteConvertedToWorkOrder", fields: [convertedToWorkOrderId], references: [id], onDelete: SetNull)
+  workOrderId  String?
+  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  quoteRequired Boolean @default(false)
 
   quoteStatus                QuoteStatus @default(NOT_SENT)
   quoteSentAt                DateTime?
@@ -552,7 +545,8 @@ model Invoice {
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   workOrderId  String?
-  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  invoiceRequired Boolean @default(false)
   assignedToId String?
   assignedTo   Member?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
 

@@ -213,6 +213,8 @@ export const CreateWorkOrderBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),
+    quoteRequired: z.boolean().optional().default(false),
+    invoiceRequired: z.boolean().optional().default(false),
     quoteClientMessage: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     applyQuoteTermsToFuture: z.boolean().optional().default(false),
@@ -346,6 +348,35 @@ const WorkOrderAttachmentSchema = z.object({
   workOrderId: z.string(),
 })
 
+const WorkOrderQuoteSummarySchema = z.object({
+  id: z.string(),
+  quoteNumber: z.string().nullable(),
+  quoteStatus: z.enum([
+    'NOT_SENT',
+    'AWAITING_RESPONSE',
+    'APPROVED',
+    'CONVERTED',
+    'REJECTED',
+    'EXPIRED',
+  ]),
+  quoteRequired: z.boolean(),
+  workOrderId: z.string().nullable(),
+  total: z.union([z.number(), z.string()]).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+const WorkOrderInvoiceSummarySchema = z.object({
+  id: z.string(),
+  invoiceNumber: z.string().nullable(),
+  status: z.enum(['NOT_SENT', 'AWAITING_PAYMENT', 'OVERDUE', 'PAID', 'BAD_DEBT', 'CANCELLED']),
+  invoiceRequired: z.boolean(),
+  workOrderId: z.string().nullable(),
+  total: z.union([z.number(), z.string()]).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
 export const WorkOrderDetailResponseSchema = z.object({
   id: z.string(),
   workOrderNumber: z.string().nullable(),
@@ -378,6 +409,8 @@ export const WorkOrderDetailResponseSchema = z.object({
   lineItems: z.array(LineItemSchema),
   payments: z.array(PaymentSchema),
   attachments: z.array(WorkOrderAttachmentSchema),
+  quotes: z.array(WorkOrderQuoteSummarySchema).optional(),
+  invoices: z.array(WorkOrderInvoiceSummarySchema).optional(),
 })
 
 const AddToPriceListResponseSchema = z.object({

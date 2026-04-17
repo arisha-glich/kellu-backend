@@ -1,6 +1,6 @@
 /**
  * Quote Management – quotes live on the `Quote` model (separate from `WorkOrder` jobs).
- * Line items use `LineItem.quoteId`. Optional `relatedWorkOrderId` links a quote to an existing job WO.
+ * Line items use `LineItem.quoteId`. Quotes can optionally reference `workOrderId`.
  */
 
 import { timingSafeEqual } from 'node:crypto'
@@ -71,6 +71,7 @@ export interface CreateQuoteInput {
   assignedToId?: string | null
   instructions?: string | null
   workOrderId?: string | null
+  quoteRequired?: boolean
   notes?: string | null
   quoteTermsConditions?: string | null
   lineItems?: Array<{
@@ -94,6 +95,7 @@ export interface UpdateQuoteInput {
   endTime?: string | null
   assignedToId?: string | null
   workOrderId?: string | null
+  quoteRequired?: boolean
   instructions?: string | null
   notes?: string | null
   quoteTermsConditions?: string | null
@@ -185,7 +187,7 @@ const quoteDetailInclude = {
   },
   lineItems: true,
   attachments: true,
-  relatedWorkOrder: { select: { id: true, workOrderNumber: true, title: true } },
+  workOrder: { select: { id: true, workOrderNumber: true, title: true } },
 } as const
 
 async function getQuoteById(businessId: string, quoteId: string) {
@@ -202,21 +204,12 @@ async function getQuoteById(businessId: string, quoteId: string) {
 function formatQuoteDetailResponse(
   q: Prisma.QuoteGetPayload<{ include: typeof quoteDetailInclude }>
 ) {
-  const linkedJob =
-    q.relatedWorkOrderId != null
-      ? {
-          workOrderId: q.relatedWorkOrder?.id ?? q.relatedWorkOrderId,
-          workOrderNumber: q.relatedWorkOrder?.workOrderNumber ?? null,
-          relatedWorkOrderId: q.relatedWorkOrderId,
-          relatedWorkOrder: q.relatedWorkOrder,
-        }
-      : {}
-
   return {
     id: q.id,
     quoteId: q.id,
     quoteNumber: q.quoteNumber,
-    ...linkedJob,
+    workOrderId: q.workOrderId,
+    workOrderNumber: q.workOrder?.workOrderNumber ?? null,
     title: q.title,
     address: q.address,
     instructions: q.instructions,
@@ -231,7 +224,7 @@ function formatQuoteDetailResponse(
     clientId: q.clientId,
     businessId: q.businessId,
     assignedToId: q.assignedToId,
-    quoteRequired: true as const,
+    quoteRequired: q.quoteRequired,
     quoteStatus: q.quoteStatus,
     quoteSentAt: q.quoteSentAt,
     quoteApprovedAt: q.quoteApprovedAt,
@@ -332,7 +325,7 @@ async function recalculateQuoteFinancials(
 
 // ─── Update helpers ───────────────────────────────────────────────────────────
 
-async function resolveRelatedWorkOrderId(
+async function resolveWorkOrderId(
   workOrderId: string | null | undefined,
   businessId: string
 ): Promise<string | null | undefined> {
@@ -387,6 +380,9 @@ function buildScalarQuoteUpdateFields(input: UpdateQuoteInput): Prisma.QuoteUpda
       ? { connect: { id: input.assignedToId } }
       : { disconnect: true }
   }
+  if (input.quoteRequired !== undefined) {
+    data.quoteRequired = input.quoteRequired
+  }
   if (input.quoteTermsConditions !== undefined) {
     data.quoteTermsConditions = input.quoteTermsConditions
   }
@@ -406,16 +402,14 @@ function buildFinancialQuoteUpdateFields(input: UpdateQuoteInput): Prisma.QuoteU
 
 function buildQuoteUpdateData(
   input: UpdateQuoteInput,
-  relatedWorkOrderId: string | null | undefined
+  workOrderId: string | null | undefined
 ): Prisma.QuoteUpdateInput {
   const data: Prisma.QuoteUpdateInput = {
     ...buildScalarQuoteUpdateFields(input),
     ...buildFinancialQuoteUpdateFields(input),
   }
-  if (relatedWorkOrderId !== undefined) {
-    data.relatedWorkOrder = relatedWorkOrderId
-      ? { connect: { id: relatedWorkOrderId } }
-      : { disconnect: true }
+  if (workOrderId !== undefined) {
+    data.workOrder = workOrderId ? { connect: { id: workOrderId } } : { disconnect: true }
   }
   return data
 }
@@ -467,26 +461,21 @@ function mapQuoteListRow(q: {
   quoteSentAt: Date | null
   quoteExpiresAt: Date | null
   total: Prisma.Decimal | null
-  relatedWorkOrderId: string | null
-  relatedWorkOrder: { id: string; workOrderNumber: string | null; title: string } | null
+  workOrderId: string | null
+  workOrder: { id: string; workOrderNumber: string | null; title: string } | null
+  quoteRequired: boolean
   client: { id: string; name: string; email: string | null; phone: string }
   assignedTo: { id: string; user: { name: string | null; email: string } } | null
   lineItems: { id: string; name: string; quantity: number; price: Prisma.Decimal }[]
 }) {
   const workOrderName = [q.quoteNumber, q.title].filter(Boolean).join(' — ')
-  const linkedJob =
-    q.relatedWorkOrderId != null
-      ? {
-          workOrderId: q.relatedWorkOrder?.id ?? q.relatedWorkOrderId,
-          workOrderNumber: q.relatedWorkOrder?.workOrderNumber ?? null,
-        }
-      : {}
-
   return {
     id: q.id,
     quoteId: q.id,
     quoteNumber: q.quoteNumber,
-    ...linkedJob,
+    workOrderId: q.workOrderId,
+    workOrderNumber: q.workOrder?.workOrderNumber ?? null,
+    quoteRequired: q.quoteRequired,
     workOrderName: workOrderName || q.title,
     title: q.title,
     address: q.address,
@@ -1017,8 +1006,9 @@ export async function listQuotes(businessId: string, filters: QuoteListFilters =
         quoteSentAt: true,
         quoteExpiresAt: true,
         total: true,
-        relatedWorkOrderId: true,
-        relatedWorkOrder: { select: { id: true, workOrderNumber: true, title: true } },
+        workOrderId: true,
+        workOrder: { select: { id: true, workOrderNumber: true, title: true } },
+        quoteRequired: true,
         client: { select: { id: true, name: true, email: true, phone: true } },
         assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } },
         lineItems: { select: { id: true, name: true, quantity: true, price: true } },
@@ -1044,8 +1034,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
     throw new ClientNotFoundError()
   }
 
-  const relatedWorkOrderId =
-    (await resolveRelatedWorkOrderId(input.workOrderId, businessId)) ?? null
+  const workOrderId = (await resolveWorkOrderId(input.workOrderId, businessId)) ?? null
 
   const quoteNumber = `#${await nextQuoteNumber(businessId)}`
   const settings = await prisma.businessSettings.findUnique({
@@ -1063,8 +1052,9 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
         instructions: input.instructions ?? null,
         notes: input.notes ?? null,
         assignedToId: input.assignedToId ?? null,
+        workOrderId,
+        quoteRequired: input.quoteRequired ?? false,
         quoteNumber,
-        relatedWorkOrderId,
         quoteStatus: 'NOT_SENT',
         quoteTermsConditions: input.quoteTermsConditions ?? settings?.quoteTermsConditions ?? null,
         isScheduleLater: true,
@@ -1125,12 +1115,12 @@ export async function updateQuote(businessId: string, quoteId: string, input: Up
     throw new WorkOrderNotFoundError()
   }
 
-  const relatedWorkOrderId = await resolveRelatedWorkOrderId(input.workOrderId, businessId)
+  const workOrderId = await resolveWorkOrderId(input.workOrderId, businessId)
 
   await prisma.$transaction(async tx => {
     await tx.quote.update({
       where: { id: quoteId },
-      data: buildQuoteUpdateData(input, relatedWorkOrderId),
+      data: buildQuoteUpdateData(input, workOrderId),
     })
 
     if (input.lineItems) {
@@ -1451,6 +1441,7 @@ export async function getPublicQuoteViewForClient(quoteId: string, token: string
     where: { id: row.id },
     select: {
       id: true,
+      workOrderId: true,
       quoteNumber: true,
       quoteCorrelative: true,
       title: true,
@@ -1484,9 +1475,9 @@ export async function getPublicQuoteViewForClient(quoteId: string, token: string
   return {
     id: q.id,
     quoteId: q.id,
-    workOrderId: q.id,
+    workOrderId: q.workOrderId,
     quoteNumber: q.quoteNumber,
-    workOrderNumber: q.quoteNumber,
+    workOrderNumber: null,
     title: q.title,
     address: q.address,
     quoteStatus: q.quoteStatus,
@@ -1647,30 +1638,10 @@ export async function rejectQuote(businessId: string, quoteId: string) {
 }
 
 export async function convertQuoteIfEligible(
-  businessId: string,
-  workOrderId: string
+  _businessId: string,
+  _workOrderId: string
 ): Promise<void> {
-  const wo = await prisma.workOrder.findFirst({
-    where: { id: workOrderId, businessId },
-    select: { jobStatus: true },
-  })
-  if (!wo) {
-    return
-  }
-
-  const eligible = ['SCHEDULED', 'ON_MY_WAY', 'IN_PROGRESS', 'COMPLETED']
-  if (!eligible.includes(wo.jobStatus)) {
-    return
-  }
-
-  await prisma.quote.updateMany({
-    where: { businessId, relatedWorkOrderId: workOrderId, quoteStatus: 'APPROVED' },
-    data: {
-      quoteStatus: 'CONVERTED',
-      quoteConvertedAt: new Date(),
-      convertedToWorkOrderId: workOrderId,
-    },
-  })
+  // Automatic quote conversion is disabled in the current flow.
 }
 
 export async function expireOverdueQuotes(): Promise<number> {

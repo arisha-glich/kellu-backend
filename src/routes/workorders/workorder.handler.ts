@@ -265,6 +265,8 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         }),
         instructions: body.instructions,
         notes: body.internalNotes ?? body.notes,
+        quoteRequired: body.quoteRequired,
+        invoiceRequired: body.invoiceRequired,
         quoteClientMessage: body.quoteClientMessage,
         quoteTermsConditions: body.quoteTermsConditions,
         invoiceClientMessage: body.invoiceClientMessage,

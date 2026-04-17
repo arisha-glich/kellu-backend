@@ -51,6 +51,7 @@ export const CreateQuoteBodySchema = z
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     workOrderId: z.string().optional().nullable(),
+    quoteRequired: z.boolean().optional().default(false),
     lineItems: z.array(LineItemCreateSchema).optional(),
   })
   .openapi({ description: 'Create quote (`Quote` row + line items)' })
@@ -70,6 +71,7 @@ export const UpdateQuoteBodySchema = z
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     workOrderId: z.string().optional().nullable(),
+    quoteRequired: z.boolean().optional(),
     discount: z.number().min(0).optional(),
     discountType: z.enum(['PERCENTAGE', 'AMOUNT']).optional().nullable(),
     lineItems: z.array(LineItemCreateSchema).optional(),
@@ -233,22 +235,13 @@ const LineItemSchema = z.object({
   cost: z.union([z.number(), z.string()]).nullable(),
 })
 
-const RelatedWorkOrderBriefSchema = z.object({
-  id: z.string(),
-  workOrderNumber: z.string().nullable(),
-  title: z.string(),
-})
-
 const QuoteDetailSchema = z.object({
   id: z.string(),
   quoteId: z.string(),
   /** Present only when the quote is linked to a job work order (`workOrderId` on create/update). */
   workOrderId: z.string().optional(),
   quoteNumber: z.string().nullable(),
-  /** Linked job work order number; only present when `relatedWorkOrderId` is set. */
   workOrderNumber: z.string().nullable().optional(),
-  relatedWorkOrderId: z.string().nullable().optional(),
-  relatedWorkOrder: RelatedWorkOrderBriefSchema.nullable().optional(),
   title: z.string(),
   address: z.string(),
   instructions: z.string().nullable(),
@@ -263,7 +256,7 @@ const QuoteDetailSchema = z.object({
   clientId: z.string(),
   businessId: z.string(),
   assignedToId: z.string().nullable(),
-  quoteRequired: z.literal(true),
+  quoteRequired: z.boolean(),
   quoteStatus: QuoteStatusEnum,
   quoteVersion: z.number().int(),
   quoteSentAt: z.coerce.date().nullable(),
@@ -321,6 +314,7 @@ const QuoteListItemSchema = z.object({
   workOrderId: z.string().optional(),
   quoteNumber: z.string().nullable(),
   workOrderNumber: z.string().nullable().optional(),
+  quoteRequired: z.boolean(),
   /** e.g. "#3 — Window clean" */
   workOrderName: z.string(),
   title: z.string(),

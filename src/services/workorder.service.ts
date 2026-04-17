@@ -75,6 +75,8 @@ export interface CreateWorkOrderInput {
   assignedToIds?: string[]
   instructions?: string | null
   notes?: string | null
+  quoteRequired?: boolean
+  invoiceRequired?: boolean
   invoiceClientMessage?: string | null
   invoiceTermsConditions?: string | null
   applyInvoiceTermsToFuture?: boolean
@@ -166,36 +168,6 @@ function deriveJobStatus(data: {
     return 'UNASSIGNED'
   }
   return 'SCHEDULED'
-}
-
-/** When a job WO advances, convert any APPROVED quote linked via `relatedWorkOrderId`. */
-async function convertQuotesWhenJobAdvances(
-  businessId: string,
-  workOrderId: string
-): Promise<void> {
-  const wo = await prisma.workOrder.findFirst({
-    where: { id: workOrderId, businessId },
-    select: { jobStatus: true },
-  })
-  if (!wo) {
-    return
-  }
-  const eligible = ['SCHEDULED', 'ON_MY_WAY', 'IN_PROGRESS', 'COMPLETED']
-  if (!eligible.includes(wo.jobStatus)) {
-    return
-  }
-  await prisma.quote.updateMany({
-    where: {
-      businessId,
-      relatedWorkOrderId: workOrderId,
-      quoteStatus: 'APPROVED',
-    },
-    data: {
-      quoteStatus: 'CONVERTED',
-      quoteConvertedAt: new Date(),
-      convertedToWorkOrderId: workOrderId,
-    },
-  })
 }
 
 /** Recalculate subtotal, discount amount, tax, total, cost, amountPaid, balance and update work order. */
@@ -446,6 +418,32 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
       payments: true,
       expenses: true,
       attachments: true,
+      quotes: {
+        select: {
+          id: true,
+          quoteNumber: true,
+          quoteStatus: true,
+          quoteRequired: true,
+          workOrderId: true,
+          total: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+      invoices: {
+        select: {
+          id: true,
+          invoiceNumber: true,
+          status: true,
+          invoiceRequired: true,
+          workOrderId: true,
+          total: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      },
     },
   })
   if (!wo) {
@@ -465,6 +463,38 @@ async function nextWorkOrderNumber(businessId: string): Promise<string> {
     return '1'
   }
   const num = Number.parseInt(last.workOrderNumber.replace(/^#/, ''), 10)
+  return String(Number.isNaN(num) ? 1 : num + 1)
+}
+
+async function nextQuoteNumber(businessId: string): Promise<string> {
+  const quotes = await prisma.quote.findMany({
+    where: { businessId },
+    select: { quoteNumber: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (!quotes.length) {
+    return '1'
+  }
+  const maxNum = quotes.reduce((max, q) => {
+    if (!q.quoteNumber) {
+      return max
+    }
+    const num = Number.parseInt(q.quoteNumber.replace(/^#/, ''), 10)
+    return Number.isNaN(num) ? max : Math.max(max, num)
+  }, 0)
+  return String(maxNum + 1)
+}
+
+async function nextInvoiceNumber(businessId: string): Promise<string> {
+  const last = await prisma.invoice.findFirst({
+    where: { businessId },
+    orderBy: { createdAt: 'desc' },
+    select: { invoiceNumber: true },
+  })
+  if (!last?.invoiceNumber) {
+    return '1'
+  }
+  const num = Number.parseInt(last.invoiceNumber.replace(/^\D+/, ''), 10)
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
 
@@ -691,6 +721,111 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
       })
     }
 
+    if (input.quoteRequired) {
+      const quoteNumber = `#${await nextQuoteNumber(businessId)}`
+      const createdQuote = await tx.quote.create({
+        data: {
+          businessId,
+          clientId: input.clientId,
+          workOrderId: created.id,
+          quoteRequired: true,
+          title: input.title,
+          address: input.address,
+          instructions: input.instructions ?? null,
+          notes: input.notes ?? null,
+          assignedToId: primaryAssignedToId,
+          quoteNumber,
+          quoteStatus: 'NOT_SENT',
+          quoteTermsConditions: resolvedQuoteTermsConditions,
+          isScheduleLater: true,
+          discount: new Prisma.Decimal(0),
+          discountType: null,
+        },
+      })
+
+      let quoteSubtotal = 0
+      let quoteCostTotal = 0
+      if (input.lineItems?.length) {
+        await tx.lineItem.createMany({
+          data: input.lineItems.map(li => ({
+            quoteId: createdQuote.id,
+            name: li.name,
+            itemType: li.itemType ?? 'SERVICE',
+            description: li.description ?? null,
+            quantity: li.quantity,
+            price: li.price,
+            cost: li.cost ?? null,
+            priceListItemId: li.priceListItemId ?? null,
+          })),
+        })
+        for (const li of input.lineItems) {
+          quoteSubtotal += li.quantity * li.price
+          quoteCostTotal += li.quantity * (li.cost ?? 0)
+        }
+      }
+      await tx.quote.update({
+        where: { id: createdQuote.id },
+        data: {
+          subtotal: new Prisma.Decimal(quoteSubtotal),
+          cost: new Prisma.Decimal(quoteCostTotal),
+          tax: new Prisma.Decimal(0),
+          total: new Prisma.Decimal(quoteSubtotal),
+          amountPaid: new Prisma.Decimal(0),
+          balance: new Prisma.Decimal(quoteSubtotal),
+        },
+      })
+    }
+
+    if (input.invoiceRequired) {
+      const invoiceNumber = `#${await nextInvoiceNumber(businessId)}`
+      const createdInvoice = await tx.invoice.create({
+        data: {
+          businessId,
+          clientId: input.clientId,
+          workOrderId: created.id,
+          invoiceRequired: true,
+          title: input.title,
+          address: input.address,
+          assignedToId: primaryAssignedToId,
+          invoiceNumber,
+          status: 'NOT_SENT',
+          observations: input.invoiceClientMessage ?? null,
+          termsConditions: resolvedInvoiceTermsConditions,
+          discount: new Prisma.Decimal(0),
+          discountType: null,
+          amountPaid: new Prisma.Decimal(0),
+        },
+      })
+
+      let invoiceSubtotal = 0
+      if (input.lineItems?.length) {
+        await tx.lineItem.createMany({
+          data: input.lineItems.map(li => ({
+            invoiceId: createdInvoice.id,
+            name: li.name,
+            itemType: li.itemType ?? 'SERVICE',
+            description: li.description ?? null,
+            quantity: li.quantity,
+            price: li.price,
+            cost: li.cost ?? null,
+            priceListItemId: li.priceListItemId ?? null,
+          })),
+        })
+        for (const li of input.lineItems) {
+          invoiceSubtotal += li.quantity * li.price
+        }
+      }
+      await tx.invoice.update({
+        where: { id: createdInvoice.id },
+        data: {
+          subtotal: new Prisma.Decimal(invoiceSubtotal),
+          tax: new Prisma.Decimal(0),
+          total: new Prisma.Decimal(invoiceSubtotal),
+          balance: new Prisma.Decimal(invoiceSubtotal),
+        },
+      })
+    }
+
     return created
   })
 
@@ -900,8 +1035,6 @@ export async function updateWorkOrder(
   ])
 
   await recalculateFinancials(workOrderId, taxPercent)
-
-  await convertQuotesWhenJobAdvances(businessId, workOrderId)
 
   return getWorkOrderById(businessId, workOrderId)
 }
@@ -1581,14 +1714,6 @@ export async function getJobFollowUpEmailComposeData(businessId: string, workOrd
     throw new WorkOrderNotFoundError()
   }
 
-  const linkedQuotePdf = await prisma.quote.findFirst({
-    where: {
-      OR: [{ relatedWorkOrderId: workOrderId }, { convertedToWorkOrderId: workOrderId }],
-      lastQuotePdfUrl: { not: null },
-    },
-    select: { id: true },
-  })
-
   const displayName = wo.business.name?.trim() || 'Company'
   const from = clientToCustomerFrom(displayName)
   const replyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
@@ -1604,16 +1729,6 @@ export async function getJobFollowUpEmailComposeData(businessId: string, workOrd
     selectedByDefault: boolean
   }> = []
 
-  if (linkedQuotePdf) {
-    attachments.push({
-      id: 'quote_pdf',
-      label: 'Quote.pdf',
-      filename: 'Quote.pdf',
-      source: 'QUOTE_PDF',
-      sizeBytes: null,
-      selectedByDefault: false,
-    })
-  }
   if (wo.lastJobReportPdfUrl) {
     attachments.push({
       id: 'work_order_summary_pdf',
@@ -1687,14 +1802,6 @@ export async function sendJobFollowUpEmail(
     throw new WorkOrderNotFoundError()
   }
 
-  const linkedQuoteForPdf = await prisma.quote.findFirst({
-    where: {
-      OR: [{ relatedWorkOrderId: workOrderId }, { convertedToWorkOrderId: workOrderId }],
-      lastQuotePdfUrl: { not: null },
-    },
-    select: { lastQuotePdfUrl: true },
-  })
-
   const toEmail = (options?.to ?? wo.client.email)?.trim()
   if (!toEmail) {
     throw new Error(
@@ -1737,14 +1844,6 @@ export async function sendJobFollowUpEmail(
     url: string
     contentType: string
   }> = []
-  if (linkedQuoteForPdf?.lastQuotePdfUrl) {
-    builtInAttachments.push({
-      id: 'quote_pdf',
-      filename: 'Quote.pdf',
-      url: linkedQuoteForPdf.lastQuotePdfUrl,
-      contentType: 'application/pdf',
-    })
-  }
   if (wo.lastJobReportPdfUrl) {
     builtInAttachments.push({
       id: 'work_order_summary_pdf',
