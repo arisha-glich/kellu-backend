@@ -46,10 +46,10 @@ export class QuoteExpiredError extends Error {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BACKEND_PUBLIC_URL =
-  Bun.env.BACKEND_PUBLIC_URL?.trim() ||
-  Bun.env.BETTER_AUTH_URL?.trim() ||
-  `http://localhost:${Bun.env.PORT ?? Bun.env.PORT_NO ?? 8080}`
+// const BACKEND_PUBLIC_URL =
+//   Bun.env.BACKEND_PUBLIC_URL?.trim() ||
+//   Bun.env.BETTER_AUTH_URL?.trim() ||
+//   `http://localhost:${Bun.env.PORT ?? Bun.env.PORT_NO ?? 8080}`
 
 const TERMINAL_STATES: QuoteStatus[] = ['CONVERTED', 'REJECTED', 'EXPIRED']
 
@@ -596,18 +596,35 @@ async function resolveQuoteActionToken(
   return token
 }
 
-function buildClientQuoteActionUrl(
-  token: string,
-  action: 'approve' | 'reject',
+export async function getOrCreateQuoteActionToken(
+  businessId: string,
   quoteId: string
-): string {
-  const base = BACKEND_PUBLIC_URL.replace(/\/$/, '')
-  const u = new URL(`${base}/api/quotes/client/respond`)
-  u.searchParams.set('action', action)
-  u.searchParams.set('token', token)
-  u.searchParams.set('quoteId', quoteId)
-  return u.toString()
+): Promise<string> {
+  await ensureBusinessExists(businessId)
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, businessId },
+    select: { id: true, quoteClientActionToken: true },
+  })
+  if (!quote) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  return resolveQuoteActionToken(quote.id, quote.quoteClientActionToken)
 }
+
+// function buildClientQuoteActionUrl(
+//   token: string,
+//   action: 'approve' | 'reject',
+//   quoteId: string
+// ): string {
+//   const base = BACKEND_PUBLIC_URL.replace(/\/$/, '')
+//   const u = new URL(`${base}/api/quotes/client/respond`)
+//   u.searchParams.set('action', action)
+//   u.searchParams.set('token', token)
+//   u.searchParams.set('quoteId', quoteId)
+//   return u.toString()
+// }
 
 // ─── Token lookup sub-helpers (extracted to reduce cognitive complexity) ──────
 
@@ -1053,7 +1070,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
         notes: input.notes ?? null,
         assignedToId: input.assignedToId ?? null,
         workOrderId,
-        quoteRequired: input.quoteRequired ?? false,
+        ...(input.quoteRequired === true && { quoteRequired: true }),
         quoteNumber,
         quoteStatus: 'NOT_SENT',
         quoteTermsConditions: input.quoteTermsConditions ?? settings?.quoteTermsConditions ?? null,
@@ -1300,6 +1317,8 @@ export async function sendQuoteEmail(
       contentType?: string | null
     }>
     requesterEmail?: string
+    approveUrl?: string // ✅ received from handler
+    rejectUrl?: string // ✅ received from handler
   }
 ) {
   await ensureBusinessExists(businessId)
@@ -1325,22 +1344,24 @@ export async function sendQuoteEmail(
   const displayName = q.business.name?.trim() || 'Company'
   const companyReplyTo =
     options?.replyTo?.trim() || q.business.settings?.replyToEmail?.trim() || q.business.email
-  const actionToken = await resolveQuoteActionToken(q.id, q.quoteClientActionToken)
   const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
-  const approveUrl = buildClientQuoteActionUrl(actionToken, 'approve', q.id)
-  const rejectUrl = buildClientQuoteActionUrl(actionToken, 'reject', q.id)
   const subject =
     options?.subject ?? `Quote from ${displayName} - ${q.title} ${q.quoteCorrelative ?? ''}`.trim()
 
-  const html = await buildQuoteHtmlBody(q, approveUrl, rejectUrl, options?.message)
+  // ✅ Save token to DB (still needed for clientRespondGet lookup)
+  await resolveQuoteActionToken(q.id, q.quoteClientActionToken)
 
+  // ✅ Use URLs passed from handler
+  const approveUrl = options?.approveUrl ?? ''
+  const rejectUrl = options?.rejectUrl ?? ''
+
+  const html = await buildQuoteHtmlBody(q, approveUrl, rejectUrl, options?.message)
   const attachments = await collectEmailAttachments(
     quoteId,
     q,
     options?.selectedAttachmentIds ?? [],
     options?.additionalAttachments ?? []
   )
-
   const platformBcc = await resolveClientEmailCopyBcc()
 
   await emailService.send({
@@ -1373,7 +1394,11 @@ export async function sendQuoteEmail(
   return getQuoteById(businessId, quoteId)
 }
 
-export async function getQuoteEmailComposeData(businessId: string, quoteId: string) {
+export async function getQuoteEmailComposeData(
+  businessId: string,
+  quoteId: string,
+  urls: { approveUrl: string; rejectUrl: string } // ✅ from handler
+) {
   await ensureBusinessExists(businessId)
 
   const q = await prisma.quote.findFirst({
@@ -1394,9 +1419,11 @@ export async function getQuoteEmailComposeData(businessId: string, quoteId: stri
   }
 
   const displayName = q.business.name?.trim() || 'Company'
-  const actionToken = await resolveQuoteActionToken(q.id, q.quoteClientActionToken)
   const replyTo = q.business.settings?.replyToEmail?.trim() || q.business.email
   const subject = `Quote from ${displayName} - ${q.title} ${q.quoteCorrelative ?? ''}`.trim()
+
+  // ✅ Still save token to DB for clientRespondGet lookup
+  await resolveQuoteActionToken(q.id, q.quoteClientActionToken)
 
   const message = await renderEmailTemplate('quote-created', {
     clientName: q.client.name,
@@ -1411,8 +1438,8 @@ export async function getQuoteEmailComposeData(businessId: string, quoteId: stri
     lineItemsSummary: summarizeQuoteLineItems(q.lineItems),
     total: formatMoney(q.total),
     logoUrl: q.business.logoUrl ?? undefined,
-    approveUrl: buildClientQuoteActionUrl(actionToken, 'approve', q.id),
-    rejectUrl: buildClientQuoteActionUrl(actionToken, 'reject', q.id),
+    approveUrl: urls.approveUrl, // ✅ from handler
+    rejectUrl: urls.rejectUrl, // ✅ from handler
   })
 
   const attachments = await buildQuoteEmailAttachmentList(quoteId, q)

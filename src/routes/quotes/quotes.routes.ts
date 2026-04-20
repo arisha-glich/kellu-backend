@@ -51,7 +51,7 @@ export const CreateQuoteBodySchema = z
     notes: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     workOrderId: z.string().optional().nullable(),
-    quoteRequired: z.boolean().optional().default(false),
+    quoteRequired: z.boolean().optional(),
     lineItems: z.array(LineItemCreateSchema).optional(),
   })
   .openapi({ description: 'Create quote (`Quote` row + line items)' })

@@ -10,6 +10,7 @@ import {
   clientApproveQuoteByToken,
   clientRejectQuoteByQuoteId,
   deleteQuote,
+  getOrCreateQuoteActionToken,
   getQuote,
   getQuoteEmailComposeData,
   getQuoteOverview,
@@ -29,12 +30,45 @@ import {
 import { WorkOrderNotFoundError } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
   const forwarded = c.req.header('x-forwarded-for')
   const ipAddress = forwarded?.split(',')[0]?.trim() || null
   const userAgent = c.req.header('user-agent') ?? null
   return { ipAddress, userAgent }
 }
+
+/**
+ * Build approve/reject URLs from the incoming request.
+ * This ensures the correct host and port are always used,
+ * regardless of environment — no env var needed.
+ */
+function buildQuoteActionUrls(
+  requestUrl: string,
+  actionToken: string,
+  quoteId: string
+): { approveUrl: string; rejectUrl: string } {
+  const parsed = new URL(requestUrl)
+  const backendBase = `${parsed.protocol}//${parsed.host}`
+
+  const approveUrl = new URL(`${backendBase}/api/quotes/client/respond`)
+  approveUrl.searchParams.set('action', 'approve')
+  approveUrl.searchParams.set('token', actionToken)
+  approveUrl.searchParams.set('quoteId', quoteId)
+
+  const rejectUrl = new URL(`${backendBase}/api/quotes/client/respond`)
+  rejectUrl.searchParams.set('action', 'reject')
+  rejectUrl.searchParams.set('token', actionToken)
+  rejectUrl.searchParams.set('quoteId', quoteId)
+
+  return {
+    approveUrl: approveUrl.toString(),
+    rejectUrl: rejectUrl.toString(),
+  }
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
 
 export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
   list: async c => {
@@ -166,99 +200,6 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
 
-  // create: async c => {
-  //   const user = c.get('user')
-  //   if (!user) {
-  //     return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
-  //   }
-  //   try {
-  //     const businessId = await getBusinessIdByUserId(user.id)
-  //     if (!businessId) {
-  //       return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-  //     }
-  //     if (!(await hasPermission(user.id, businessId, 'quotes', 'create'))) {
-  //       return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
-  //     }
-
-  //     const body = c.req.valid('json')
-  //     const quote = await createQuote(businessId, {
-  //       title: body.title,
-  //       clientId: body.clientId,
-  //       address: body.address,
-  //       assignedToId: body.assignedToId,
-  //       instructions: body.instructions,
-  //       notes: body.notes,
-  //       quoteTermsConditions: body.quoteTermsConditions,
-  //       workOrderId: body.workOrderId,
-  //       lineItems: body.lineItems,
-  //     })
-  //     const { ipAddress, userAgent } = getClientMeta(c)
-  //     await createAuditLog({
-  //       action: 'QUOTE_CREATED',
-  //       module: 'quote',
-  //       entityId: quote.id,
-  //       newValues: {
-  //         id: quote.id,
-  //         quoteNumber: quote.quoteNumber,
-  //         title: quote.title,
-  //         status: quote.quoteStatus,
-  //       },
-  //       userId: user.id,
-  //       businessId,
-  //       ipAddress,
-  //       userAgent,
-  //     })
-  //     if (quote.client.email) {
-  //       try {
-  //         await sendQuoteEmail(businessId, quote.id, {
-  //           requesterEmail: user.email,
-  //         })
-  //       } catch (emailError) {
-  //         console.error('Quote auto-email on create failed:', emailError)
-  //       }
-  //     }
-
-  //     try {
-  //       await createUserNotification({
-  //         userId: user.id,
-  //         type: 'QUOTE_CREATED',
-  //         title: `You created a quote - ${quote.total != null ? `$${Number(quote.total).toFixed(2)}` : ''}`,
-  //         message: `${quote.quoteNumber ?? 'Quote'} - ${quote.title}`,
-  //         metadata: {
-  //           quoteId: quote.id,
-  //           quoteNumber: quote.quoteNumber,
-  //           title: quote.title,
-  //           total: quote.total != null ? Number(quote.total) : null,
-  //         },
-  //       })
-  //       await sendUserOperationEmail({
-  //         to: user.email,
-  //         userName: user.name,
-  //         actionTitle: 'Quote created successfully',
-  //         actionMessage: `Your quote "${quote.title}" was created successfully.`,
-  //       })
-  //     } catch (notifyError) {
-  //       console.error('Quote create notification/email failed:', notifyError)
-  //     }
-  //     return c.json(
-  //       { message: 'Quote created successfully', success: true, data: quote },
-  //       HttpStatusCodes.CREATED
-  //     )
-  //   } catch (error) {
-  //     if (error instanceof BusinessNotFoundError) {
-  //       return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
-  //     }
-  //     if (error instanceof ClientNotFoundError) {
-  //       return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
-  //     }
-  //     if (error instanceof WorkOrderNotFoundError) {
-  //       return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
-  //     }
-  //     console.error('Error creating quote:', error)
-  //     return c.json({ message: 'Failed to create quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
-  //   }
-  // },
-
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: large optional body field mapping
   update: async c => {
     const user = c.get('user')
@@ -296,6 +237,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         ...(body.lineItems !== undefined && { lineItems: body.lineItems }),
         ...(body.workOrderId !== undefined && { workOrderId: body.workOrderId ?? null }),
       })
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_UPDATED',
@@ -351,6 +293,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       const { quoteId } = c.req.valid('param')
       const { quoteStatus } = c.req.valid('json')
       const quote = await updateQuoteStatus(businessId, quoteId, quoteStatus)
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_STATUS_UPDATED',
@@ -394,6 +337,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       await deleteQuote(businessId, quoteId)
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_DELETED',
@@ -475,6 +419,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       const quote = await sendQuote(businessId, quoteId, {
         observations: body.observations ?? undefined,
       })
+
       try {
         await createUserNotification({
           userId: user.id,
@@ -498,6 +443,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       } catch (notifyError) {
         console.error('Quote send notification/email failed:', notifyError)
       }
+
       return c.json(
         { message: 'Quote sent successfully', success: true, data: quote },
         HttpStatusCodes.OK
@@ -539,8 +485,10 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
 
       const { quoteId } = c.req.valid('param')
+
       const parseBoolean = (value: string | undefined) =>
         Boolean(value && ['true', '1', 'yes', 'on'].includes(value.toLowerCase()))
+
       const parseSelectedAttachmentIds = (raw: string | undefined) => {
         if (!raw) {
           return [] as string[]
@@ -549,11 +497,11 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
           const parsed = JSON.parse(raw)
           if (Array.isArray(parsed)) {
             return parsed.filter(
-              item => typeof item === 'string' && item.trim().length > 0
-            ) as string[]
+              (item): item is string => typeof item === 'string' && item.trim().length > 0
+            )
           }
         } catch {
-          // Fallback to comma separated input.
+          /* fallback below */
         }
         return raw
           .split(',')
@@ -632,37 +580,30 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         selectedAttachmentIds = parseSelectedAttachmentIds(
           readOptionalString(body.selectedAttachmentIds)
         )
+
         const rawAdditional: unknown[] = Array.isArray(body.additionalAttachments)
           ? body.additionalAttachments
           : []
-        const parsedAdditional: Array<{
-          filename: string
-          content: Buffer
-          contentType?: string | null
-        }> = []
+        const parsedAdditional: typeof additionalAttachments = []
         for (const item of rawAdditional) {
           if (typeof item !== 'object' || item === null) {
             continue
           }
-          const attachment = item as {
-            filename?: unknown
-            contentBase64?: unknown
-            contentType?: unknown
-          }
-          if (
-            typeof attachment.filename !== 'string' ||
-            typeof attachment.contentBase64 !== 'string'
-          ) {
+          const a = item as { filename?: unknown; contentBase64?: unknown; contentType?: unknown }
+          if (typeof a.filename !== 'string' || typeof a.contentBase64 !== 'string') {
             continue
           }
           parsedAdditional.push({
-            filename: attachment.filename,
-            content: Buffer.from(attachment.contentBase64, 'base64'),
-            contentType: typeof attachment.contentType === 'string' ? attachment.contentType : null,
+            filename: a.filename,
+            content: Buffer.from(a.contentBase64, 'base64'),
+            contentType: typeof a.contentType === 'string' ? a.contentType : null,
           })
         }
         additionalAttachments = parsedAdditional
       }
+
+      const actionToken = await getOrCreateQuoteActionToken(businessId, quoteId)
+      const { approveUrl, rejectUrl } = buildQuoteActionUrls(c.req.url, actionToken, quoteId)
 
       const quote = await sendQuoteEmail(businessId, quoteId, {
         from,
@@ -675,6 +616,8 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         selectedAttachmentIds,
         additionalAttachments,
         requesterEmail: user.email,
+        approveUrl, // ✅ passed from handler
+        rejectUrl, // ✅ passed from handler
       })
       return c.json(
         { message: 'Quote email sent successfully', success: true, data: quote },
@@ -711,8 +654,13 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       if (!(await hasPermission(user.id, businessId, 'quotes', 'read'))) {
         return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
       }
+
       const { quoteId } = c.req.valid('param')
-      const data = await getQuoteEmailComposeData(businessId, quoteId)
+
+      const actionToken = await getOrCreateQuoteActionToken(businessId, quoteId)
+      const { approveUrl, rejectUrl } = buildQuoteActionUrls(c.req.url, actionToken, quoteId)
+
+      const data = await getQuoteEmailComposeData(businessId, quoteId, { approveUrl, rejectUrl })
       return c.json(
         { message: 'Quote email compose data retrieved successfully', success: true, data },
         HttpStatusCodes.OK
@@ -742,6 +690,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       const quote = await approveQuote(businessId, quoteId)
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_APPROVED',
@@ -791,6 +740,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
 
       const { quoteId } = c.req.valid('param')
       const quote = await rejectQuote(businessId, quoteId)
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_REJECTED',
@@ -826,6 +776,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       return c.json({ message: 'Failed to reject quote' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
   },
+
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: client token redirect flow with nested URL helper
   clientRespondGet: async c => {
     const { action, token, quoteId: quoteIdFromQuery } = c.req.valid('query')
@@ -835,7 +786,6 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     const rejectedBase =
       Bun.env.QUOTE_CLIENT_REJECT_REDIRECT_URL?.trim() || `${frontendDefault}/quotes/reject-quote`
 
-    /** Env base is the path *without* the id segment; `quoteClientPageUrl` appends `/{quoteId}`. */
     const quoteClientPageUrl = (
       basePath: string,
       quoteId: string | undefined,
@@ -905,14 +855,15 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         quoteClientPageUrl(rejectedBase, undefined, { quoteAction: 'already-responded' })
       )
     }
-    const rejectQuoteId = rejectResolved.quoteId
+
     return c.redirect(
-      quoteClientPageUrl(rejectedBase, rejectQuoteId, {
+      quoteClientPageUrl(rejectedBase, rejectResolved.quoteId, {
         quoteAction: 'reject',
         token,
       })
     )
   },
+
   clientRespondPost: async c => {
     try {
       const body = c.req.valid('json')
@@ -950,7 +901,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
         return c.json(
           {
             message:
-              'You cannot reject-quote because the 7-day response window has passed. Please contact the business for a new quote.',
+              'You cannot reject this quote because the 7-day response window has passed. Please contact the business for a new quote.',
           },
           HttpStatusCodes.GONE
         )

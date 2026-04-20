@@ -21,6 +21,8 @@ import {
   addWorkOrderAttachments,
   ClientNotFoundError,
   createWorkOrder,
+  createWorkOrderInvoice,
+  createWorkOrderQuote,
   createWorkOrderCustomerReminder,
   deleteWorkOrder,
   deleteWorkOrderAttachment,
@@ -571,6 +573,82 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       console.error('Error registering payment:', error)
       return c.json(
         { message: 'Failed to register payment' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  createQoutes: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to create quotes from work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+
+      const { workOrderId } = c.req.valid('param')
+      const quote = await createWorkOrderQuote(businessId, workOrderId)
+      return c.json(
+        { message: 'Quote created successfully', success: true, data: quote },
+        HttpStatusCodes.CREATED
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error creating quote from work order:', error)
+      return c.json(
+        { message: 'Failed to create quote from work order' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  createInvoices: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to create invoices from work orders' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+
+      const { workOrderId } = c.req.valid('param')
+      const invoice = await createWorkOrderInvoice(businessId, workOrderId)
+      return c.json(
+        { message: 'Invoice created successfully', success: true, data: invoice },
+        HttpStatusCodes.CREATED
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error creating invoice from work order:', error)
+      return c.json(
+        { message: 'Failed to create invoice from work order' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

@@ -488,6 +488,222 @@ async function nextQuoteNumber(businessId: string): Promise<string> {
   return String(maxNum + 1)
 }
 
+export async function createWorkOrderQuote(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: {
+      id: true,
+      clientId: true,
+      primaryAssigneeId: true,
+      title: true,
+      address: true,
+      instructions: true,
+      notes: true,
+      quoteTermsConditions: true,
+      lineItems: {
+        select: {
+          name: true,
+          itemType: true,
+          description: true,
+          quantity: true,
+          price: true,
+          cost: true,
+          priceListItemId: true,
+        },
+      },
+    },
+  })
+
+  if (!workOrder) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const businessSettings = await prisma.businessSettings.findUnique({
+    where: { businessId },
+    select: { quoteTermsConditions: true },
+  })
+  const resolvedQuoteTermsConditions =
+    workOrder.quoteTermsConditions ??
+    businessSettings?.quoteTermsConditions ??
+    DEFAULT_QUOTE_TERMS_CONDITIONS
+  const quoteNumber = `#${await nextQuoteNumber(businessId)}`
+
+  const quote = await prisma.$transaction(async tx => {
+    const createdQuote = await tx.quote.create({
+      data: {
+        businessId,
+        clientId: workOrder.clientId,
+        workOrderId: workOrder.id,
+        quoteRequired: true,
+        title: workOrder.title,
+        address: workOrder.address,
+        instructions: workOrder.instructions,
+        notes: workOrder.notes,
+        assignedToId: workOrder.primaryAssigneeId,
+        quoteNumber,
+        quoteStatus: 'NOT_SENT',
+        quoteTermsConditions: resolvedQuoteTermsConditions,
+        isScheduleLater: true,
+        discount: new Prisma.Decimal(0),
+        discountType: null,
+      },
+      select: { id: true },
+    })
+
+    let quoteSubtotal = 0
+    let quoteCostTotal = 0
+    if (workOrder.lineItems.length > 0) {
+      await tx.lineItem.createMany({
+        data: workOrder.lineItems.map(li => ({
+          quoteId: createdQuote.id,
+          name: li.name,
+          itemType: li.itemType,
+          description: li.description ?? null,
+          quantity: li.quantity,
+          price: toNum(li.price),
+          cost: li.cost != null ? toNum(li.cost) : null,
+          priceListItemId: li.priceListItemId ?? null,
+        })),
+      })
+      for (const li of workOrder.lineItems) {
+        quoteSubtotal += li.quantity * toNum(li.price)
+        quoteCostTotal += li.quantity * toNum(li.cost)
+      }
+    }
+
+    return tx.quote.update({
+      where: { id: createdQuote.id },
+      data: {
+        subtotal: new Prisma.Decimal(quoteSubtotal),
+        cost: new Prisma.Decimal(quoteCostTotal),
+        tax: new Prisma.Decimal(0),
+        total: new Prisma.Decimal(quoteSubtotal),
+        amountPaid: new Prisma.Decimal(0),
+        balance: new Prisma.Decimal(quoteSubtotal),
+      },
+      select: {
+        id: true,
+        quoteNumber: true,
+        quoteStatus: true,
+        quoteRequired: true,
+        workOrderId: true,
+        total: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+  })
+
+  return quote
+}
+
+export async function createWorkOrderInvoice(businessId: string, workOrderId: string) {
+  await ensureBusinessExists(businessId)
+
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: {
+      id: true,
+      clientId: true,
+      primaryAssigneeId: true,
+      title: true,
+      address: true,
+      invoiceObservations: true,
+      invoiceTermsConditions: true,
+      lineItems: {
+        select: {
+          name: true,
+          itemType: true,
+          description: true,
+          quantity: true,
+          price: true,
+          cost: true,
+          priceListItemId: true,
+        },
+      },
+    },
+  })
+
+  if (!workOrder) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const businessSettings = await prisma.businessSettings.findUnique({
+    where: { businessId },
+    select: { invoiceTermsConditions: true },
+  })
+  const resolvedInvoiceTermsConditions =
+    workOrder.invoiceTermsConditions ??
+    businessSettings?.invoiceTermsConditions ??
+    DEFAULT_INVOICE_TERMS_CONDITIONS
+  const invoiceNumber = `#${await nextInvoiceNumber(businessId)}`
+
+  const invoice = await prisma.$transaction(async tx => {
+    const createdInvoice = await tx.invoice.create({
+      data: {
+        businessId,
+        clientId: workOrder.clientId,
+        workOrderId: workOrder.id,
+        invoiceRequired: true,
+        title: workOrder.title,
+        address: workOrder.address,
+        assignedToId: workOrder.primaryAssigneeId,
+        invoiceNumber,
+        status: 'NOT_SENT',
+        observations: workOrder.invoiceObservations ?? null,
+        termsConditions: resolvedInvoiceTermsConditions,
+        discount: new Prisma.Decimal(0),
+        discountType: null,
+        amountPaid: new Prisma.Decimal(0),
+      },
+      select: { id: true },
+    })
+
+    let invoiceSubtotal = 0
+    if (workOrder.lineItems.length > 0) {
+      await tx.lineItem.createMany({
+        data: workOrder.lineItems.map(li => ({
+          invoiceId: createdInvoice.id,
+          name: li.name,
+          itemType: li.itemType,
+          description: li.description ?? null,
+          quantity: li.quantity,
+          price: toNum(li.price),
+          cost: li.cost != null ? toNum(li.cost) : null,
+          priceListItemId: li.priceListItemId ?? null,
+        })),
+      })
+      for (const li of workOrder.lineItems) {
+        invoiceSubtotal += li.quantity * toNum(li.price)
+      }
+    }
+
+    return tx.invoice.update({
+      where: { id: createdInvoice.id },
+      data: {
+        subtotal: new Prisma.Decimal(invoiceSubtotal),
+        tax: new Prisma.Decimal(0),
+        total: new Prisma.Decimal(invoiceSubtotal),
+        balance: new Prisma.Decimal(invoiceSubtotal),
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
+        invoiceRequired: true,
+        workOrderId: true,
+        total: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+  })
+
+  return invoice
+}
+
 async function nextInvoiceNumber(businessId: string): Promise<string> {
   const last = await prisma.invoice.findFirst({
     where: { businessId },

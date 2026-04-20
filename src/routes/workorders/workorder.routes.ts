@@ -213,8 +213,8 @@ export const CreateWorkOrderBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),
-    quoteRequired: z.boolean().optional().default(false),
-    invoiceRequired: z.boolean().optional().default(false),
+    quoteRequired: z.boolean().optional(),
+    invoiceRequired: z.boolean().optional(),
     quoteClientMessage: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     applyQuoteTermsToFuture: z.boolean().optional().default(false),
@@ -671,6 +671,42 @@ export const WORK_ORDER_ROUTES = {
       [HttpStatusCodes.CREATED]: jsonContent(
         zodResponseSchema(WorkOrderDetailResponseSchema),
         'Payment registered'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  createQoutes: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/create-qoutes',
+    summary: 'Create quote related to this work order',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderQuoteSummarySchema),
+        'Quote created'
+      ),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  createInvoices: createRoute({
+    method: 'post',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/create-invoices',
+    summary: 'Create invoice related to this work order',
+    request: { params: WorkOrderParamsSchema },
+    responses: {
+      [HttpStatusCodes.CREATED]: jsonContent(
+        zodResponseSchema(WorkOrderInvoiceSummarySchema),
+        'Invoice created'
       ),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
