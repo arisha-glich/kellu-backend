@@ -119,6 +119,29 @@ const TaskDetailSchema = z.object({
     .nullable(),
 })
 
+const ConvertTaskLineItemSchema = z.object({
+  name: z.string().min(1, 'Line item name is required'),
+  itemType: z.enum(['SERVICE', 'PRODUCT']).optional().default('SERVICE'),
+  description: z.string().optional().nullable(),
+  quantity: z.number().int().min(1),
+  price: z.number().min(0),
+  cost: z.number().optional().nullable(),
+  priceListItemId: z.string().optional().nullable(),
+})
+
+export const ConvertTaskBodySchema = z
+  .object({
+    notes: z.string().optional().nullable(),
+    lineItems: z.array(ConvertTaskLineItemSchema).optional(),
+  })
+  .openapi({ description: 'Convert task into a work order' })
+
+const ConvertTaskResponseSchema = z.object({
+  taskId: z.string(),
+  workOrderId: z.string(),
+  workOrder: z.record(z.string(), z.unknown()),
+})
+
 const TaskListItemSchema = TaskDetailSchema.pick({
   id: true,
   title: true,
@@ -276,6 +299,25 @@ export const TASK_ROUTES = {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(TaskDetailSchema), 'Completed'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Task not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Task already completed'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  convertToWorkorder: createRoute({
+    method: 'post',
+    tags: ['Tasks'],
+    path: '/{taskId}/convert-to-workorder',
+    summary: 'Convert task into a work order and remove the task',
+    request: {
+      params: TaskParamsSchema,
+      body: jsonContentRequired(ConvertTaskBodySchema, 'Convert task payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ConvertTaskResponseSchema), 'Converted'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Task, business, or client not found'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Task cannot be converted'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

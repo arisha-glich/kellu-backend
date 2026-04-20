@@ -7,6 +7,7 @@ import type { Prisma, TaskStatus } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { sendTaskCreatedEmail } from '~/services/email-helpers'
+import { createWorkOrder } from '~/services/workorder.service'
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,19 @@ export interface UpdateTaskInput {
   startTime?: string | null
   endTime?: string | null
   isAnyTime?: boolean
+}
+
+export interface ConvertTaskToWorkOrderInput {
+  notes?: string | null
+  lineItems?: Array<{
+    name: string
+    itemType?: 'SERVICE' | 'PRODUCT'
+    description?: string | null
+    quantity: number
+    price: number
+    cost?: number | null
+    priceListItemId?: string | null
+  }>
 }
 
 // ─── Guard helpers ───────────────────────────────────────────────────────────
@@ -598,4 +612,57 @@ export async function getTaskOverview(businessId: string) {
   })
 
   return counts.map(c => ({ status: c.taskStatus, count: c._count.id }))
+}
+
+export async function convertTaskToWorkOrder(
+  businessId: string,
+  taskId: string,
+  input: ConvertTaskToWorkOrderInput = {}
+) {
+  await ensureBusinessExists(businessId)
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, businessId },
+    include: {
+      assignees: {
+        include: {
+          member: {
+            select: { id: true },
+          },
+        },
+      },
+    },
+  })
+  if (!task) {
+    throw new TaskNotFoundError()
+  }
+  if (!task.clientId) {
+    throw new ClientNotFoundError()
+  }
+
+  const assignedToIds = Array.from(
+    new Set(task.assignees.map(a => a.member.id).filter(Boolean))
+  )
+  const createdWorkOrder = await createWorkOrder(businessId, {
+    title: task.title,
+    clientId: task.clientId,
+    address: task.address ?? '',
+    instructions: task.instructions ?? null,
+    notes: input.notes ?? null,
+    isAnyTime: task.isAnyTime ?? false,
+    isScheduleLater: task.scheduledAt == null,
+    scheduledAt: task.scheduledAt ?? null,
+    startTime: task.startTime ?? null,
+    endTime: task.endTime ?? null,
+    assignedToId: assignedToIds[0] ?? null,
+    assignedToIds,
+    lineItems: input.lineItems?.length ? input.lineItems : undefined,
+  })
+
+  await prisma.task.delete({ where: { id: task.id } })
+
+  return {
+    taskId: task.id,
+    workOrderId: createdWorkOrder.id,
+    workOrder: createdWorkOrder,
+  }
 }

@@ -10,6 +10,7 @@ import { createUserNotification } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import {
   completeTask,
+  convertTaskToWorkOrder,
   createTask,
   deleteTask,
   getTask,
@@ -19,6 +20,7 @@ import {
   TaskNotFoundError,
   updateTask,
 } from '~/services/task.service'
+import { ClientNotFoundError, WorkOrderAssigneeNotFoundError } from '~/services/workorder.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 function resolveTaskAssigneeIds(body: { assignedToIds?: string[] | null }): string[] | undefined {
@@ -437,6 +439,54 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
       }
       console.error('Error completing task:', error)
       return c.json({ message: 'Failed to complete task' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    }
+  },
+
+  convertToWorkorder: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'tasks', 'delete'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'create'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+
+      const { taskId } = c.req.valid('param')
+      const body = c.req.valid('json')
+      const converted = await convertTaskToWorkOrder(businessId, taskId, {
+        notes: body.notes ?? null,
+        lineItems: body.lineItems,
+      })
+      return c.json(
+        { message: 'Task converted to work order successfully', success: true, data: converted },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof TaskNotFoundError) {
+        return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof ClientNotFoundError) {
+        return c.json({ message: 'Task must have a client before conversion' }, HttpStatusCodes.BAD_REQUEST)
+      }
+      if (error instanceof WorkOrderAssigneeNotFoundError) {
+        return c.json(
+          { message: 'One or more assigned team members were not found in this business' },
+          HttpStatusCodes.NOT_FOUND
+        )
+      }
+      console.error('Error converting task to work order:', error)
+      return c.json(
+        { message: 'Failed to convert task to work order' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
   },
 }
