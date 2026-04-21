@@ -316,7 +316,10 @@ export const TASK_ROUTES = {
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ConvertTaskResponseSchema), 'Converted'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Task, business, or client not found'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(
+        zodResponseSchema(),
+        'Task, business, or client not found'
+      ),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Task cannot be converted'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

@@ -639,9 +639,7 @@ export async function convertTaskToWorkOrder(
     throw new ClientNotFoundError()
   }
 
-  const assignedToIds = Array.from(
-    new Set(task.assignees.map(a => a.member.id).filter(Boolean))
-  )
+  const assignedToIds = Array.from(new Set(task.assignees.map(a => a.member.id).filter(Boolean)))
   const createdWorkOrder = await createWorkOrder(businessId, {
     title: task.title,
     clientId: task.clientId,

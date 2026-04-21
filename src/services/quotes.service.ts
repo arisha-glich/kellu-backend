@@ -1329,7 +1329,9 @@ export async function sendQuoteEmail(
       client: { select: { id: true, name: true, email: true } },
       assignedTo: { include: { user: { select: { name: true } } } },
       lineItems: { select: { name: true, quantity: true, price: true } },
-      business: { include: { settings: { select: { replyToEmail: true } } } },
+      business: {
+        include: { settings: { select: { replyToEmail: true, quoteExpirationDays: true } } },
+      },
     },
   })
   if (!q) {
@@ -1384,12 +1386,27 @@ export async function sendQuoteEmail(
     attachments,
   })
 
-  if (options?.sendViaWhatsapp !== undefined) {
-    await prisma.quote.update({
-      where: { id: quoteId },
-      data: { quoteWhatsappStatus: options.sendViaWhatsapp ? 'PENDING' : null },
-    })
-  }
+  const expirationDays = q.business.settings?.quoteExpirationDays ?? 7
+  const now = new Date()
+  const expiresAt = new Date(now)
+  expiresAt.setDate(expiresAt.getDate() + expirationDays)
+  const currentVersion = q.quoteVersion ?? 1
+  const newVersion = q.quoteSentAt ? currentVersion + 1 : currentVersion
+  const quoteCorrelative = `Q-${quoteId.slice(-4)}-${now.toISOString().slice(0, 10)}-v${newVersion}`
+
+  await prisma.quote.update({
+    where: { id: quoteId },
+    data: {
+      quoteStatus: 'AWAITING_RESPONSE',
+      quoteSentAt: now,
+      quoteExpiresAt: expiresAt,
+      quoteVersion: newVersion,
+      quoteCorrelative,
+      ...(options?.sendViaWhatsapp !== undefined && {
+        quoteWhatsappStatus: options.sendViaWhatsapp ? 'PENDING' : null,
+      }),
+    },
+  })
 
   return getQuoteById(businessId, quoteId)
 }

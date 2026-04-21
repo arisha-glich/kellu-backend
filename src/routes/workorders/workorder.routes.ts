@@ -17,6 +17,14 @@ const JobStatusEnum = z.enum([
   'COMPLETED',
   'CANCELLED',
 ])
+const QuoteStatusEnum = z.enum([
+  'NOT_SENT',
+  'AWAITING_RESPONSE',
+  'APPROVED',
+  'CONVERTED',
+  'REJECTED',
+  'EXPIRED',
+])
 const InvoiceStatusEnum = z.enum([
   'NOT_SENT',
   'AWAITING_PAYMENT',
@@ -213,8 +221,6 @@ export const CreateWorkOrderBodySchema = z
     instructions: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     internalNotes: z.string().optional().nullable(),
-    quoteRequired: z.boolean().optional(),
-    invoiceRequired: z.boolean().optional(),
     quoteClientMessage: z.string().optional().nullable(),
     quoteTermsConditions: z.string().optional().nullable(),
     applyQuoteTermsToFuture: z.boolean().optional().default(false),
@@ -283,6 +289,7 @@ const WorkOrderListItemSchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   jobStatus: JobStatusEnum,
+  quoteStatus: QuoteStatusEnum,
   invoiceStatus: InvoiceStatusEnum,
   total: z.union([z.number(), z.string()]).nullable(),
   createdAt: z.coerce.date(),
@@ -351,14 +358,7 @@ const WorkOrderAttachmentSchema = z.object({
 const WorkOrderQuoteSummarySchema = z.object({
   id: z.string(),
   quoteNumber: z.string().nullable(),
-  quoteStatus: z.enum([
-    'NOT_SENT',
-    'AWAITING_RESPONSE',
-    'APPROVED',
-    'CONVERTED',
-    'REJECTED',
-    'EXPIRED',
-  ]),
+  quoteStatus: QuoteStatusEnum,
   quoteRequired: z.boolean(),
   workOrderId: z.string().nullable(),
   total: z.union([z.number(), z.string()]).nullable(),
@@ -393,6 +393,7 @@ export const WorkOrderDetailResponseSchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   jobStatus: JobStatusEnum,
+  quoteStatus: QuoteStatusEnum,
   invoiceStatus: InvoiceStatusEnum,
   subtotal: z.union([z.number(), z.string()]).nullable(),
   discount: z.union([z.number(), z.string()]).nullable(),
@@ -700,7 +701,7 @@ export const WORK_ORDER_ROUTES = {
   createInvoices: createRoute({
     method: 'post',
     tags: ['Workorders'],
-    path: '/{workOrderId}/create-invoices',
+    path: '/{workOrderId}/create-invoice',
     summary: 'Create invoice related to this work order',
     request: { params: WorkOrderParamsSchema },
     responses: {

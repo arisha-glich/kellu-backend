@@ -474,7 +474,10 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
         return c.json({ message: 'Task not found' }, HttpStatusCodes.NOT_FOUND)
       }
       if (error instanceof ClientNotFoundError) {
-        return c.json({ message: 'Task must have a client before conversion' }, HttpStatusCodes.BAD_REQUEST)
+        return c.json(
+          { message: 'Task must have a client before conversion' },
+          HttpStatusCodes.BAD_REQUEST
+        )
       }
       if (error instanceof WorkOrderAssigneeNotFoundError) {
         return c.json(

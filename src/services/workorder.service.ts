@@ -75,8 +75,6 @@ export interface CreateWorkOrderInput {
   assignedToIds?: string[]
   instructions?: string | null
   notes?: string | null
-  quoteRequired?: boolean
-  invoiceRequired?: boolean
   invoiceClientMessage?: string | null
   invoiceTermsConditions?: string | null
   applyInvoiceTermsToFuture?: boolean
@@ -363,13 +361,24 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
       include: {
         client: { select: { id: true, name: true, email: true, phone: true } },
         assignees: workOrderAssigneesInclude,
+        quotes: {
+          select: { quoteStatus: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     }),
     prisma.workOrder.count({ where: searchWhere }),
   ])
 
   return {
-    data: items.map(wo => mapWorkOrderForApi(wo)),
+    data: items.map(wo => {
+      const mapped = mapWorkOrderForApi(wo)
+      return {
+        ...mapped,
+        quoteStatus: wo.quotes[0]?.quoteStatus ?? 'NOT_SENT',
+      }
+    }),
     pagination: {
       page,
       limit,
@@ -452,7 +461,11 @@ export async function getWorkOrderById(businessId: string, workOrderId: string) 
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
-  return mapWorkOrderForApi(wo)
+  const mapped = mapWorkOrderForApi(wo)
+  return {
+    ...mapped,
+    quoteStatus: mapped.quotes?.[0]?.quoteStatus ?? 'NOT_SENT',
+  }
 }
 
 /** Generate next work order number (e.g. #1, #2) per business. */
@@ -895,80 +908,41 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   const wo = await prisma.$transaction(
     async tx => {
       const created = await tx.workOrder.create({
-      data: {
-        businessId,
-        clientId: input.clientId,
-        title: input.title,
-        address: input.address,
-        instructions: input.instructions ?? null,
-        notes: input.notes ?? null,
-        isScheduleLater: input.isScheduleLater ?? false,
-        isAnyTime,
-        scheduledAt: input.scheduledAt ?? null,
-        startTime: isAnyTime ? null : (input.startTime ?? null),
-        endTime: isAnyTime ? null : (input.endTime ?? null),
-        primaryAssigneeId: primaryAssignedToId,
-        quoteTermsConditions: resolvedQuoteTermsConditions,
-        invoiceObservations: input.invoiceClientMessage ?? null,
-        invoiceTermsConditions: resolvedInvoiceTermsConditions,
-        jobStatus,
-        invoiceStatus: 'NOT_SENT',
-        workOrderNumber,
-        discount: input.discount ?? 0,
-        discountType: input.discountType ?? null,
-      },
-    })
-
-    if (assignedIds.length > 0) {
-      await tx.workOrderAssignment.createMany({
-        data: assignedIds.map(memberId => ({ workOrderId: created.id, memberId })),
-        skipDuplicates: true,
-      })
-    }
-
-    if (input.lineItems?.length) {
-      await tx.lineItem.createMany({
-        data: input.lineItems.map(li => ({
-          workOrderId: created.id,
-          name: li.name,
-          itemType: li.itemType ?? 'SERVICE',
-          description: li.description ?? null,
-          quantity: li.quantity,
-          price: li.price,
-          cost: li.cost ?? null,
-          priceListItemId: li.priceListItemId ?? null,
-        })),
-      })
-    }
-
-    if (input.quoteRequired) {
-      const quoteNumber = `#${await nextQuoteNumber(businessId)}`
-      const createdQuote = await tx.quote.create({
         data: {
           businessId,
           clientId: input.clientId,
-          workOrderId: created.id,
-          quoteRequired: true,
           title: input.title,
           address: input.address,
           instructions: input.instructions ?? null,
           notes: input.notes ?? null,
-          assignedToId: primaryAssignedToId,
-          quoteNumber,
-          quoteStatus: 'NOT_SENT',
+          isScheduleLater: input.isScheduleLater ?? false,
+          isAnyTime,
+          scheduledAt: input.scheduledAt ?? null,
+          startTime: isAnyTime ? null : (input.startTime ?? null),
+          endTime: isAnyTime ? null : (input.endTime ?? null),
+          primaryAssigneeId: primaryAssignedToId,
           quoteTermsConditions: resolvedQuoteTermsConditions,
-          isScheduleLater: true,
-          discount: new Prisma.Decimal(0),
-          discountType: null,
+          invoiceObservations: input.invoiceClientMessage ?? null,
+          invoiceTermsConditions: resolvedInvoiceTermsConditions,
+          jobStatus,
+          invoiceStatus: 'NOT_SENT',
+          workOrderNumber,
+          discount: input.discount ?? 0,
+          discountType: input.discountType ?? null,
         },
       })
 
-      let quoteSubtotal = 0
-      let quoteCostTotal = 0
+      if (assignedIds.length > 0) {
+        await tx.workOrderAssignment.createMany({
+          data: assignedIds.map(memberId => ({ workOrderId: created.id, memberId })),
+          skipDuplicates: true,
+        })
+      }
+
       if (input.lineItems?.length) {
         await tx.lineItem.createMany({
           data: input.lineItems.map(li => ({
-            quoteId: createdQuote.id,
+            workOrderId: created.id,
             name: li.name,
             itemType: li.itemType ?? 'SERVICE',
             description: li.description ?? null,
@@ -978,73 +952,7 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
             priceListItemId: li.priceListItemId ?? null,
           })),
         })
-        for (const li of input.lineItems) {
-          quoteSubtotal += li.quantity * li.price
-          quoteCostTotal += li.quantity * (li.cost ?? 0)
-        }
       }
-      await tx.quote.update({
-        where: { id: createdQuote.id },
-        data: {
-          subtotal: new Prisma.Decimal(quoteSubtotal),
-          cost: new Prisma.Decimal(quoteCostTotal),
-          tax: new Prisma.Decimal(0),
-          total: new Prisma.Decimal(quoteSubtotal),
-          amountPaid: new Prisma.Decimal(0),
-          balance: new Prisma.Decimal(quoteSubtotal),
-        },
-      })
-    }
-
-    if (input.invoiceRequired) {
-      const invoiceNumber = `#${await nextInvoiceNumber(businessId)}`
-      const createdInvoice = await tx.invoice.create({
-        data: {
-          businessId,
-          clientId: input.clientId,
-          workOrderId: created.id,
-          invoiceRequired: true,
-          title: input.title,
-          address: input.address,
-          assignedToId: primaryAssignedToId,
-          invoiceNumber,
-          status: 'NOT_SENT',
-          observations: input.invoiceClientMessage ?? null,
-          termsConditions: resolvedInvoiceTermsConditions,
-          discount: new Prisma.Decimal(0),
-          discountType: null,
-          amountPaid: new Prisma.Decimal(0),
-        },
-      })
-
-      let invoiceSubtotal = 0
-      if (input.lineItems?.length) {
-        await tx.lineItem.createMany({
-          data: input.lineItems.map(li => ({
-            invoiceId: createdInvoice.id,
-            name: li.name,
-            itemType: li.itemType ?? 'SERVICE',
-            description: li.description ?? null,
-            quantity: li.quantity,
-            price: li.price,
-            cost: li.cost ?? null,
-            priceListItemId: li.priceListItemId ?? null,
-          })),
-        })
-        for (const li of input.lineItems) {
-          invoiceSubtotal += li.quantity * li.price
-        }
-      }
-      await tx.invoice.update({
-        where: { id: createdInvoice.id },
-        data: {
-          subtotal: new Prisma.Decimal(invoiceSubtotal),
-          tax: new Prisma.Decimal(0),
-          total: new Prisma.Decimal(invoiceSubtotal),
-          balance: new Prisma.Decimal(invoiceSubtotal),
-        },
-      })
-    }
 
       return created
     },
@@ -1260,176 +1168,6 @@ export async function updateWorkOrder(
   ])
 
   await recalculateFinancials(workOrderId, taxPercent)
-
-  // On update, if quote/invoice is explicitly required, ensure linked records exist.
-  if (input.quoteRequired === true || input.invoiceRequired === true) {
-    const [existingQuote, existingInvoice, woSnapshot, businessSettings] = await Promise.all([
-      input.quoteRequired === true
-        ? prisma.quote.findFirst({
-            where: { businessId, workOrderId },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-      input.invoiceRequired === true
-        ? prisma.invoice.findFirst({
-            where: { businessId, workOrderId },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-      prisma.workOrder.findFirst({
-        where: { id: workOrderId, businessId },
-        select: {
-          id: true,
-          title: true,
-          address: true,
-          clientId: true,
-          primaryAssigneeId: true,
-          quoteTermsConditions: true,
-          invoiceTermsConditions: true,
-          invoiceObservations: true,
-          lineItems: {
-            select: {
-              name: true,
-              itemType: true,
-              description: true,
-              quantity: true,
-              price: true,
-              cost: true,
-              priceListItemId: true,
-            },
-          },
-        },
-      }),
-      prisma.businessSettings.findUnique({
-        where: { businessId },
-        select: {
-          quoteTermsConditions: true,
-          invoiceTermsConditions: true,
-        },
-      }),
-    ])
-
-    if (woSnapshot) {
-      if (input.quoteRequired === true && !existingQuote) {
-        const quoteNumber = `#${await nextQuoteNumber(businessId)}`
-        const quoteTerms =
-          woSnapshot.quoteTermsConditions ??
-          businessSettings?.quoteTermsConditions ??
-          DEFAULT_QUOTE_TERMS_CONDITIONS
-
-        await prisma.$transaction(async tx => {
-          const createdQuote = await tx.quote.create({
-            data: {
-              businessId,
-              clientId: woSnapshot.clientId,
-              workOrderId: woSnapshot.id,
-              quoteRequired: true,
-              title: woSnapshot.title,
-              address: woSnapshot.address,
-              assignedToId: woSnapshot.primaryAssigneeId,
-              quoteNumber,
-              quoteStatus: 'NOT_SENT',
-              quoteTermsConditions: quoteTerms,
-              isScheduleLater: true,
-              discount: new Prisma.Decimal(0),
-              discountType: null,
-            },
-          })
-
-          let quoteSubtotal = 0
-          let quoteCostTotal = 0
-          if (woSnapshot.lineItems.length > 0) {
-            await tx.lineItem.createMany({
-              data: woSnapshot.lineItems.map(li => ({
-                quoteId: createdQuote.id,
-                name: li.name,
-                itemType: li.itemType,
-                description: li.description ?? null,
-                quantity: li.quantity,
-                price: toNum(li.price),
-                cost: li.cost != null ? toNum(li.cost) : null,
-                priceListItemId: li.priceListItemId ?? null,
-              })),
-            })
-            for (const li of woSnapshot.lineItems) {
-              quoteSubtotal += li.quantity * toNum(li.price)
-              quoteCostTotal += li.quantity * toNum(li.cost)
-            }
-          }
-
-          await tx.quote.update({
-            where: { id: createdQuote.id },
-            data: {
-              subtotal: new Prisma.Decimal(quoteSubtotal),
-              cost: new Prisma.Decimal(quoteCostTotal),
-              tax: new Prisma.Decimal(0),
-              total: new Prisma.Decimal(quoteSubtotal),
-              amountPaid: new Prisma.Decimal(0),
-              balance: new Prisma.Decimal(quoteSubtotal),
-            },
-          })
-        })
-      }
-
-      if (input.invoiceRequired === true && !existingInvoice) {
-        const invoiceNumber = `#${await nextInvoiceNumber(businessId)}`
-        const invoiceTerms =
-          woSnapshot.invoiceTermsConditions ??
-          businessSettings?.invoiceTermsConditions ??
-          DEFAULT_INVOICE_TERMS_CONDITIONS
-
-        await prisma.$transaction(async tx => {
-          const createdInvoice = await tx.invoice.create({
-            data: {
-              businessId,
-              clientId: woSnapshot.clientId,
-              workOrderId: woSnapshot.id,
-              invoiceRequired: true,
-              title: woSnapshot.title,
-              address: woSnapshot.address,
-              assignedToId: woSnapshot.primaryAssigneeId,
-              invoiceNumber,
-              status: 'NOT_SENT',
-              observations: woSnapshot.invoiceObservations ?? null,
-              termsConditions: invoiceTerms,
-              discount: new Prisma.Decimal(0),
-              discountType: null,
-              amountPaid: new Prisma.Decimal(0),
-            },
-          })
-
-          let invoiceSubtotal = 0
-          if (woSnapshot.lineItems.length > 0) {
-            await tx.lineItem.createMany({
-              data: woSnapshot.lineItems.map(li => ({
-                invoiceId: createdInvoice.id,
-                name: li.name,
-                itemType: li.itemType,
-                description: li.description ?? null,
-                quantity: li.quantity,
-                price: toNum(li.price),
-                cost: li.cost != null ? toNum(li.cost) : null,
-                priceListItemId: li.priceListItemId ?? null,
-              })),
-            })
-            for (const li of woSnapshot.lineItems) {
-              invoiceSubtotal += li.quantity * toNum(li.price)
-            }
-          }
-
-          await tx.invoice.update({
-            where: { id: createdInvoice.id },
-            data: {
-              subtotal: new Prisma.Decimal(invoiceSubtotal),
-              tax: new Prisma.Decimal(0),
-              total: new Prisma.Decimal(invoiceSubtotal),
-              balance: new Prisma.Decimal(invoiceSubtotal),
-            },
-          })
-        })
-      }
-    }
-  }
 
   return getWorkOrderById(businessId, workOrderId)
 }
