@@ -922,7 +922,37 @@ type QuoteEmailRow = {
   business: { name: string | null; logoUrl?: string | null }
   client: { name: string }
   assignedTo: { user: { name: string | null } } | null
+  workOrder: {
+    assignees: Array<{
+      member: {
+        user: {
+          name: string | null
+        }
+      }
+    }>
+  } | null
   lineItems: Array<{ name: string; quantity: number; price: unknown }>
+}
+
+function formatAssignedTeamMemberNames(input: {
+  assignedTo: { user: { name: string | null } } | null
+  workOrder: {
+    assignees: Array<{
+      member: {
+        user: {
+          name: string | null
+        }
+      }
+    }>
+  } | null
+}): string {
+  const fromWorkOrder = (input.workOrder?.assignees ?? [])
+    .map(item => item.member.user.name?.trim())
+    .filter((name): name is string => Boolean(name))
+  if (fromWorkOrder.length > 0) {
+    return Array.from(new Set(fromWorkOrder)).join(', ')
+  }
+  return input.assignedTo?.user?.name ?? 'Our team'
 }
 
 async function buildQuoteHtmlBody(
@@ -945,7 +975,7 @@ async function buildQuoteHtmlBody(
     address: q.address ?? 'To be confirmed',
     date: formatQuoteDate(q.scheduledAt),
     timeRange: formatQuoteTimeRange(q.startTime, q.endTime, q.scheduledAt),
-    assignedTeamMemberName: q.assignedTo?.user?.name ?? 'Our team',
+    assignedTeamMemberName: formatAssignedTeamMemberNames(q),
     lineItemsSummary: summarizeQuoteLineItems(q.lineItems),
     total: formatMoney(q.total),
     logoUrl: q.business.logoUrl ?? undefined,
@@ -1328,6 +1358,19 @@ export async function sendQuoteEmail(
     include: {
       client: { select: { id: true, name: true, email: true } },
       assignedTo: { include: { user: { select: { name: true } } } },
+      workOrder: {
+        select: {
+          assignees: {
+            include: {
+              member: {
+                include: {
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
       lineItems: { select: { name: true, quantity: true, price: true } },
       business: {
         include: { settings: { select: { replyToEmail: true, quoteExpirationDays: true } } },
@@ -1423,6 +1466,19 @@ export async function getQuoteEmailComposeData(
     include: {
       client: { select: { id: true, name: true, email: true } },
       assignedTo: { include: { user: { select: { name: true } } } },
+      workOrder: {
+        select: {
+          assignees: {
+            include: {
+              member: {
+                include: {
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
       lineItems: { select: { name: true, quantity: true, price: true } },
       business: {
         include: {
@@ -1451,7 +1507,7 @@ export async function getQuoteEmailComposeData(
     address: q.address ?? 'To be confirmed',
     date: formatQuoteDate(q.scheduledAt),
     timeRange: formatQuoteTimeRange(q.startTime, q.endTime, q.scheduledAt),
-    assignedTeamMemberName: q.assignedTo?.user?.name ?? 'Our team',
+    assignedTeamMemberName: formatAssignedTeamMemberNames(q),
     lineItemsSummary: summarizeQuoteLineItems(q.lineItems),
     total: formatMoney(q.total),
     logoUrl: q.business.logoUrl ?? undefined,

@@ -515,6 +515,12 @@ export async function createWorkOrderQuote(businessId: string, workOrderId: stri
       instructions: true,
       notes: true,
       quoteTermsConditions: true,
+      subtotal: true,
+      discount: true,
+      discountType: true,
+      tax: true,
+      total: true,
+      balance: true,
       lineItems: {
         select: {
           name: true,
@@ -586,15 +592,37 @@ export async function createWorkOrderQuote(businessId: string, workOrderId: stri
       }
     }
 
+    const subtotalFromWorkOrder = toNum(workOrder.subtotal)
+    const discountFromWorkOrder = toNum(workOrder.discount)
+    const taxFromWorkOrder = toNum(workOrder.tax)
+    const totalFromWorkOrder = toNum(workOrder.total)
+    const balanceFromWorkOrder = toNum(workOrder.balance)
+
     return tx.quote.update({
       where: { id: createdQuote.id },
       data: {
-        subtotal: new Prisma.Decimal(quoteSubtotal),
+        subtotal: new Prisma.Decimal(
+          Number.isFinite(subtotalFromWorkOrder) && subtotalFromWorkOrder >= 0
+            ? subtotalFromWorkOrder
+            : quoteSubtotal
+        ),
+        discount: new Prisma.Decimal(discountFromWorkOrder),
+        discountType: workOrder.discountType,
         cost: new Prisma.Decimal(quoteCostTotal),
-        tax: new Prisma.Decimal(0),
-        total: new Prisma.Decimal(quoteSubtotal),
+        tax: new Prisma.Decimal(taxFromWorkOrder),
+        total: new Prisma.Decimal(
+          Number.isFinite(totalFromWorkOrder) && totalFromWorkOrder >= 0
+            ? totalFromWorkOrder
+            : quoteSubtotal
+        ),
         amountPaid: new Prisma.Decimal(0),
-        balance: new Prisma.Decimal(quoteSubtotal),
+        balance: new Prisma.Decimal(
+          Number.isFinite(balanceFromWorkOrder) && balanceFromWorkOrder >= 0
+            ? balanceFromWorkOrder
+            : Number.isFinite(totalFromWorkOrder) && totalFromWorkOrder >= 0
+              ? totalFromWorkOrder
+              : quoteSubtotal
+        ),
       },
       select: {
         id: true,
@@ -625,6 +653,13 @@ export async function createWorkOrderInvoice(businessId: string, workOrderId: st
       address: true,
       invoiceObservations: true,
       invoiceTermsConditions: true,
+      subtotal: true,
+      discount: true,
+      discountType: true,
+      tax: true,
+      total: true,
+      amountPaid: true,
+      balance: true,
       lineItems: {
         select: {
           name: true,
@@ -693,13 +728,37 @@ export async function createWorkOrderInvoice(businessId: string, workOrderId: st
       }
     }
 
+    const subtotalFromWorkOrder = toNum(workOrder.subtotal)
+    const discountFromWorkOrder = toNum(workOrder.discount)
+    const taxFromWorkOrder = toNum(workOrder.tax)
+    const totalFromWorkOrder = toNum(workOrder.total)
+    const amountPaidFromWorkOrder = toNum(workOrder.amountPaid)
+    const balanceFromWorkOrder = toNum(workOrder.balance)
+
     return tx.invoice.update({
       where: { id: createdInvoice.id },
       data: {
-        subtotal: new Prisma.Decimal(invoiceSubtotal),
-        tax: new Prisma.Decimal(0),
-        total: new Prisma.Decimal(invoiceSubtotal),
-        balance: new Prisma.Decimal(invoiceSubtotal),
+        subtotal: new Prisma.Decimal(
+          Number.isFinite(subtotalFromWorkOrder) && subtotalFromWorkOrder >= 0
+            ? subtotalFromWorkOrder
+            : invoiceSubtotal
+        ),
+        discount: new Prisma.Decimal(discountFromWorkOrder),
+        discountType: workOrder.discountType,
+        tax: new Prisma.Decimal(taxFromWorkOrder),
+        total: new Prisma.Decimal(
+          Number.isFinite(totalFromWorkOrder) && totalFromWorkOrder >= 0
+            ? totalFromWorkOrder
+            : invoiceSubtotal
+        ),
+        amountPaid: new Prisma.Decimal(amountPaidFromWorkOrder),
+        balance: new Prisma.Decimal(
+          Number.isFinite(balanceFromWorkOrder) && balanceFromWorkOrder >= 0
+            ? balanceFromWorkOrder
+            : Number.isFinite(totalFromWorkOrder) && totalFromWorkOrder >= 0
+              ? totalFromWorkOrder - amountPaidFromWorkOrder
+              : invoiceSubtotal
+        ),
       },
       select: {
         id: true,

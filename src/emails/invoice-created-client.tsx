@@ -34,7 +34,6 @@ export const InvoiceCreatedClientEmail = ({
   businessName,
   invoiceNumber,
   title,
-  address,
   createdDate,
   assignedTeamMemberName,
   lineItemsSummary,
@@ -67,14 +66,12 @@ export const InvoiceCreatedClientEmail = ({
               <strong>Related job:</strong> {workOrderSummary.trim()}
             </Text>
           ) : null}
-          <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
-            <strong>Service / billing address:</strong> {address}
-          </Text>
+
           <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
             <strong>Invoice date:</strong> {createdDate}
           </Text>
           <Text style={{ ...emailStyles.text, margin: '8px 0' }}>
-            <strong>Your contact at {businessName}:</strong> {assignedTeamMemberName}
+            <strong>assignedTeamMemberName:</strong> {assignedTeamMemberName}
           </Text>
           {lineItemsSummary.trim() ? (
             <Text style={{ ...emailStyles.text, margin: '12px 0 8px' }}>

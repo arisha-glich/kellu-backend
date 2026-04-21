@@ -6,6 +6,7 @@
 
 import type { InvoiceStatus } from '~/generated/prisma'
 import { Prisma } from '~/generated/prisma'
+import { renderEmailTemplate } from '~/lib/email-render'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
@@ -324,6 +325,27 @@ function invoiceWorkOrderSummary(
   return `${num} — ${workOrder.title}`
 }
 
+function invoiceAssignedTeamMemberNames(input: {
+  assignedTo: { user?: { name: string | null } | null } | null
+  workOrder: {
+    assignees: Array<{
+      member: {
+        user: {
+          name: string | null
+        }
+      }
+    }>
+  } | null
+}): string {
+  const fromWorkOrder = (input.workOrder?.assignees ?? [])
+    .map(item => item.member.user.name?.trim())
+    .filter((name): name is string => Boolean(name))
+  if (fromWorkOrder.length > 0) {
+    return Array.from(new Set(fromWorkOrder)).join(', ')
+  }
+  return input.assignedTo?.user?.name ?? 'Our team'
+}
+
 /** Client + assigned team member emails after invoice creation (failures logged only). */
 async function sendInvoiceCreatedNotificationEmails(
   businessId: string,
@@ -337,7 +359,21 @@ async function sendInvoiceCreatedNotificationEmails(
         business: { include: { settings: { select: { replyToEmail: true } } } },
         lineItems: { select: { name: true, quantity: true, price: true } },
         assignedTo: { include: { user: { select: { name: true, email: true } } } },
-        workOrder: { select: { workOrderNumber: true, title: true } },
+        workOrder: {
+          select: {
+            workOrderNumber: true,
+            title: true,
+            assignees: {
+              include: {
+                member: {
+                  include: {
+                    user: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     })
     if (!inv?.business || !inv.client) {
@@ -355,7 +391,7 @@ async function sendInvoiceCreatedNotificationEmails(
     })
     const addressDisplay = inv.address?.trim() || '—'
     const workOrderSummary = invoiceWorkOrderSummary(inv.workOrder)
-    const assignedName = inv.assignedTo?.user?.name ?? 'Our team'
+    const assignedName = invoiceAssignedTeamMemberNames(inv)
     const subtotalStr = invoiceMoney(inv.subtotal)
     const taxStr = invoiceMoney(inv.tax)
     const totalStr = invoiceMoney(inv.total)
@@ -750,10 +786,23 @@ export async function sendInvoiceEmail(
     include: {
       client: { select: { id: true, name: true, email: true } },
       business: { include: { settings: { select: { replyToEmail: true, invoiceDueDays: true } } } },
+      lineItems: { select: { name: true, quantity: true, price: true } },
+      assignedTo: { include: { user: { select: { name: true } } } },
       workOrder: {
         select: {
           id: true,
+          title: true,
+          workOrderNumber: true,
           lastJobReportPdfUrl: true,
+          assignees: {
+            include: {
+              member: {
+                include: {
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -772,8 +821,42 @@ export async function sendInvoiceEmail(
   const displayName = inv.business.name?.trim() || 'Company'
   const fromHeader = options?.from?.trim() || clientToCustomerFrom(displayName)
   const subject = options?.subject ?? `Invoice from ${displayName} - ${inv.title}`.trim()
+  const lineItemsSummary = invoiceLineItemsSummaryForEmail(inv.lineItems)
+  const createdDate = inv.createdAt.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const addressDisplay = inv.address?.trim() || '—'
+  const workOrderSummary = invoiceWorkOrderSummary(inv.workOrder)
+  const assignedName = invoiceAssignedTeamMemberNames(inv)
+  const subtotalStr = invoiceMoney(inv.subtotal)
+  const taxStr = invoiceMoney(inv.tax)
+  const totalStr = invoiceMoney(inv.total)
+  const balanceStr = invoiceMoney(inv.balance)
+  const invoiceNumber = inv.invoiceNumber?.trim() || inv.id
+
+  const defaultTemplateHtml = await renderEmailTemplate('invoice-created-client', {
+    clientName: inv.client.name,
+    businessName: displayName,
+    invoiceNumber,
+    title: inv.title,
+    address: addressDisplay,
+    createdDate,
+    assignedTeamMemberName: assignedName,
+    lineItemsSummary,
+    ...(subtotalStr ? { subtotal: subtotalStr } : {}),
+    ...(taxStr ? { tax: taxStr } : {}),
+    ...(totalStr ? { total: totalStr } : {}),
+    ...(balanceStr ? { balance: balanceStr } : {}),
+    ...(workOrderSummary?.trim() ? { workOrderSummary: workOrderSummary.trim() } : {}),
+    logoUrl: inv.business.logoUrl ?? undefined,
+  })
+
   const html =
-    options?.message ?? defaultInvoiceEmailMessage(inv.client.name, displayName, inv.title)
+    options?.message?.trim() ||
+    defaultTemplateHtml ||
+    defaultInvoiceEmailMessage(inv.client.name, displayName, inv.title)
 
   const selectedIds = new Set(options?.selectedAttachmentIds ?? [])
   const attachmentPayload: Array<{ filename: string; content: Buffer; contentType?: string }> = []
