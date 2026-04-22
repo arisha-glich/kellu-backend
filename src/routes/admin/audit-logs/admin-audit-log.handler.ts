@@ -22,7 +22,7 @@ export const ADMIN_AUDIT_LOG_HANDLER: HandlerMapFromRoutes<typeof ADMIN_AUDIT_LO
     if (!hasAuditRead && !user.isAdmin) {
       return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
     }
-    const data = await listAuditLogFilterOptions()
+    const data = await listAuditLogFilterOptions({ adminOnly: true })
     return c.json(
       { message: 'Audit log filter options retrieved successfully', success: true, data },
       HttpStatusCodes.OK
@@ -52,6 +52,7 @@ export const ADMIN_AUDIT_LOG_HANDLER: HandlerMapFromRoutes<typeof ADMIN_AUDIT_LO
       module,
       businessId: query.businessId,
       search: query.search,
+      adminOnly: true,
       page,
       limit,
     })

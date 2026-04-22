@@ -47,6 +47,9 @@ const AdminWorkorderListItemSchema = z.object({
   client: z.object({
     id: z.string(),
     name: z.string(),
+    email: z.string().email(),
+    phone: z.string(),
+    address: z.string(),
   }),
   title: z.string(),
   status: z.enum(['ACTIVE', 'PENDING', 'COMPLETED', 'CANCELED']),

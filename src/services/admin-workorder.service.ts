@@ -64,7 +64,13 @@ function buildBaseWhereInput(filters: AdminWorkorderListFilters): Prisma.WorkOrd
     where.OR = [
       { workOrderNumber: { contains: term, mode: 'insensitive' } },
       { title: { contains: term, mode: 'insensitive' } },
-      { client: { name: { contains: term, mode: 'insensitive' } } },
+      {
+        client: {
+          name: { contains: term, mode: 'insensitive' },
+          email: { contains: term, mode: 'insensitive' },
+          phone: { contains: term, mode: 'insensitive' },
+        },
+      },
       { business: { name: { contains: term, mode: 'insensitive' } } },
     ]
   }
@@ -97,7 +103,7 @@ export async function getAdminWorkordersDashboard(filters: AdminWorkorderListFil
         createdAt: true,
         jobStatus: true,
         total: true,
-        client: { select: { id: true, name: true } },
+        client: { select: { id: true, name: true, email: true, phone: true, address: true } },
         business: { select: { id: true, name: true } },
       },
     }),

@@ -18,6 +18,7 @@ export interface AuditLogListFilters {
   module?: string
   businessId?: string
   search?: string
+  adminOnly?: boolean
   page?: number
   limit?: number
 }
@@ -122,13 +123,28 @@ export async function createAuditLog(input: CreateAuditLogInput): Promise<void> 
   })
 }
 
+function buildActorScopeWhere(adminOnly?: boolean): Prisma.AuditLogWhereInput | undefined {
+  if (!adminOnly) {
+    return undefined
+  }
+  return {
+    user: {
+      is: {
+        OR: [{ role: 'SUPER_ADMIN' }, { adminPortalTeamMember: true }],
+      },
+    },
+  }
+}
+
 export async function listAuditLogs(filters: AuditLogListFilters = {}) {
-  const { action, module, businessId, search, page = 1, limit = 20 } = filters
+  const { action, module, businessId, search, adminOnly, page = 1, limit = 20 } = filters
   const skip = (page - 1) * limit
   const actionWhere = buildActionWhere(action)
   const moduleWhere = buildModuleWhere(module)
+  const actorScopeWhere = buildActorScopeWhere(adminOnly)
 
   const where: Prisma.AuditLogWhereInput = {
+    ...(actorScopeWhere ?? {}),
     ...(actionWhere ?? {}),
     ...(moduleWhere ?? {}),
     ...(businessId ? { businessId } : {}),
@@ -183,8 +199,11 @@ export async function listAuditLogs(filters: AuditLogListFilters = {}) {
   }
 }
 
-export async function listAuditLogFilterOptions() {
+export async function listAuditLogFilterOptions({ adminOnly }: { adminOnly?: boolean } = {}) {
   const rows = await prisma.auditLog.findMany({
+    where: {
+      ...(buildActorScopeWhere(adminOnly) ?? {}),
+    },
     select: { entityType: true },
     distinct: ['entityType'],
     orderBy: { entityType: 'asc' },
