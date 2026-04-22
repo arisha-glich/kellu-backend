@@ -4,6 +4,7 @@ import type { ADMIN_REPORT_ROUTES } from '~/routes/admin/reports/admin-report.ro
 import {
   getAdminBusinessesReport,
   getAdminInvoicesReport,
+  getAdminPortalDashboardOverview,
   getAdminReportsSummary,
   getAdminRevenueReport,
   getAdminWorkordersReport,
@@ -31,6 +32,46 @@ function hasReportsReadPermission(user: {
 }
 
 export const ADMIN_REPORT_HANDLER: HandlerMapFromRoutes<typeof ADMIN_REPORT_ROUTES> = {
+  dashboardOverview: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (!(await hasAdminPortalAccess(user.id))) {
+      return c.json({ message: FORBIDDEN_ADMIN_PORTAL_ONLY }, HttpStatusCodes.FORBIDDEN)
+    }
+    if (!hasReportsReadPermission(user)) {
+      return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+    }
+    try {
+      const query = c.req.valid('query')
+      const range = resolveAdminReportRange(query.preset, query.from, query.to)
+      const data = await getAdminPortalDashboardOverview({ range, businessId: query.businessId })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'REPORT_READ',
+        module: 'reports',
+        newValues: { reportType: 'DASHBOARD_OVERVIEW' },
+        userId: user.id,
+        businessId: query.businessId ?? null,
+        ipAddress,
+        userAgent,
+      })
+      return c.json(
+        { message: 'Admin dashboard overview retrieved successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('DATE')) {
+        return c.json({ message: error.message }, HttpStatusCodes.BAD_REQUEST)
+      }
+      return c.json(
+        { message: 'Failed to retrieve admin dashboard overview' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
   summary: async c => {
     const user = c.get('user')
     if (!user) {

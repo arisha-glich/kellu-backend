@@ -1,5 +1,6 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
 import { UserRole } from '~/generated/prisma'
+import { appEventEmitter } from '~/lib/event-emitter'
 import prisma from '~/lib/prisma'
 import type { BUSINESS_ROUTES } from '~/routes/business/business.routes'
 import { createAuditLog } from '~/services/audit-log.service'
@@ -26,6 +27,9 @@ async function notifyBusinessUsersStatusChanged(input: {
   businessId: string
   title: string
   message: string
+  emailSubject: string
+  emailHeadline: string
+  emailBody: string
   type: string
   changedByUserId: string
 }) {
@@ -34,7 +38,14 @@ async function notifyBusinessUsersStatusChanged(input: {
     select: {
       id: true,
       name: true,
+      email: true,
       ownerId: true,
+      owner: {
+        select: {
+          email: true,
+          name: true,
+        },
+      },
       teamMembers: {
         where: { isActive: true },
         select: { userId: true },
@@ -47,7 +58,9 @@ async function notifyBusinessUsersStatusChanged(input: {
   }
 
   const recipientIds = Array.from(
-    new Set([business.ownerId, ...business.teamMembers.map(member => member.userId)].filter(Boolean))
+    new Set(
+      [business.ownerId, ...business.teamMembers.map(member => member.userId)].filter(Boolean)
+    )
   ) as string[]
 
   if (recipientIds.length === 0) {
@@ -69,6 +82,33 @@ async function notifyBusinessUsersStatusChanged(input: {
       })
     )
   )
+
+  const emailRecipients = Array.from(
+    new Set([business.owner?.email, business.email].filter(Boolean))
+  ) as string[]
+
+  if (emailRecipients.length === 0) {
+    return
+  }
+
+  const contactName = business.owner?.name?.trim() || business.name
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+      <h2 style="margin: 0 0 12px;">${input.emailHeadline}</h2>
+      <p style="margin: 0 0 10px;">Hello ${contactName},</p>
+      <p style="margin: 0 0 10px;">${input.emailBody}</p>
+      <p style="margin: 0 0 10px;">
+        If you need assistance, please contact your Kellu administrator or support team.
+      </p>
+      <p style="margin: 0;">Regards,<br/>Kellu Team</p>
+    </div>
+  `
+
+  appEventEmitter.emitSendMail({
+    to: emailRecipients,
+    subject: input.emailSubject,
+    html,
+  })
 }
 
 export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
@@ -405,6 +445,16 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
           type: 'BUSINESS_STATUS_UPDATED',
           title: 'Business Status Updated',
           message: `Your business status was changed to ${result.status} by an admin.`,
+          emailSubject:
+            result.status === 'Active'
+              ? 'Congratulations! Your business account is active'
+              : 'Your business account is inactive',
+          emailHeadline:
+            result.status === 'Active' ? 'Business Account Activated' : 'Business Account Inactive',
+          emailBody:
+            result.status === 'Active'
+              ? 'Congratulations. Your business account has been activated and you can continue using the business portal.'
+              : 'Your business account has been marked as inactive for administrative reasons. Please contact your administrator for further details.',
           changedByUserId: user.id,
         })
       } catch (notificationError) {
@@ -454,6 +504,10 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
           type: 'BUSINESS_SUSPENDED_BY_ADMIN',
           title: 'Business Suspended',
           message: 'Your business was suspended by an admin.',
+          emailSubject: 'Your business account has been suspended',
+          emailHeadline: 'Business Account Suspended',
+          emailBody:
+            'Your business account has been suspended by an administrator. Please contact your administrator for support and next steps.',
           changedByUserId: user.id,
         })
       } catch (notificationError) {
@@ -506,6 +560,10 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
           type: 'BUSINESS_UNSUSPENDED_BY_ADMIN',
           title: 'Business Unsuspended',
           message: 'Your business was unsuspended by an admin.',
+          emailSubject: 'Your business account has been reactivated',
+          emailHeadline: 'Business Account Reactivated',
+          emailBody:
+            'Good news. Your business account has been reactivated by an administrator, and access to the business portal is now restored.',
           changedByUserId: user.id,
         })
       } catch (notificationError) {

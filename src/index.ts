@@ -102,10 +102,7 @@ app.use('*', async (c, next) => {
 // ✅ 3. Auth routes
 app.on(['POST', 'GET'], '/api/auth/*', async c => {
   if (await isInactiveBusinessLoginAttempt(c.req.raw)) {
-    return c.json(
-      { message: 'Your business account is inactive. Please contact support.' },
-      403
-    )
+    return c.json({ message: 'Your business account is inactive. Please contact support.' }, 403)
   }
 
   return auth.handler(c.req.raw)

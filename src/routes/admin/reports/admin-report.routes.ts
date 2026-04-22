@@ -85,6 +85,25 @@ const AdminSummaryReportSchema = z.object({
   invoices: AdminInvoicesReportSchema.optional(),
 })
 
+const AdminPortalSystemHealthSchema = z.object({
+  serverUptimePercent: z.number(),
+  activeSessions: z.number().int(),
+  suspendedAccounts: z.number().int(),
+  failedLogins24h: z.number().int(),
+})
+
+const AdminPortalDashboardOverviewSchema = z.object({
+  totalBusinesses: z.number().int(),
+  totalRevenue: z.number(),
+  totalWorkordersCreated: z.number().int(),
+  totalUsers: z.number().int(),
+  invoicesGenerated: z.number().int(),
+  activeBusinesses: z.number().int(),
+  inactiveBusinesses: z.number().int(),
+  suspendedAccounts: z.number().int(),
+  systemHealth: AdminPortalSystemHealthSchema,
+})
+
 const commonErrorResponses = {
   [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Bad request'),
   [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
@@ -93,6 +112,22 @@ const commonErrorResponses = {
 } as const
 
 export const ADMIN_REPORT_ROUTES = {
+  dashboardOverview: createRoute({
+    method: 'get',
+    tags: ['Admin Reports'],
+    path: '/dashboard-overview',
+    summary:
+      'Admin portal dashboard overview cards (includes totalWorkordersCreated for Total Workorders Created UI card)',
+    request: { query: AdminReportQuerySchema },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(
+        zodResponseSchema(AdminPortalDashboardOverviewSchema),
+        'OK'
+      ),
+      ...commonErrorResponses,
+    },
+  }),
+
   summary: createRoute({
     method: 'get',
     tags: ['Admin Reports'],

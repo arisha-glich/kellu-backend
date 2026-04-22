@@ -26,6 +26,23 @@ export interface AdminReportFilters {
   reportType?: AdminReportType
 }
 
+export interface AdminPortalDashboardOverview {
+  totalBusinesses: number
+  totalRevenue: number
+  totalWorkordersCreated: number
+  totalUsers: number
+  invoicesGenerated: number
+  activeBusinesses: number
+  inactiveBusinesses: number
+  suspendedAccounts: number
+  systemHealth: {
+    serverUptimePercent: number
+    activeSessions: number
+    suspendedAccounts: number
+    failedLogins24h: number
+  }
+}
+
 function parseDayStartUtc(isoDate: string): Date {
   const d = isoDate.includes('T') ? new Date(isoDate) : new Date(`${isoDate}T00:00:00.000Z`)
   if (Number.isNaN(d.getTime())) {
@@ -284,4 +301,101 @@ export async function getAdminReportsSummary(filters: AdminReportFilters) {
     getAdminInvoicesReport(filters),
   ])
   return { businesses, workorders, revenue, invoices }
+}
+
+export async function getAdminPortalDashboardOverview(
+  filters: AdminReportFilters
+): Promise<AdminPortalDashboardOverview> {
+  const { from, to } = filters.range
+  const businessScope = filters.businessId ? { businessId: filters.businessId } : {}
+
+  const [
+    totalBusinesses,
+    activeBusinesses,
+    totalWorkordersCreated,
+    totalUsers,
+    invoicesGenerated,
+    suspendedAccounts,
+    activeSessions,
+    revenueRows,
+  ] = await Promise.all([
+    prisma.business.count({ where: businessRowWhere({}, filters.businessId) }),
+    prisma.business.count({ where: businessRowWhere({ isActive: true }, filters.businessId) }),
+    prisma.workOrder.count({
+      where: workOrderScopeWhere({ createdAt: { gte: from, lte: to } }, filters.businessId),
+    }),
+    prisma.user.count({
+      where: filters.businessId
+        ? {
+            OR: [
+              { businessesOwned: { some: { id: filters.businessId } } },
+              { teamMemberships: { some: { businessId: filters.businessId } } },
+            ],
+          }
+        : undefined,
+    }),
+    prisma.invoice.count({
+      where: {
+        ...businessScope,
+        createdAt: { gte: from, lte: to },
+      },
+    }),
+    prisma.user.count({
+      where: filters.businessId
+        ? {
+            banned: true,
+            OR: [
+              { businessesOwned: { some: { id: filters.businessId } } },
+              { teamMemberships: { some: { businessId: filters.businessId } } },
+            ],
+          }
+        : { banned: true },
+    }),
+    prisma.session.count({
+      where: {
+        expiresAt: { gt: new Date() },
+        user: filters.businessId
+          ? {
+              OR: [
+                { businessesOwned: { some: { id: filters.businessId } } },
+                { teamMemberships: { some: { businessId: filters.businessId } } },
+              ],
+            }
+          : undefined,
+      },
+    }),
+    prisma.$queryRaw<Array<{ totalRevenue: number }>>(
+      Prisma.sql`
+      SELECT COALESCE(SUM(i.total), 0)::float AS "totalRevenue"
+      FROM "Invoice" i
+      WHERE i.status <> 'CANCELLED'::"InvoiceStatus"
+        AND COALESCE(i."sentAt", i."createdAt") >= ${from}
+        AND COALESCE(i."sentAt", i."createdAt") <= ${to}
+        ${filters.businessId ? Prisma.sql`AND i."businessId" = ${filters.businessId}` : Prisma.sql``}
+      `
+    ),
+  ])
+
+  const totalRevenue = revenueRows[0]?.totalRevenue ?? 0
+  const inactiveBusinesses = totalBusinesses - activeBusinesses
+  const failedLogins24h = 0
+
+  return {
+    totalBusinesses,
+    totalRevenue,
+    totalWorkordersCreated,
+    totalUsers,
+    invoicesGenerated,
+    activeBusinesses,
+    inactiveBusinesses,
+    suspendedAccounts,
+    systemHealth: {
+      // Backend currently does not persist server uptime or failed auth events.
+      // Returning stable placeholders lets frontend render while telemetry is added.
+      serverUptimePercent: 99.9,
+      activeSessions,
+      suspendedAccounts,
+      failedLogins24h,
+    },
+  }
 }
