@@ -768,17 +768,19 @@ export async function toggleBusinessStatus(id: string, status: boolean) {
     throw new BusinessNotFoundError()
   }
 
-  if (business.ownerId) {
-    await prisma.user.update({
-      where: { id: business.ownerId },
-      data: { banned: !status },
-    })
-  } else {
-    await prisma.business.update({
+  await prisma.$transaction(async tx => {
+    await tx.business.update({
       where: { id },
       data: { isActive: status },
     })
-  }
+
+    if (business.ownerId) {
+      await tx.user.update({
+        where: { id: business.ownerId },
+        data: { banned: !status },
+      })
+    }
+  })
 
   return { id, status: status ? 'Active' : 'Inactive' }
 }

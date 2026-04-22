@@ -3,12 +3,61 @@ import { registerRoutes } from '~/app'
 import { auth } from '~/lib/auth'
 import configureOpenAPI from '~/lib/configure-open-api'
 import createApp from '~/lib/create-app'
+import prisma from '~/lib/prisma'
 import { registerEmailListeners } from '~/services/email-helpers'
 import { ORIGINS } from './config/origins'
 import type { AppBindings } from './types'
 
 registerEmailListeners()
 const app = createApp()
+
+async function isInactiveBusinessLoginAttempt(request: Request): Promise<boolean> {
+  if (request.method !== 'POST') {
+    return false
+  }
+
+  const pathname = new URL(request.url).pathname
+  if (!pathname.includes('/sign-in')) {
+    return false
+  }
+
+  const body = (await request
+    .clone()
+    .json()
+    .catch(() => null)) as { email?: string } | null
+  const email = body?.email?.trim().toLowerCase()
+  if (!email) {
+    return false
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      role: true,
+      adminPortalTeamMember: true,
+      businessesOwned: { select: { id: true, isActive: true } },
+      teamMemberships: {
+        where: { isActive: true },
+        select: { business: { select: { id: true, isActive: true } } },
+      },
+    },
+  })
+
+  if (!user) {
+    return false
+  }
+
+  // Super admins and admin-portal team users are never blocked by business state.
+  if (user.role === 'SUPER_ADMIN' || user.adminPortalTeamMember) {
+    return false
+  }
+
+  const hasInactiveOwnedBusiness = user.businessesOwned.some(b => !b.isActive)
+  const hasInactiveTeamBusiness = user.teamMemberships.some(m => !m.business.isActive)
+
+  return hasInactiveOwnedBusiness || hasInactiveTeamBusiness
+}
 
 // ✅ 1. CORS must be first — handles preflight OPTIONS before anything else
 app.use(
@@ -51,7 +100,14 @@ app.use('*', async (c, next) => {
 })
 
 // ✅ 3. Auth routes
-app.on(['POST', 'GET'], '/api/auth/*', c => {
+app.on(['POST', 'GET'], '/api/auth/*', async c => {
+  if (await isInactiveBusinessLoginAttempt(c.req.raw)) {
+    return c.json(
+      { message: 'Your business account is inactive. Please contact support.' },
+      403
+    )
+  }
+
   return auth.handler(c.req.raw)
 })
 

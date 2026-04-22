@@ -22,6 +22,55 @@ function getClientMeta(c: { req: { header: (k: string) => string | undefined } }
   return { ipAddress, userAgent }
 }
 
+async function notifyBusinessUsersStatusChanged(input: {
+  businessId: string
+  title: string
+  message: string
+  type: string
+  changedByUserId: string
+}) {
+  const business = await prisma.business.findUnique({
+    where: { id: input.businessId },
+    select: {
+      id: true,
+      name: true,
+      ownerId: true,
+      teamMembers: {
+        where: { isActive: true },
+        select: { userId: true },
+      },
+    },
+  })
+
+  if (!business) {
+    return
+  }
+
+  const recipientIds = Array.from(
+    new Set([business.ownerId, ...business.teamMembers.map(member => member.userId)].filter(Boolean))
+  ) as string[]
+
+  if (recipientIds.length === 0) {
+    return
+  }
+
+  await Promise.all(
+    recipientIds.map(userId =>
+      createUserNotification({
+        userId,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        metadata: {
+          businessId: business.id,
+          businessName: business.name,
+          changedByUserId: input.changedByUserId,
+        },
+      })
+    )
+  )
+}
+
 export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
   getBusinesses: async c => {
     const user = c.get('user')
@@ -329,6 +378,12 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
+    if (!user.isAdmin) {
+      return c.json(
+        { message: 'Only super admins can activate or deactivate businesses' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     try {
       const { id } = c.req.valid('param')
       const { status } = await c.req.valid('json')
@@ -344,6 +399,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         ipAddress,
         userAgent,
       })
+      try {
+        await notifyBusinessUsersStatusChanged({
+          businessId: id,
+          type: 'BUSINESS_STATUS_UPDATED',
+          title: 'Business Status Updated',
+          message: `Your business status was changed to ${result.status} by an admin.`,
+          changedByUserId: user.id,
+        })
+      } catch (notificationError) {
+        console.error('Failed to create business status update notification:', notificationError)
+      }
       return c.json(
         { message: 'Business status updated successfully', success: true, data: result },
         HttpStatusCodes.OK
@@ -362,6 +428,12 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
+    if (!user.isAdmin) {
+      return c.json(
+        { message: 'Only super admins can suspend businesses' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     try {
       const { id } = c.req.valid('param')
       const result = await businessService.suspendBusiness(id)
@@ -376,6 +448,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         ipAddress,
         userAgent,
       })
+      try {
+        await notifyBusinessUsersStatusChanged({
+          businessId: id,
+          type: 'BUSINESS_SUSPENDED_BY_ADMIN',
+          title: 'Business Suspended',
+          message: 'Your business was suspended by an admin.',
+          changedByUserId: user.id,
+        })
+      } catch (notificationError) {
+        console.error('Failed to create business suspended notification:', notificationError)
+      }
       return c.json(
         { message: 'Business suspended successfully', success: true, data: result },
         HttpStatusCodes.OK
@@ -397,6 +480,12 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
     if (!user) {
       return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
     }
+    if (!user.isAdmin) {
+      return c.json(
+        { message: 'Only super admins can unsuspend businesses' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     try {
       const { id } = c.req.valid('param')
       const result = await businessService.unsuspendBusiness(id)
@@ -411,6 +500,17 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         ipAddress,
         userAgent,
       })
+      try {
+        await notifyBusinessUsersStatusChanged({
+          businessId: id,
+          type: 'BUSINESS_UNSUSPENDED_BY_ADMIN',
+          title: 'Business Unsuspended',
+          message: 'Your business was unsuspended by an admin.',
+          changedByUserId: user.id,
+        })
+      } catch (notificationError) {
+        console.error('Failed to create business unsuspended notification:', notificationError)
+      }
       return c.json(
         { message: 'Business unsuspended successfully', success: true, data: result },
         HttpStatusCodes.OK
