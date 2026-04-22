@@ -2,7 +2,7 @@ import prisma from '~/lib/prisma'
 
 /** Machine keys referenced by application code for gating automations. */
 export const PlatformNotificationEventKey = {
-  NEW_BUSINESS_LOGIN: 'NEW_BUSINESS_LOGIN',
+  NEW_BUSINESS_REGISTRATION: 'NEW_BUSINESS_REGISTRATION',
   WORK_ORDER_COMPLETED: 'WORK_ORDER_COMPLETED',
   USER_INVITATION: 'USER_INVITATION',
   QUOTE_REJECTED_BY_CLIENT: 'QUOTE_REJECTED_BY_CLIENT',
@@ -25,9 +25,9 @@ const DEFAULT_RULES: Array<{
   sortOrder: number
 }> = [
   {
-    eventKey: PlatformNotificationEventKey.NEW_BUSINESS_LOGIN,
-    eventName: 'New Business Login',
-    triggerDescription: 'On new business login',
+    eventKey: PlatformNotificationEventKey.NEW_BUSINESS_REGISTRATION,
+    eventName: 'New Business Registration',
+    triggerDescription: 'On new business registration',
     isActive: true,
     sortOrder: 5,
   },

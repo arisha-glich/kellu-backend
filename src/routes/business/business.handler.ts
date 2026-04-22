@@ -111,7 +111,7 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
       })
       try {
         const isRuleActive = await isPlatformNotificationRuleActive(
-          PlatformNotificationEventKey.NEW_BUSINESS_LOGIN
+          PlatformNotificationEventKey.NEW_BUSINESS_REGISTRATION
         )
         if (isRuleActive) {
           const adminUsers = await prisma.user.findMany({
@@ -122,9 +122,9 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
             adminUsers.map(adminUser =>
               createUserNotification({
                 userId: adminUser.id,
-                type: 'NEW_BUSINESS_LOGIN',
-                title: 'New Business Login',
-                message: `${business.companyName} logged in successfully.`,
+                type: 'NEW_BUSINESS_REGISTRATION',
+                title: 'New Business Registration',
+                message: `${business.companyName} was created successfully.`,
                 metadata: {
                   businessId: business.id,
                   businessName: business.companyName,
@@ -135,7 +135,10 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
           )
         }
       } catch (notificationError) {
-        console.error('Failed to create admin notification for business login:', notificationError)
+        console.error(
+          'Failed to create admin notification for business registration:',
+          notificationError
+        )
       }
       return c.json(
         { message: 'Business created successfully', success: true, data: business },
