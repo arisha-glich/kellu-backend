@@ -451,7 +451,7 @@ model Quote {
   endTime     String?
 
   clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   assignedToId String?
@@ -541,7 +541,7 @@ model Invoice {
   updatedAt DateTime @updatedAt
 
   clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   businessId   String
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   workOrderId  String?

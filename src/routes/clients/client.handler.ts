@@ -3,22 +3,20 @@ import { ClientStatus, UserRole } from '~/generated/prisma'
 import type { CLIENT_ROUTES } from '~/routes/clients/client.routes'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import {
-  ClientEmailRequiredError,
   ClientNotFoundError,
   ClientReminderNotFoundError,
   createClient,
   createClientCustomerReminder,
   deleteClientByClientId,
   deleteClientCustomerReminderById,
-  EmailAlreadyUsedError,
   getClientByClientId,
   getClientCustomerReminderById,
-  getClientMessageTemplate,
   getClientStatistics,
   getClients,
   getLatestClientMessageTemplate,
   getLeadSources,
   listClientCustomerReminders,
+  sendClientMessageTemplateBulk,
   updateClientByClientId,
   updateClientCustomerReminderById,
 } from '~/services/client.service'
@@ -255,9 +253,6 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
       if (error instanceof BusinessNotFoundError) {
         return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
       }
-      if (error instanceof EmailAlreadyUsedError) {
-        return c.json({ message: 'Email already in use' }, HttpStatusCodes.CONFLICT)
-      }
       console.error('Error creating client:', error)
       return c.json({ message: 'Failed to create client' }, HttpStatusCodes.INTERNAL_SERVER_ERROR)
     }
@@ -401,26 +396,16 @@ export const CLIENT_HANDLER: HandlerMapFromRoutes<typeof CLIENT_ROUTES> = {
           HttpStatusCodes.FORBIDDEN
         )
       }
-      const { clientId } = c.req.valid('param')
       const body = await c.req.valid('json')
-      const template = await getClientMessageTemplate(clientId, body.status, user.id)
+      const result = await sendClientMessageTemplateBulk(body.status, body.recipients, user.id)
       return c.json(
-        { message: 'Client message sent successfully', success: true, data: template },
+        { message: 'Client messages processed', success: true, data: result },
         HttpStatusCodes.OK
       )
     } catch (error) {
-      if (error instanceof ClientNotFoundError) {
-        return c.json({ message: 'Client not found' }, HttpStatusCodes.NOT_FOUND)
-      }
-      if (error instanceof ClientEmailRequiredError) {
-        return c.json(
-          { message: 'Client email is required to send this message' },
-          HttpStatusCodes.BAD_REQUEST
-        )
-      }
-      console.error('Error fetching client message template:', error)
+      console.error('Error processing client message template request:', error)
       return c.json(
-        { message: 'Failed to retrieve client message template' },
+        { message: 'Failed to process client message template request' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

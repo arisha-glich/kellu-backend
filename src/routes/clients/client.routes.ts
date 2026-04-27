@@ -155,6 +155,21 @@ export const UpdateClientBodySchema = z
 export const ClientMessageTemplateBodySchema = z.object({
   status: ClientMessageStatusEnum,
 })
+const ClientMessageTemplateBulkItemSchema = z.object({
+  clientId: z.string().min(1),
+  subjectTemplate: z.string().min(1).optional(),
+  messageTemplate: z.string().min(1).optional(),
+})
+export const ClientMessageTemplateSendBodySchema = z
+  .object({
+    status: ClientMessageStatusEnum,
+    recipients: z.array(ClientMessageTemplateBulkItemSchema).min(1),
+  })
+  .refine(
+    body =>
+      new Set(body.recipients.map(recipient => recipient.clientId)).size === body.recipients.length,
+    { message: 'Duplicate clientId values are not allowed', path: ['recipients'] }
+  )
 export const ClientMessageTemplateQuerySchema = z.object({
   status: ClientMessageStatusEnum,
 })
@@ -166,6 +181,19 @@ export const ClientMessageTemplateResponseSchema = z.object({
   messageTemplate: z.string(),
   subjectPreview: z.string(),
   messagePreview: z.string(),
+})
+export const ClientMessageTemplateSendResponseSchema = z.object({
+  total: z.number().int(),
+  sent: z.number().int(),
+  failed: z.number().int(),
+  results: z.array(
+    z.object({
+      clientId: z.string(),
+      success: z.boolean(),
+      data: ClientMessageTemplateResponseSchema.optional(),
+      error: z.string().optional(),
+    })
+  ),
 })
 
 export const LeadSourceOptionSchema = z.object({
@@ -278,7 +306,6 @@ export const CLIENT_ROUTES = {
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business not found'),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
-      [HttpStatusCodes.CONFLICT]: jsonContent(zodResponseSchema(), 'Client already exists'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
@@ -340,22 +367,24 @@ export const CLIENT_ROUTES = {
   sendMessageTemplate: createRoute({
     method: 'post',
     tags: ['Clients'],
-    path: '/{clientId}/message-template',
-    summary: 'Get client message template for Send Offer or Maintenance follow-up',
+    path: '/message-template',
+    summary:
+      'Send a client message template to multiple clients with same or custom templates per recipient',
     request: {
-      params: ClientOnlyParamsSchema,
       body: jsonContentRequired(
-        ClientMessageTemplateBodySchema,
-        'Message template payload with status'
+        ClientMessageTemplateSendBodySchema,
+        'Message template send payload'
       ),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(
-        zodResponseSchema(ClientMessageTemplateResponseSchema),
+        zodResponseSchema(ClientMessageTemplateSendResponseSchema),
         'OK'
       ),
-      [HttpStatusCodes.BAD_REQUEST]: jsonContent(zodResponseSchema(), 'Client email missing'),
-      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Client not found'),
+      [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+        zodResponseSchema(),
+        'One or more clients missing email'
+      ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),

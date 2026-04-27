@@ -10,12 +10,6 @@ export class ClientNotFoundError extends Error {
   }
 }
 
-export class EmailAlreadyUsedError extends Error {
-  constructor() {
-    super('EMAIL_ALREADY_USED')
-  }
-}
-
 export class ClientEmailRequiredError extends Error {
   constructor() {
     super('CLIENT_EMAIL_REQUIRED')
@@ -77,6 +71,22 @@ export interface ClientMessageTemplateResult {
   messageTemplate: string
   subjectPreview: string
   messagePreview: string
+}
+export interface BulkClientMessageRecipientInput {
+  clientId: string
+  subjectTemplate?: string
+  messageTemplate?: string
+}
+export interface BulkClientMessageResult {
+  total: number
+  sent: number
+  failed: number
+  results: Array<{
+    clientId: string
+    success: boolean
+    data?: ClientMessageTemplateResult
+    error?: string
+  }>
 }
 
 interface ClientMessageTemplateVariables {
@@ -141,18 +151,6 @@ async function ensureBusinessExists(businessId: string): Promise<void> {
 
 export async function createClient(businessId: string, data: CreateClientInput) {
   await ensureBusinessExists(businessId)
-
-  if (data.email) {
-    const existing = await prisma.client.findFirst({
-      where: {
-        businessId,
-        email: { equals: data.email, mode: 'insensitive' },
-      },
-    })
-    if (existing) {
-      throw new EmailAlreadyUsedError()
-    }
-  }
 
   const client = await prisma.client.create({
     data: {
@@ -513,9 +511,12 @@ function toHtmlFromPlainText(text: string): string {
 function buildClientMessageTemplateResult(
   status: ClientMessageStatus,
   to: string | null,
-  variables: ClientMessageTemplateVariables
+  variables: ClientMessageTemplateVariables,
+  overrides?: { subjectTemplate?: string; messageTemplate?: string }
 ): ClientMessageTemplateResult {
-  const { subjectTemplate, messageTemplate } = buildTemplateContent(status)
+  const defaults = buildTemplateContent(status)
+  const subjectTemplate = overrides?.subjectTemplate ?? defaults.subjectTemplate
+  const messageTemplate = overrides?.messageTemplate ?? defaults.messageTemplate
   return {
     status,
     to,
@@ -630,7 +631,29 @@ export async function getClientMessageTemplate(
     currentDate: formatCurrentDateForTemplate(new Date()),
   }
   const messageData = buildClientMessageTemplateResult(status, client.email, variables)
+  await sendClientTemplateMessage({
+    client: { ...client, email: client.email },
+    status,
+    senderUserId,
+    messageData,
+  })
 
+  return messageData
+}
+
+async function sendClientTemplateMessage(input: {
+  client: {
+    id: string
+    name: string
+    email: string
+    businessId: string
+    business: { name: string; email: string }
+  }
+  status: ClientMessageStatus
+  senderUserId?: string
+  messageData: ClientMessageTemplateResult
+}) {
+  const { client, status, senderUserId, messageData } = input
   await emailService.send({
     to: client.email,
     subject: messageData.subjectPreview,
@@ -649,8 +672,81 @@ export async function getClientMessageTemplate(
       newValues: messageData as unknown as Prisma.InputJsonValue,
     },
   })
+}
 
-  return messageData
+export async function sendClientMessageTemplateBulk(
+  status: ClientMessageStatus,
+  recipients: BulkClientMessageRecipientInput[],
+  senderUserId?: string
+): Promise<BulkClientMessageResult> {
+  const results: BulkClientMessageResult['results'] = []
+  for (const recipient of recipients) {
+    try {
+      const client = await prisma.client.findUnique({
+        where: { id: recipient.clientId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          businessId: true,
+          business: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      })
+      if (!client) {
+        throw new ClientNotFoundError()
+      }
+      if (!client.email) {
+        throw new ClientEmailRequiredError()
+      }
+      const variables = {
+        clientName: client.name,
+        companyName: client.business.name,
+        defaultEmail: client.business.email,
+        currentDate: formatCurrentDateForTemplate(new Date()),
+      }
+      const messageData = buildClientMessageTemplateResult(status, client.email, variables, {
+        subjectTemplate: recipient.subjectTemplate,
+        messageTemplate: recipient.messageTemplate,
+      })
+      await sendClientTemplateMessage({
+        client: { ...client, email: client.email },
+        status,
+        senderUserId,
+        messageData,
+      })
+      results.push({
+        clientId: recipient.clientId,
+        success: true,
+        data: messageData,
+      })
+    } catch (error) {
+      const errorMessage =
+        error instanceof ClientNotFoundError
+          ? 'Client not found'
+          : error instanceof ClientEmailRequiredError
+            ? 'Client email is required to send this message'
+            : 'Failed to send client message'
+      results.push({
+        clientId: recipient.clientId,
+        success: false,
+        error: errorMessage,
+      })
+    }
+  }
+
+  const sent = results.filter(item => item.success).length
+  const failed = results.length - sent
+  return {
+    total: results.length,
+    sent,
+    failed,
+    results,
+  }
 }
 
 export async function listClientCustomerReminders(businessId: string, clientId: string) {
