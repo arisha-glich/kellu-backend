@@ -216,7 +216,8 @@ const ClientReminderOverviewSchema = z.object({
       note: z.string().nullable(),
     })
     .nullable(),
-  reminders: z.array(ClientReminderSchema),
+  scheduledReminders: z.array(ClientReminderSchema),
+  triggeredReminders: z.array(ClientReminderSchema),
 })
 
 const CreateClientReminderBodySchema = z.object({

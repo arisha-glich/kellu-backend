@@ -4,11 +4,23 @@ import { auth } from '~/lib/auth'
 import configureOpenAPI from '~/lib/configure-open-api'
 import createApp from '~/lib/create-app'
 import prisma from '~/lib/prisma'
+import { triggerDueClientReminders } from '~/services/client.service'
 import { registerEmailListeners } from '~/services/email-helpers'
 import { ORIGINS } from './config/origins'
 import type { AppBindings } from './types'
 
 registerEmailListeners()
+const CLIENT_REMINDER_TRIGGER_INTERVAL_MS = 30 * 60_000
+
+void triggerDueClientReminders().catch(error => {
+  console.error('[client-reminders] initial trigger check failed:', error)
+})
+setInterval(() => {
+  void triggerDueClientReminders().catch(error => {
+    console.error('[client-reminders] periodic trigger check failed:', error)
+  })
+}, CLIENT_REMINDER_TRIGGER_INTERVAL_MS)
+
 const app = createApp()
 
 async function isInactiveBusinessLoginAttempt(request: Request): Promise<boolean> {

@@ -751,6 +751,8 @@ export async function sendClientMessageTemplateBulk(
 
 export async function listClientCustomerReminders(businessId: string, clientId: string) {
   await ensureBusinessExists(businessId)
+  await triggerDueClientRemindersForBusiness(businessId)
+
   const clientRecord = await prisma.client.findFirst({
     where: { id: clientId, businessId },
     select: { id: true, reminderDate: true, reminderNote: true },
@@ -764,21 +766,129 @@ export async function listClientCustomerReminders(businessId: string, clientId: 
     orderBy: { sentAt: 'desc' },
   })
 
+  const isValidReminderDate = (date: Date): boolean => {
+    const year = date.getUTCFullYear()
+    return year >= 2000 && year <= 2100
+  }
+  const toReminderDto = (item: { id: string; sentAt: Date; note: string | null; createdAt: Date }) => ({
+    id: item.id,
+    dateTime: item.sentAt,
+    note: item.note ?? null,
+    createdAt: item.createdAt,
+  })
+  const isTriggeredReminder = (item: { sentAt: Date; createdAt: Date }) =>
+    item.createdAt.getTime() >= item.sentAt.getTime()
+
+  const validReminderLogs = reminderLogs.filter(item => isValidReminderDate(item.sentAt))
+  const uniqueByDateTime = <T extends { sentAt: Date; createdAt: Date }>(
+    logs: T[],
+    keep: 'earliest' | 'latest'
+  ): T[] => {
+    const map = new Map<number, T>()
+    for (const item of logs) {
+      const key = item.sentAt.getTime()
+      const prev = map.get(key)
+      if (!prev) {
+        map.set(key, item)
+        continue
+      }
+      const shouldReplace =
+        keep === 'latest'
+          ? item.createdAt.getTime() > prev.createdAt.getTime()
+          : item.createdAt.getTime() < prev.createdAt.getTime()
+      if (shouldReplace) {
+        map.set(key, item)
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())
+  }
+
+  const scheduledReminders = uniqueByDateTime(
+    validReminderLogs.filter(item => !isTriggeredReminder(item)),
+    'earliest'
+  ).map(toReminderDto)
+  const triggeredReminders = uniqueByDateTime(
+    validReminderLogs.filter(isTriggeredReminder),
+    'latest'
+  ).map(toReminderDto)
+  const now = new Date()
+
   return {
     upcomingReminder:
-      clientRecord.reminderDate != null
+      clientRecord.reminderDate != null && clientRecord.reminderDate.getTime() > now.getTime()
         ? {
             dateTime: clientRecord.reminderDate,
             note: clientRecord.reminderNote ?? null,
           }
         : null,
-    reminders: reminderLogs.map(item => ({
-      id: item.id,
-      dateTime: item.sentAt,
-      note: item.note ?? null,
-      createdAt: item.createdAt,
-    })),
+    scheduledReminders,
+    triggeredReminders,
   }
+}
+
+async function triggerDueClientRemindersForBusiness(businessId: string): Promise<number> {
+  const now = new Date()
+  const dueClients = await prisma.client.findMany({
+    where: {
+      businessId,
+      reminderDate: { lte: now },
+    },
+    select: { id: true, businessId: true, reminderDate: true, reminderNote: true },
+  })
+
+  let triggeredCount = 0
+  for (const dueClient of dueClients) {
+    if (!dueClient.reminderDate) {
+      continue
+    }
+    const dueDate = dueClient.reminderDate
+    const triggered = await prisma.$transaction(async tx => {
+      const claim = await tx.client.updateMany({
+        where: {
+          id: dueClient.id,
+          businessId: dueClient.businessId,
+          reminderDate: dueDate,
+        },
+        data: {
+          status: 'FOLLOW_UP',
+          reminderDate: null,
+          reminderNote: null,
+        },
+      })
+      if (claim.count === 0) {
+        return false
+      }
+      await tx.reminderLog.create({
+        data: {
+          reminderType: 'CLIENT_FOLLOW_UP',
+          sentAt: dueDate,
+          note: dueClient.reminderNote ?? null,
+          channel: 'EMAIL',
+          entityType: 'CLIENT',
+          entityId: dueClient.id,
+          clientId: dueClient.id,
+          businessId: dueClient.businessId,
+        },
+      })
+      return true
+    })
+    if (triggered) {
+      triggeredCount += 1
+    }
+  }
+
+  return triggeredCount
+}
+
+export async function triggerDueClientReminders(): Promise<number> {
+  const businesses = await prisma.business.findMany({
+    select: { id: true },
+  })
+  let totalTriggered = 0
+  for (const business of businesses) {
+    totalTriggered += await triggerDueClientRemindersForBusiness(business.id)
+  }
+  return totalTriggered
 }
 
 export async function createClientCustomerReminder(
@@ -801,7 +911,6 @@ export async function createClientCustomerReminder(
       data: {
         reminderDate: data.dateTime,
         reminderNote: data.note ?? null,
-        status: 'FOLLOW_UP',
       },
     })
 
@@ -839,7 +948,7 @@ export async function getClientCustomerReminderById(
   const reminder = await prisma.reminderLog.findFirst({
     where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
   })
-  if (!reminder) {
+  if (!reminder || reminder.createdAt.getTime() >= reminder.sentAt.getTime()) {
     throw new ClientReminderNotFoundError()
   }
 
@@ -869,7 +978,7 @@ export async function updateClientCustomerReminderById(
   const existing = await prisma.reminderLog.findFirst({
     where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
   })
-  if (!existing) {
+  if (!existing || existing.createdAt.getTime() >= existing.sentAt.getTime()) {
     throw new ClientReminderNotFoundError()
   }
 
@@ -916,9 +1025,9 @@ export async function deleteClientCustomerReminderById(
 
   const existing = await prisma.reminderLog.findFirst({
     where: { id: reminderId, businessId, clientId: client.id, reminderType: 'CLIENT_FOLLOW_UP' },
-    select: { id: true, sentAt: true },
+    select: { id: true, sentAt: true, createdAt: true },
   })
-  if (!existing) {
+  if (!existing || existing.createdAt.getTime() >= existing.sentAt.getTime()) {
     throw new ClientReminderNotFoundError()
   }
 
