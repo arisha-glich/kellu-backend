@@ -7,7 +7,7 @@ import type { WORK_ORDER_ROUTES } from '~/routes/workorders/workorder.routes'
 import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
 import { createExpenseForWorkOrder, listExpensesByWorkOrder } from '~/services/expense.service'
-import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
+import { createUserNotification } from '~/services/notifications.service'
 import { hasPermission } from '~/services/permission.service'
 import { listPriceListItems } from '~/services/price-list.service'
 import {
@@ -72,6 +72,37 @@ function getClientMeta(c: { req: { header: (k: string) => string | undefined } }
   const ipAddress = forwarded?.split(',')[0]?.trim() || null
   const userAgent = c.req.header('user-agent') ?? null
   return { ipAddress, userAgent }
+}
+
+function toTeamMemberWorkOrderDetail(
+  workOrder: Awaited<ReturnType<typeof getWorkOrderById>>
+): Record<string, unknown> {
+  return {
+    id: workOrder.id,
+    workOrderNumber: workOrder.workOrderNumber,
+    title: workOrder.title,
+    address: workOrder.address,
+    instructions: workOrder.instructions,
+    isScheduleLater: workOrder.isScheduleLater,
+    isAnyTime: workOrder.isAnyTime,
+    scheduledAt: workOrder.scheduledAt,
+    startTime: workOrder.startTime,
+    endTime: workOrder.endTime,
+    jobStatus: workOrder.jobStatus,
+    createdAt: workOrder.createdAt,
+    updatedAt: workOrder.updatedAt,
+    client: workOrder.client,
+    assignees: workOrder.assignees,
+    // Team members should not receive financial amounts from job details.
+    lineItems: workOrder.lineItems.map(item => ({
+      id: item.id,
+      name: item.name,
+      itemType: item.itemType,
+      description: item.description,
+      quantity: item.quantity,
+    })),
+    attachments: workOrder.attachments,
+  }
 }
 
 export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> = {
@@ -213,8 +244,10 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       }
       const { workOrderId } = c.req.valid('param')
       const workOrder = await getWorkOrderById(businessId, workOrderId)
+      const isTeamMember = user.isOwner !== true
+      const detailView = isTeamMember ? toTeamMemberWorkOrderDetail(workOrder) : workOrder
       return c.json(
-        { message: 'Work order retrieved successfully', success: true, data: workOrder },
+        { message: 'Work order retrieved successfully', success: true, data: detailView },
         HttpStatusCodes.OK
       )
     } catch (error) {
@@ -302,27 +335,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         ipAddress,
         userAgent,
       })
-      try {
-        await createUserNotification({
-          userId: user.id,
-          type: 'WORKORDER_CREATED',
-          title: `You created a work order - ${workOrder.title}`,
-          message: `${workOrder.workOrderNumber ?? 'Work order'} - ${workOrder.client?.name ?? ''}`,
-          metadata: {
-            workOrderId: workOrder.id,
-            workOrderNumber: workOrder.workOrderNumber,
-            clientName: workOrder.client?.name ?? null,
-          },
-        })
-        await sendUserOperationEmail({
-          to: user.email,
-          userName: user.name,
-          actionTitle: 'Work order created successfully',
-          actionMessage: `Your work order "${workOrder.title}" was created successfully.`,
-        })
-      } catch (notifyError) {
-        console.error('Work order notification/email failed:', notifyError)
-      }
       return c.json(
         { message: 'Work order created successfully', success: true, data: workOrder },
         HttpStatusCodes.CREATED
@@ -417,21 +429,6 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         ipAddress,
         userAgent,
       })
-      try {
-        await createUserNotification({
-          userId: user.id,
-          type: 'WORKORDER_UPDATED',
-          title: `You updated a work order - ${workOrder.title}`,
-          message: `${workOrder.workOrderNumber ?? 'Work order'} - ${workOrder.client?.name ?? ''}`,
-          metadata: {
-            workOrderId: workOrder.id,
-            workOrderNumber: workOrder.workOrderNumber,
-            clientName: workOrder.client?.name ?? null,
-          },
-        })
-      } catch (notifyError) {
-        console.error('Work order update notification failed:', notifyError)
-      }
       return c.json(
         { message: 'Work order updated successfully', success: true, data: workOrder },
         HttpStatusCodes.OK

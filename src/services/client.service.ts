@@ -770,7 +770,12 @@ export async function listClientCustomerReminders(businessId: string, clientId: 
     const year = date.getUTCFullYear()
     return year >= 2000 && year <= 2100
   }
-  const toReminderDto = (item: { id: string; sentAt: Date; note: string | null; createdAt: Date }) => ({
+  const toReminderDto = (item: {
+    id: string
+    sentAt: Date
+    note: string | null
+    createdAt: Date
+  }) => ({
     id: item.id,
     dateTime: item.sentAt,
     note: item.note ?? null,
@@ -803,14 +808,18 @@ export async function listClientCustomerReminders(businessId: string, clientId: 
     return Array.from(map.values()).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())
   }
 
-  const scheduledReminders = uniqueByDateTime(
-    validReminderLogs.filter(item => !isTriggeredReminder(item)),
-    'earliest'
-  ).map(toReminderDto)
-  const triggeredReminders = uniqueByDateTime(
+  const triggeredReminderLogs = uniqueByDateTime(
     validReminderLogs.filter(isTriggeredReminder),
     'latest'
+  )
+  const triggeredSentAtSet = new Set(triggeredReminderLogs.map(item => item.sentAt.getTime()))
+  const scheduledReminders = uniqueByDateTime(
+    validReminderLogs.filter(
+      item => !isTriggeredReminder(item) && !triggeredSentAtSet.has(item.sentAt.getTime())
+    ),
+    'earliest'
   ).map(toReminderDto)
+  const triggeredReminders = triggeredReminderLogs.map(toReminderDto)
   const now = new Date()
 
   return {

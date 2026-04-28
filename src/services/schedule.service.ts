@@ -15,13 +15,9 @@ import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import {
   sendTaskAssignedToTeamMemberEmail,
-  sendTaskCreatedEmail,
-  sendTaskRescheduledEmail,
   sendWorkOrderAssignedToTeamMemberEmail,
-  sendWorkOrderCreatedEmail,
-  sendWorkOrderRescheduledEmail,
 } from '~/services/email-helpers'
-import { createUserNotification, sendUserOperationEmail } from '~/services/notifications.service'
+import { createUserNotification } from '~/services/notifications.service'
 
 export type ScheduleItemType = 'workorder' | 'task'
 
@@ -945,26 +941,6 @@ async function notifyWorkOrderRescheduleSideEffects(
   const timeRangeStr = wo.isAnyTime
     ? 'Anytime'
     : formatScheduleTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
-  const assignedName = wo.primaryAssignee?.user?.name ?? 'Our team'
-  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
-
-  const clientEmail = wo.client.email?.trim()
-  if (clientEmail) {
-    sendWorkOrderRescheduledEmail({
-      to: clientEmail,
-      clientName: wo.client.name,
-      businessName: wo.business.name,
-      companyReplyTo,
-      companyLogoUrl: wo.business.logoUrl ?? undefined,
-      workOrderNumber: wo.workOrderNumber ?? `#${wo.id}`,
-      title: wo.title,
-      address: wo.address ?? '',
-      date: dateStr,
-      timeRange: timeRangeStr,
-      assignedTeamMemberName: assignedName,
-      instructions: wo.instructions,
-    })
-  }
 
   await createUserNotification({
     userId: actingUser.id,
@@ -977,16 +953,6 @@ async function notifyWorkOrderRescheduleSideEffects(
       clientName: wo.client.name,
     },
   })
-
-  const ownerEmail = actingUser.email?.trim()
-  if (ownerEmail) {
-    await sendUserOperationEmail({
-      to: ownerEmail,
-      userName: actingUser.name,
-      actionTitle: 'Work order schedule updated',
-      actionMessage: `"${wo.title}" was rescheduled. The client was emailed if an email is on file.`,
-    })
-  }
 }
 
 async function notifyTaskRescheduleSideEffects(
@@ -1010,25 +976,6 @@ async function notifyTaskRescheduleSideEffects(
   const timeRangeStr = task.isAnyTime
     ? 'Anytime'
     : formatScheduleTimeRange(task.startTime, task.endTime, task.scheduledAt)
-  const assignedName = task.assignedTo?.user?.name ?? 'Our team'
-  const companyReplyTo = task.business.settings?.replyToEmail?.trim() || task.business.email
-
-  const clientEmail = task.client?.email?.trim()
-  if (clientEmail && task.client) {
-    sendTaskRescheduledEmail({
-      to: clientEmail,
-      clientName: task.client.name,
-      businessName: task.business.name,
-      companyReplyTo,
-      companyLogoUrl: task.business.logoUrl ?? undefined,
-      title: task.title,
-      address: task.address ?? '—',
-      date: dateStr,
-      timeRange: timeRangeStr,
-      assignedTeamMemberName: assignedName,
-      instructions: task.instructions,
-    })
-  }
 
   await createUserNotification({
     userId: actingUser.id,
@@ -1040,16 +987,6 @@ async function notifyTaskRescheduleSideEffects(
       clientName: task.client?.name ?? null,
     },
   })
-
-  const ownerEmail = actingUser.email?.trim()
-  if (ownerEmail) {
-    await sendUserOperationEmail({
-      to: ownerEmail,
-      userName: actingUser.name,
-      actionTitle: 'Task schedule updated',
-      actionMessage: `"${task.title}" was rescheduled. The client was emailed if an email is on file.`,
-    })
-  }
 }
 
 /**
@@ -1126,33 +1063,6 @@ function sendQuickCreateWorkOrderAssigneeEmail(wo: QuickCreateWoForNotify): void
   })
 }
 
-function sendQuickCreateTaskClientEmail(task: QuickCreateTaskForNotify): void {
-  const clientEmail = task.client?.email?.trim()
-  if (!clientEmail || !task.client || !task.business) {
-    return
-  }
-  const replyTo = task.business.settings?.replyToEmail?.trim() || task.business.email
-  const dateStr = formatScheduleEmailDate(task.scheduledAt)
-  const timeRangeStr = task.isAnyTime
-    ? 'Anytime'
-    : formatScheduleTimeRange(task.startTime, task.endTime, task.scheduledAt)
-  const addressDisplay = task.address ?? '—'
-  const assignedName = task.assignedTo?.user?.name ?? 'Our team'
-  sendTaskCreatedEmail({
-    to: clientEmail,
-    clientName: task.client.name,
-    businessName: task.business.name,
-    companyReplyTo: replyTo,
-    companyLogoUrl: task.business.logoUrl ?? undefined,
-    title: task.title,
-    address: addressDisplay,
-    date: dateStr,
-    timeRange: timeRangeStr,
-    assignedTeamMemberName: assignedName,
-    instructions: task.instructions ?? undefined,
-  })
-}
-
 function sendQuickCreateTaskAssigneeEmail(task: QuickCreateTaskForNotify): void {
   const assigneeEmail = task.assignedTo?.user?.email?.trim()
   if (!assigneeEmail || !task.assignedTo?.user || !task.business) {
@@ -1185,65 +1095,6 @@ function sendQuickCreateTaskAssigneeEmail(task: QuickCreateTaskForNotify): void 
   })
 }
 
-function sendQuickCreateWorkOrderClientEmail(wo: {
-  id: string
-  title: string
-  address: string
-  instructions: string | null
-  scheduledAt: Date | null
-  startTime: string | null
-  endTime: string | null
-  isAnyTime: boolean
-  workOrderNumber: string | null
-  total: unknown
-  tax: unknown
-  client: { name: string; email: string | null; phone: string }
-  primaryAssignee: { user: { name: string | null } } | null
-  business: {
-    name: string
-    email: string
-    logoUrl: string | null
-    settings: { replyToEmail: string | null } | null
-  }
-  lineItems: Array<{ name: string; quantity: number; price: unknown }>
-}): void {
-  const clientEmail = wo.client.email?.trim()
-  if (!clientEmail) {
-    return
-  }
-  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
-  const assignedName = wo.primaryAssignee?.user?.name ?? 'Our team'
-  const dateStr = formatScheduleEmailDate(wo.scheduledAt)
-  const timeRangeStr = wo.isAnyTime
-    ? 'Anytime'
-    : formatScheduleTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
-  const lineItemsSummary = wo.lineItems
-    .map(
-      li =>
-        `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
-    )
-    .join('\n')
-  const totalStr = wo.total != null ? `$${Number(wo.total).toFixed(2)}` : undefined
-  const taxStr = `$${Number(wo.tax ?? 0).toFixed(2)}`
-  sendWorkOrderCreatedEmail({
-    to: clientEmail,
-    clientName: wo.client.name,
-    businessName: wo.business.name,
-    companyReplyTo,
-    companyLogoUrl: wo.business.logoUrl ?? undefined,
-    workOrderNumber: wo.workOrderNumber ?? `#${wo.id}`,
-    title: wo.title,
-    address: wo.address ?? '',
-    date: dateStr,
-    timeRange: timeRangeStr,
-    assignedTeamMemberName: assignedName,
-    lineItemsSummary,
-    tax: taxStr,
-    instructions: wo.instructions,
-    total: totalStr,
-  })
-}
-
 async function notifyQuickCreateWorkOrderSideEffects(
   businessId: string,
   workOrderId: string,
@@ -1263,12 +1114,6 @@ async function notifyQuickCreateWorkOrderSideEffects(
   }
 
   try {
-    sendQuickCreateWorkOrderClientEmail(wo)
-  } catch (e) {
-    console.error('[SCHEDULE] Failed to send work order created client email:', e)
-  }
-
-  try {
     sendQuickCreateWorkOrderAssigneeEmail(wo)
   } catch (e) {
     console.error('[SCHEDULE] Failed to send work order assignee email:', e)
@@ -1285,16 +1130,6 @@ async function notifyQuickCreateWorkOrderSideEffects(
       clientName: wo.client.name,
     },
   })
-
-  const ownerEmail = actingUser.email?.trim()
-  if (ownerEmail) {
-    await sendUserOperationEmail({
-      to: ownerEmail,
-      userName: actingUser.name,
-      actionTitle: 'Work order created successfully',
-      actionMessage: `Your work order "${wo.title}" was created successfully.`,
-    })
-  }
 }
 
 async function notifyQuickCreateTaskSideEffects(
@@ -1315,12 +1150,6 @@ async function notifyQuickCreateTaskSideEffects(
   }
 
   try {
-    sendQuickCreateTaskClientEmail(task)
-  } catch (e) {
-    console.error('[SCHEDULE] Failed to send task created client email:', e)
-  }
-
-  try {
     sendQuickCreateTaskAssigneeEmail(task)
   } catch (e) {
     console.error('[SCHEDULE] Failed to send task assignee email:', e)
@@ -1336,16 +1165,6 @@ async function notifyQuickCreateTaskSideEffects(
       clientName: task.client?.name ?? null,
     },
   })
-
-  const ownerEmail = actingUser.email?.trim()
-  if (ownerEmail) {
-    await sendUserOperationEmail({
-      to: ownerEmail,
-      userName: actingUser.name,
-      actionTitle: 'Task created successfully',
-      actionMessage: `Your task "${task.title}" was created successfully.`,
-    })
-  }
 }
 
 /** Client email (if client has email), assignee email (if member has user email), in-app notification + ack for the acting user. */

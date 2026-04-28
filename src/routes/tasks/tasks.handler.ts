@@ -39,6 +39,30 @@ function getClientMeta(c: { req: { header: (k: string) => string | undefined } }
   return { ipAddress, userAgent }
 }
 
+function toTeamMemberTaskDetail(
+  task: Awaited<ReturnType<typeof getTask>>
+): Record<string, unknown> {
+  return {
+    id: task.id,
+    title: task.title,
+    address: task.address,
+    instructions: task.instructions,
+    isAnyTime: task.isAnyTime,
+    taskStatus: task.taskStatus,
+    isCompleted: task.isCompleted,
+    completedAt: task.completedAt,
+    startedAt: task.startedAt,
+    scheduledAt: task.scheduledAt,
+    startTime: task.startTime,
+    endTime: task.endTime,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    client: task.client,
+    assignedToIds: task.assignedToIds,
+    workOrder: task.workOrder,
+  }
+}
+
 async function createTaskOperationNotification(input: {
   userId: string
   type: 'TASK_CREATED' | 'TASK_UPDATED' | 'TASK_DELETED'
@@ -134,8 +158,10 @@ export const TASK_HANDLER: HandlerMapFromRoutes<typeof TASK_ROUTES> = {
 
       const { taskId } = c.req.valid('param')
       const task = await getTask(businessId, taskId)
+      const isTeamMember = user.isOwner !== true
+      const detailView = isTeamMember ? toTeamMemberTaskDetail(task) : task
       return c.json(
-        { message: 'Task retrieved successfully', success: true, data: task },
+        { message: 'Task retrieved successfully', success: true, data: detailView },
         HttpStatusCodes.OK
       )
     } catch (error) {

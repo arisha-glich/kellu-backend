@@ -10,7 +10,7 @@ import { ORIGINS } from './config/origins'
 import type { AppBindings } from './types'
 
 registerEmailListeners()
-const CLIENT_REMINDER_TRIGGER_INTERVAL_MS = 30 * 60_000
+const CLIENT_REMINDER_TRIGGER_INTERVAL_MS = 60_000
 
 void triggerDueClientReminders().catch(error => {
   console.error('[client-reminders] initial trigger check failed:', error)

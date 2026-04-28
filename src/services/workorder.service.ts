@@ -13,8 +13,6 @@ import {
   clientToCustomerFrom,
   sendBookingConfirmationEmail,
   sendCustomerReminderEmail,
-  sendWorkOrderAssignedToTeamMemberEmail,
-  sendWorkOrderCreatedEmail,
 } from '~/services/email-helpers'
 import {
   DEFAULT_INVOICE_TERMS_CONDITIONS,
@@ -789,127 +787,6 @@ async function nextInvoiceNumber(businessId: string): Promise<string> {
   return String(Number.isNaN(num) ? 1 : num + 1)
 }
 
-function lineItemsSummaryForWorkOrderEmail(
-  lineItems: Array<{ name: string; quantity: number; price: unknown }>
-): string {
-  return lineItems
-    .map(
-      li =>
-        `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
-    )
-    .join('\n')
-}
-
-/** Client + assigned team member emails after work order creation (failures logged only). */
-//// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: multiple email payloads and assignee loops
-async function sendWorkOrderCreatedNotificationEmails(
-  businessId: string,
-  woId: string
-): Promise<void> {
-  try {
-    const woForEmail = await prisma.workOrder.findFirst({
-      where: { id: woId, businessId },
-      include: {
-        client: { select: { name: true, email: true, phone: true } },
-        primaryAssignee: { include: { user: { select: { name: true, email: true } } } },
-        assignees: {
-          include: {
-            member: { include: { user: { select: { name: true, email: true } } } },
-          },
-        },
-        business: { include: { settings: { select: { replyToEmail: true } } } },
-        lineItems: true,
-      },
-    })
-    if (!woForEmail?.business || !woForEmail.client) {
-      return
-    }
-
-    const companyReplyTo =
-      woForEmail.business.settings?.replyToEmail?.trim() || woForEmail.business.email
-    const assigneeNames = Array.from(
-      new Set(
-        woForEmail.assignees
-          .map(a => a.member.user.name?.trim())
-          .filter((name): name is string => !!name)
-      )
-    )
-    const assignedName =
-      assigneeNames.length > 0
-        ? assigneeNames.join(', ')
-        : (woForEmail.primaryAssignee?.user?.name ?? 'Our team')
-    const dateStr = formatBookingDate(woForEmail.scheduledAt)
-    const timeRangeStr = formatTimeRange(
-      woForEmail.startTime,
-      woForEmail.endTime,
-      woForEmail.scheduledAt
-    )
-    const lineItemsSummary = lineItemsSummaryForWorkOrderEmail(woForEmail.lineItems)
-    const totalStr =
-      woForEmail.total != null ? `$${Number(woForEmail.total).toFixed(2)}` : undefined
-    const taxStr = `$${Number(woForEmail.tax ?? 0).toFixed(2)}`
-    const logoUrl = woForEmail.business.logoUrl ?? undefined
-    const woNumber = woForEmail.workOrderNumber ?? `#${woForEmail.id}`
-
-    const clientEmail = woForEmail.client.email?.trim()
-    if (clientEmail) {
-      sendWorkOrderCreatedEmail({
-        to: clientEmail,
-        clientName: woForEmail.client.name,
-        businessName: woForEmail.business.name,
-        companyReplyTo,
-        companyLogoUrl: logoUrl,
-        workOrderNumber: woNumber,
-        title: woForEmail.title,
-        address: woForEmail.address ?? '',
-        date: dateStr,
-        timeRange: timeRangeStr,
-        assignedTeamMemberName: assignedName,
-        lineItemsSummary,
-        tax: taxStr,
-        instructions: woForEmail.instructions,
-        total: totalStr,
-      })
-    }
-
-    const assigneeEmails = Array.from(
-      new Set(
-        woForEmail.assignees
-          .map(a => a.member.user.email?.trim())
-          .filter((email): email is string => !!email)
-      )
-    )
-    if (assigneeEmails.length === 0 && woForEmail.primaryAssignee?.user?.email?.trim()) {
-      assigneeEmails.push(woForEmail.primaryAssignee.user.email.trim())
-    }
-    for (const assigneeEmail of assigneeEmails) {
-      sendWorkOrderAssignedToTeamMemberEmail({
-        to: assigneeEmail,
-        assigneeName:
-          woForEmail.assignees.find(a => a.member.user.email?.trim() === assigneeEmail)?.member.user
-            .name ??
-          woForEmail.primaryAssignee?.user?.name ??
-          'there',
-        businessName: woForEmail.business.name,
-        companyReplyTo,
-        companyLogoUrl: logoUrl,
-        workOrderNumber: woNumber,
-        title: woForEmail.title,
-        clientName: woForEmail.client.name,
-        clientPhone: woForEmail.client.phone,
-        address: woForEmail.address ?? '',
-        date: dateStr,
-        timeRange: timeRangeStr,
-        lineItemsSummary,
-        instructions: woForEmail.instructions,
-        total: totalStr,
-      })
-    }
-  } catch (e) {
-    console.error('[WORK_ORDER] Failed to send work order created / assignee email:', e)
-  }
-}
-
 /** Create work order (§6.3). Sets invoice_status=NOT_SENT, derives job status. */
 export async function createWorkOrder(businessId: string, input: CreateWorkOrderInput) {
   await ensureBusinessExists(businessId)
@@ -1025,7 +902,6 @@ export async function createWorkOrder(businessId: string, input: CreateWorkOrder
   await recalculateFinancials(wo.id, taxPercent)
 
   const result = await getWorkOrderById(businessId, wo.id)
-  await sendWorkOrderCreatedNotificationEmails(businessId, wo.id)
   return result
 }
 
@@ -1175,7 +1051,10 @@ export async function updateWorkOrder(
                     quantity: li.quantity,
                     price: li.price,
                     cost: li.cost ?? null,
-                    priceListItemId: li.priceListItemId ?? null,
+                    // Work order update should NOT create/link master price list items.
+                    // Price list linking is handled explicitly via:
+                    // POST /workorders/{workOrderId}/line-items/{lineItemId}/add-to-price-list
+                    priceListItemId: null,
                   })),
                 }),
               ]
