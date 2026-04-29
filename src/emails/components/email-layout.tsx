@@ -80,7 +80,7 @@ interface EmailLayoutProps {
 }
 
 export function EmailLayout({ children, preview, logoUrl, headerTitle }: EmailLayoutProps) {
-  const appName = process.env.APP_NAME ?? 'Kelly'
+  const appName = process.env.APP_NAME ?? 'Kellu'
   const defaultLogoUrl = process.env.EMAIL_LOGO_URL ?? ''
   const baseUrl =
     process.env.BETTER_AUTH_URL ||

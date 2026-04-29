@@ -1102,7 +1102,7 @@ export async function createQuote(businessId: string, input: CreateQuoteInput) {
         workOrderId,
         ...(input.quoteRequired === true && { quoteRequired: true }),
         quoteNumber,
-        quoteStatus: 'NOT_SENT',
+        quoteStatus: 'NOT_APPLIED',
         quoteTermsConditions: input.quoteTermsConditions ?? settings?.quoteTermsConditions ?? null,
         isScheduleLater: true,
         discount: new Prisma.Decimal(0),
@@ -1257,7 +1257,7 @@ export async function setQuoteAwaitingResponse(businessId: string, quoteId: stri
   if (!row) {
     throw new WorkOrderNotFoundError()
   }
-  if (row.quoteStatus !== 'NOT_SENT') {
+  if (row.quoteStatus !== 'NOT_APPLIED') {
     throw new QuoteTerminalStateError()
   }
 
@@ -1750,7 +1750,7 @@ export async function expireOverdueQuotes(): Promise<number> {
 
   const result = await prisma.quote.updateMany({
     where: {
-      quoteStatus: { in: ['NOT_SENT', 'AWAITING_RESPONSE'] },
+      quoteStatus: { in: ['NOT_APPLIED', 'AWAITING_RESPONSE'] },
       OR: [
         { quoteExpiresAt: { lt: new Date() } },
         { quoteExpiresAt: null, createdAt: { lt: sevenDaysAgo } },

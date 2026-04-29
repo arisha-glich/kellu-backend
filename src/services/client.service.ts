@@ -2,7 +2,6 @@ import type { ClientStatus, LeadSource, Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
-import { sendClientProfileUpdateEmail } from '~/services/email-helpers'
 
 export class ClientNotFoundError extends Error {
   constructor() {
@@ -164,23 +163,6 @@ export async function createClient(businessId: string, data: CreateClientInput) 
       lastActivityAt: new Date(),
     },
   })
-
-  if (client.email) {
-    const business = await prisma.business.findUnique({
-      where: { id: businessId },
-      select: { name: true, email: true, logoUrl: true },
-    })
-    if (business?.email) {
-      sendClientProfileUpdateEmail({
-        to: client.email,
-        clientName: client.name,
-        businessName: business.name,
-        companyReplyTo: business.email,
-        companyLogoUrl: business.logoUrl ?? undefined,
-        isUpdate: false,
-      })
-    }
-  }
 
   return mapToClientDetail(client)
 }
@@ -347,23 +329,6 @@ export async function updateClient(businessId: string, clientId: string, data: U
     },
   })
 
-  if (client.email) {
-    const business = await prisma.business.findUnique({
-      where: { id: businessId },
-      select: { name: true, email: true, logoUrl: true },
-    })
-    if (business?.email) {
-      sendClientProfileUpdateEmail({
-        to: client.email,
-        clientName: client.name,
-        businessName: business.name,
-        companyReplyTo: business.email,
-        companyLogoUrl: business.logoUrl ?? undefined,
-        isUpdate: true,
-      })
-    }
-  }
-
   return mapToClientDetail(client)
 }
 
@@ -388,23 +353,6 @@ export async function updateClientByClientId(clientId: string, data: UpdateClien
       ...(data.status != null && { status: data.status }),
     },
   })
-
-  if (client.email) {
-    const business = await prisma.business.findUnique({
-      where: { id: client.businessId },
-      select: { name: true, email: true, logoUrl: true },
-    })
-    if (business?.email) {
-      sendClientProfileUpdateEmail({
-        to: client.email,
-        clientName: client.name,
-        businessName: business.name,
-        companyReplyTo: business.email,
-        companyLogoUrl: business.logoUrl ?? undefined,
-        isUpdate: true,
-      })
-    }
-  }
 
   return mapToClientDetail(client)
 }

@@ -10,7 +10,7 @@ import { zodResponseSchema } from '~/lib/zod-helper'
 // ─── Enums (reuse same values as workorder routes) ───────────────────────────
 
 const QuoteStatusEnum = z.enum([
-  'NOT_SENT',
+  'NOT_APPLIED',
   'AWAITING_RESPONSE',
   'APPROVED',
   'CONVERTED',
@@ -507,14 +507,14 @@ export const QUOTE_ROUTES = {
     tags: ['Quotes'],
     path: '/{quoteId}/set-awaiting-response',
     summary:
-      'Manually set quote status to AWAITING_RESPONSE (only when current status is NOT_SENT). Sets sent_at and expires_at from settings.',
+      'Manually set quote status to AWAITING_RESPONSE (only when current status is NOT_APPLIED). Sets sent_at and expires_at from settings.',
     request: { params: QuoteParamsSchema },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(QuoteDetailSchema), 'Status updated'),
       [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Quote not found'),
       [HttpStatusCodes.BAD_REQUEST]: jsonContent(
         zodResponseSchema(),
-        'Quote not in NOT_SENT state'
+        'Quote not in NOT_APPLIED state'
       ),
       [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
       [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),

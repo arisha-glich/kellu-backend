@@ -1,10 +1,10 @@
 # Quotes API – Documentation & Testing
 
-**Route folder:** `src/routes/quotes`  
-**Base path:** `/api/quotes`  
+**Route folder:** `src/routes/quotes`
+**Base path:** `/api/quotes`
 **Service:** `src/services/quote.service.ts`
 
-All endpoints require **authentication**. Permissions: **quotes read** (list, overview, getById), **quotes create** (create), **quotes update** (send, approve, reject).  
+All endpoints require **authentication**. Permissions: **quotes read** (list, overview, getById), **quotes create** (create), **quotes update** (send, approve, reject).
 Base URL: `http://localhost:8000` (or your server).
 
 ---
@@ -31,7 +31,7 @@ Base URL: `http://localhost:8000` (or your server).
 | POST | `/{quoteId}/approve` | Approve quote | quotes update |
 | POST | `/{quoteId}/reject` | Reject quote | quotes update |
 
-**Quote statuses:** `NOT_SENT`, `AWAITING_RESPONSE`, `APPROVED`, `CONVERTED`, `REJECTED`, `EXPIRED` (effective when expiresAt passed and status was AWAITING_RESPONSE).
+**Quote statuses:** `NOT_APPLIED`, `AWAITING_RESPONSE`, `APPROVED`, `CONVERTED`, `REJECTED`, `EXPIRED` (effective when expiresAt passed and status was AWAITING_RESPONSE).
 
 ---
 

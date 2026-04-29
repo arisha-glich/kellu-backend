@@ -7,7 +7,6 @@
 import { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
-import { sendSettingsUpdatedEmail } from '~/services/email-helpers'
 
 export const DEFAULT_QUOTE_TERMS_CONDITIONS = `This quote is valid for 7 days from the issue date. Work will begin once the quote is approved. Any additional work requested outside the quoted scope may be billed separately.`
 
@@ -312,19 +311,6 @@ export async function updateCurrentBusinessSettings(
   }
 
   const result = await getCurrentBusinessSettings(businessId)
-  const to = result.personalProfile.email || result.company.email
-  if (to?.trim()) {
-    try {
-      sendSettingsUpdatedEmail({
-        to: to.trim(),
-        ownerName: result.personalProfile.fullName || 'User',
-        businessName: result.company.name,
-      })
-    } catch (e) {
-      console.error('[SETTINGS] Failed to send settings updated email:', e)
-    }
-  }
-
   return result
 }
 

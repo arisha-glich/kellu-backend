@@ -13,10 +13,7 @@
 import { type Prisma, RolePortalScope } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
-import {
-  sendTaskAssignedToTeamMemberEmail,
-  sendWorkOrderAssignedToTeamMemberEmail,
-} from '~/services/email-helpers'
+import { sendTaskAssignedToTeamMemberEmail } from '~/services/email-helpers'
 import { createUserNotification } from '~/services/notifications.service'
 
 export type ScheduleItemType = 'workorder' | 'task'
@@ -1027,40 +1024,8 @@ type QuickCreateTaskForNotify = Prisma.TaskGetPayload<{
   }
 }>
 
-function sendQuickCreateWorkOrderAssigneeEmail(wo: QuickCreateWoForNotify): void {
-  const assigneeEmail = wo.primaryAssignee?.user?.email?.trim()
-  if (!assigneeEmail || !wo.primaryAssignee?.user || !wo.business) {
-    return
-  }
-  const companyReplyTo = wo.business.settings?.replyToEmail?.trim() || wo.business.email
-  const dateStr = formatScheduleEmailDate(wo.scheduledAt)
-  const timeRangeStr = wo.isAnyTime
-    ? 'Anytime'
-    : formatScheduleTimeRange(wo.startTime, wo.endTime, wo.scheduledAt)
-  const lineItemsSummary = wo.lineItems
-    .map(
-      li =>
-        `${li.name} x ${li.quantity} @ ${Number(li.price)} = ${Number(li.quantity) * Number(li.price)}`
-    )
-    .join('\n')
-  const totalStr = wo.total != null ? `$${Number(wo.total).toFixed(2)}` : undefined
-  sendWorkOrderAssignedToTeamMemberEmail({
-    to: assigneeEmail,
-    assigneeName: wo.primaryAssignee.user.name ?? 'there',
-    businessName: wo.business.name,
-    companyReplyTo,
-    companyLogoUrl: wo.business.logoUrl ?? undefined,
-    workOrderNumber: wo.workOrderNumber ?? `#${wo.id}`,
-    title: wo.title,
-    clientName: wo.client.name,
-    clientPhone: wo.client.phone,
-    address: wo.address ?? '',
-    date: dateStr,
-    timeRange: timeRangeStr,
-    lineItemsSummary,
-    instructions: wo.instructions,
-    total: totalStr,
-  })
+function sendQuickCreateWorkOrderAssigneeEmail(_wo: QuickCreateWoForNotify): void {
+  // Intentionally disabled: do not email when creating a work order from the calendar quick-create flow.
 }
 
 function sendQuickCreateTaskAssigneeEmail(task: QuickCreateTaskForNotify): void {

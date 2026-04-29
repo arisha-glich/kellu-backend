@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -17,9 +14,675 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
+model User {
+  id                    String           @id @default(cuid())
+  name                  String
+  email                 String           @unique
+  password              String?
+  emailVerified         Boolean          @default(false)
+  image                 String?
+  banned                Boolean          @default(false)
+  banReason             String?
+  banExpiresAt          DateTime?
+  dob                   DateTime?
+  gender                String?
+  phone_no              String?
+  rut                   String?
+  onboarding_stage      String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  role                  UserRole         @default(BUSINESS_OWNER)
+  isActive              Boolean          @default(true)
+  lastLoginAt           DateTime?
+  isOwner               Boolean          @default(false)
+  /// True when the user was invited via the admin portal team API (session exposes SUPER_ADMIN + isAdmin false; DB role stays BUSINESS_OWNER).
+  adminPortalTeamMember Boolean          @default(false)
+  auditLogs             AuditLog[]
+  businessesOwned       Business[]       @relation("BusinessOwner")
+  teamMemberships       Member[]         @relation("TeamMember")
+  notifications         Notification[]
+  teamInvitationsSent   TeamInvitation[] @relation("InvitedBy")
+  accounts              Account[]
+  sessions              Session[]
+}
+
+model Business {
+  id              String            @id @default(cuid())
+  name            String
+  legalName       String?
+  email           String
+  phone           String?
+  address         String?
+  webpage         String?
+  logoUrl         String?
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  ownerId         String?
+  countyId        String?
+  state           String?
+  zipcode         String?
+  rutNumber       String?
+  city            String?
+  primaryColor    String?
+  secondaryColor  String?
+  street1         String?
+  street2         String?
+  /// IANA timezone from browser/locale (e.g. America/Edmonton); scheduling & reminders
+  timeZone        String            @default("UTC") @map("timezone")
+  /// ISO 3166-1 alpha-2 (e.g. US, CA, GB); from locale; phone/format requirements
+  country         String?
+  auditLogs       AuditLog[]
+  owner           User?             @relation("BusinessOwner", fields: [ownerId], references: [id])
+  settings        BusinessSettings?
+  clients         Client[]
+  expenses        Expense[]
+  invoices        Invoice[]
+  teamMembers     Member[]
+  priceListItems  PriceListItem[]
+  quotes          Quote[]
+  reminderConfigs ReminderConfig[]
+  reminderLogs    ReminderLog[]
+  roles           Role[]
+  tasks           Task[]
+  teamInvitations TeamInvitation[]
+  workOrders      WorkOrder[]
+}
+
+model Member {
+  id                                 String                @id @default(cuid())
+  isActive                           Boolean               @default(true)
+  createdAt                          DateTime              @default(now())
+  updatedAt                          DateTime              @updatedAt
+  userId                             String
+  businessId                         String
+  roleId                             String
+  includeInNotificationsWhenAssigned Boolean               @default(true)
+  calendarColor                      String?
+  assignedInvoices                   Invoice[]
+  business                           Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  role                               Role                  @relation(fields: [roleId], references: [id])
+  user                               User                  @relation("TeamMember", fields: [userId], references: [id], onDelete: Cascade)
+  assignedQuotes                     Quote[]               @relation("QuoteAssignee")
+  assignedTasks                      Task[]                @relation("TaskAssignee")
+  taskAssignments                    TaskAssignment[]
+  primaryAssignedWorkOrders          WorkOrder[]           @relation("WorkOrderPrimaryAssignee")
+  workOrderAssignments               WorkOrderAssignment[]
+
+  @@unique([userId, businessId])
+  @@map("Member")
+}
+
+model TeamInvitation {
+  id          String   @id @default(cuid())
+  email       String
+  token       String   @unique
+  status      String   @default("pending")
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  businessId  String
+  roleId      String
+  invitedById String?
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invitedBy   User?    @relation("InvitedBy", fields: [invitedById], references: [id])
+  role        Role     @relation(fields: [roleId], references: [id])
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String
+  displayName     String?
+  description     String?
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  businessId      String
+  portalScope     RolePortalScope  @default(BUSINESS_PORTAL)
+  members         Member[]
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  permissions     RolePermission[]
+  teamInvitations TeamInvitation[]
+
+  @@unique([businessId, name, portalScope])
+}
+
+model Permission {
+  id                   String           @id @default(cuid())
+  resource             String
+  action               String
+  description          String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  /// UI grouping for admin “Roles & Permissions” matrix (e.g. Jobs, Invoices).
+  section              String?
+  /// If true, business-created custom roles cannot include this permission (platform governance).
+  lockedForCustomRoles Boolean          @default(false)
+  roles                RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@map("permission")
+}
+
+model RolePermission {
+  createdAt    DateTime   @default(now())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Client {
+  id             String        @id @default(cuid())
+  name           String
+  email          String?
+  phone          String
+  address        String?
+  documentNumber String?
+  leadSource     LeadSource    @default(Website)
+  notes          String?
+  status         ClientStatus  @default(ACTIVE)
+  lastActivityAt DateTime?
+  reminderDate   DateTime?
+  reminderNote   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  businessId     String
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  quotes         Quote[]
+  reminderLogs   ReminderLog[]
+  tasks          Task[]
+  workOrders     WorkOrder[]
+}
+
+model WorkOrder {
+  id                         String                @id @default(cuid())
+  workOrderNumber            String?
+  title                      String
+  address                    String
+  instructions               String?
+  notes                      String?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  isScheduleLater            Boolean               @default(false)
+  isAnyTime                  Boolean               @default(false)
+  scheduledAt                DateTime?
+  startTime                  String?
+  endTime                    String?
+  clientId                   String
+  businessId                 String
+  primaryAssigneeId          String?               @map("assignedToId")
+  jobStatus                  JobStatus             @default(UNSCHEDULED)
+  bookingConfirmationSentAt  DateTime?
+  confirmedAt                DateTime?
+  onMyWayAt                  DateTime?
+  startedAt                  DateTime?
+  completedAt                DateTime?
+  cancelledAt                DateTime?
+  invoiceStatus              InvoiceStatus         @default(NOT_SENT)
+  invoiceSentAt              DateTime?
+  dueAt                      DateTime?
+  invoiceCancelledAt         DateTime?
+  badDebtAt                  DateTime?
+  lastInvoicePdfUrl          String?
+  invoiceCorrelative         String?
+  invoiceWhatsappStatus      String?
+  invoiceObservations        String?
+  invoiceTermsConditions     String?
+  subtotal                   Decimal?              @db.Decimal(12, 2)
+  discount                   Decimal?              @db.Decimal(12, 2)
+  discountType               DiscountType?
+  tax                        Decimal?              @db.Decimal(12, 2)
+  total                      Decimal?              @db.Decimal(12, 2)
+  cost                       Decimal?              @db.Decimal(12, 2)
+  amountPaid                 Decimal?              @default(0) @db.Decimal(12, 2)
+  balance                    Decimal?              @db.Decimal(12, 2)
+  lastJobReportPdfUrl        String?
+  confirmationReminderSentAt DateTime?
+  quoteTermsConditions       String?
+  expenses                   Expense[]
+  invoices                   Invoice[]
+  lineItems                  LineItem[]
+  payments                   Payment[]
+  quotes                     Quote[]
+  reminderLogs               ReminderLog[]
+  linkedTasks                Task[]
+  primaryAssignee            Member?               @relation("WorkOrderPrimaryAssignee", fields: [primaryAssigneeId], references: [id])
+  business                   Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client                     Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignees                  WorkOrderAssignment[]
+  attachments                WorkOrderAttachment[]
+
+  @@unique([businessId, workOrderNumber])
+}
+
+model WorkOrderAssignment {
+  id          String    @id @default(cuid())
+  workOrderId String
+  memberId    String
+  createdAt   DateTime  @default(now())
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([workOrderId, memberId])
+  @@index([memberId])
+}
+
+model Quote {
+  id                         String            @id @default(cuid())
+  quoteNumber                String?
+  title                      String
+  address                    String
+  instructions               String?
+  notes                      String?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  isScheduleLater            Boolean           @default(true)
+  isAnyTime                  Boolean           @default(false)
+  scheduledAt                DateTime?
+  startTime                  String?
+  endTime                    String?
+  clientId                   String
+  businessId                 String
+  assignedToId               String?
+  quoteStatus                QuoteStatus       @default(NOT_SENT)
+  quoteSentAt                DateTime?
+  quoteApprovedAt            DateTime?
+  quoteRejectedAt            DateTime?
+  quoteExpiredAt             DateTime?
+  quoteConvertedAt           DateTime?
+  quoteExpiresAt             DateTime?
+  lastQuotePdfUrl            String?
+  quoteCorrelative           String?
+  quoteClientActionToken     String?
+  quoteClientRespondedAt     DateTime?
+  quoteClientRejectionReason String?
+  quoteWhatsappStatus        String?
+  quoteObservations          String?
+  quoteTermsConditions       String?
+  quoteVersion               Int               @default(1)
+  subtotal                   Decimal?          @db.Decimal(12, 2)
+  discount                   Decimal?          @db.Decimal(12, 2)
+  discountType               DiscountType?
+  tax                        Decimal?          @db.Decimal(12, 2)
+  total                      Decimal?          @db.Decimal(12, 2)
+  cost                       Decimal?          @db.Decimal(12, 2)
+  amountPaid                 Decimal?          @default(0) @db.Decimal(12, 2)
+  balance                    Decimal?          @db.Decimal(12, 2)
+  lastJobReportPdfUrl        String?
+  quoteRequired              Boolean           @default(false)
+  workOrderId                String?
+  lineItems                  LineItem[]
+  assignedTo                 Member?           @relation("QuoteAssignee", fields: [assignedToId], references: [id])
+  business                   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client                     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workOrder                  WorkOrder?        @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  attachments                QuoteAttachment[]
+
+  @@unique([businessId, quoteNumber])
+}
+
+model QuoteAttachment {
+  id        String   @id @default(cuid())
+  url       String
+  filename  String?
+  type      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  quoteId   String
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  invoiceNumber   String?
+  title           String
+  address         String?
+  status          InvoiceStatus @default(NOT_SENT)
+  sentAt          DateTime?
+  dueAt           DateTime?
+  cancelledAt     DateTime?
+  badDebtAt       DateTime?
+  subtotal        Decimal?      @db.Decimal(12, 2)
+  discount        Decimal?      @db.Decimal(12, 2)
+  discountType    DiscountType?
+  tax             Decimal?      @db.Decimal(12, 2)
+  total           Decimal?      @db.Decimal(12, 2)
+  amountPaid      Decimal?      @default(0) @db.Decimal(12, 2)
+  balance         Decimal?      @db.Decimal(12, 2)
+  whatsappStatus  String?
+  observations    String?
+  termsConditions String?
+  pdfUrl          String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  clientId        String
+  businessId      String
+  workOrderId     String?
+  assignedToId    String?
+  version         Int           @default(1)
+  invoiceRequired Boolean       @default(false)
+  assignedTo      Member?       @relation(fields: [assignedToId], references: [id])
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workOrder       WorkOrder?    @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  lineItems       LineItem[]
+  payments        Payment[]
+
+  @@unique([businessId, invoiceNumber])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  amount          Decimal       @db.Decimal(12, 2)
+  paymentDate     DateTime      @db.Date
+  paymentMethod   PaymentMethod
+  referenceNumber String?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  workOrderId     String?
+  invoiceId       String?
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  workOrder       WorkOrder?    @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([invoiceId])
+}
+
+model LineItem {
+  id              String         @id @default(cuid())
+  name            String
+  itemType        ItemType       @default(SERVICE)
+  description     String?
+  quantity        Int            @default(1)
+  cost            Decimal?       @db.Decimal(12, 2)
+  markupPercent   Decimal?       @db.Decimal(5, 2)
+  price           Decimal        @db.Decimal(12, 2)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  workOrderId     String?
+  priceListItemId String?
+  invoiceId       String?
+  quoteId         String?
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  priceListItem   PriceListItem? @relation(fields: [priceListItemId], references: [id])
+  quote           Quote?         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  workOrder       WorkOrder?     @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([invoiceId])
+  @@index([quoteId])
+  @@index([priceListItemId])
+}
+
+model WorkOrderAttachment {
+  id          String    @id @default(cuid())
+  url         String
+  filename    String?
+  type        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id           String           @id @default(cuid())
+  title        String
+  address      String?
+  instructions String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  scheduledAt  DateTime?
+  startTime    String?
+  endTime      String?
+  clientId     String?
+  businessId   String
+  workOrderId  String?
+  assignedToId String?
+  completedAt  DateTime?
+  isCompleted  Boolean          @default(false)
+  isAnyTime    Boolean          @default(false)
+  startedAt    DateTime?
+  taskStatus   TaskStatus       @default(SCHEDULED)
+  assignedTo   Member?          @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  business     Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client       Client?          @relation(fields: [clientId], references: [id])
+  workOrder    WorkOrder?       @relation(fields: [workOrderId], references: [id])
+  assignees    TaskAssignment[]
+}
+
+model TaskAssignment {
+  id        String   @id @default(cuid())
+  taskId    String
+  memberId  String
+  createdAt DateTime @default(now())
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, memberId])
+  @@index([memberId])
+}
+
+model PriceListItem {
+  id            String     @id @default(cuid())
+  itemType      ItemType   @default(SERVICE)
+  name          String
+  description   String?
+  cost          Decimal?   @db.Decimal(12, 2)
+  markupPercent Decimal?   @db.Decimal(5, 2)
+  price         Decimal    @db.Decimal(12, 2)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  businessId    String
+  lineItems     LineItem[]
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id            String     @id @default(cuid())
+  date          DateTime   @db.Date
+  itemName      String
+  details       String?
+  total         Decimal    @db.Decimal(12, 2)
+  invoiceNumber String?
+  attachmentUrl String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  businessId    String
+  workOrderId   String?
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  workOrder     WorkOrder? @relation(fields: [workOrderId], references: [id])
+}
+
+model BusinessSettings {
+  id                             String            @id @default(cuid())
+  invoiceDueDays                 Int               @default(3)
+  quoteExpirationDays            Int               @default(7)
+  arrivalWindowMinutes           Int?
+  defaultDurationMinutes         Int?
+  bankName                       String?
+  accountType                    String?
+  accountNumber                  String?
+  paymentEmail                   String?
+  onlinePaymentLink              String?
+  quoteTermsConditions           String?
+  invoiceTermsConditions         String?
+  whatsappSender                 String?
+  whatsappEnabled                Boolean           @default(false)
+  sendQuoteWhatsappDefault       Boolean           @default(false)
+  notificationEmail              String?
+  replyToEmail                   String?
+  sendTeamPhotosWithConfirmation Boolean           @default(false)
+  quoteRemindersEnabled          Boolean           @default(true)
+  bookingRemindersEnabled        Boolean           @default(true)
+  invoiceRemindersEnabled        Boolean           @default(true)
+  createdAt                      DateTime          @default(now())
+  updatedAt                      DateTime          @updatedAt
+  businessId                     String            @unique
+  defaultTaxRate                 Decimal?          @db.Decimal(5, 2)
+  rutNumber                      String?
+  arrivalWindowHours             Int?
+  business                       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  templates                      MessageTemplate[]
+}
+
+model MessageTemplate {
+  id           String              @id @default(cuid())
+  templateType TemplateType
+  channel      NotificationChannel @default(EMAIL)
+  subject      String?
+  message      String
+  isDefault    Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  settingsId   String
+  settings     BusinessSettings    @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+}
+
+model ReminderConfig {
+  id           String              @id @default(cuid())
+  reminderType ReminderType
+  timeValue    Int
+  timeUnit     String
+  timeOfDay    String?
+  channel      NotificationChannel @default(EMAIL)
+  subject      String?
+  message      String?
+  isEnabled    Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  businessId   String
+  business     Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model ReminderLog {
+  id           String              @id @default(cuid())
+  reminderType String
+  sentAt       DateTime
+  channel      NotificationChannel
+  entityType   String
+  entityId     String
+  clientId     String?
+  businessId   String
+  createdAt    DateTime            @default(now())
+  workOrderId  String?
+  note         String?
+  business     Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workOrder    WorkOrder?          @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  type      String
+  title     String
+  message   String?
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  userId     String?
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
+  user       User?     @relation(fields: [userId], references: [id])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model PlatformSettings {
+  id                     String   @id @default(cuid())
+  platformLogoUrl        String?
+  platformName           String?
+  primaryColor           String?
+  domain                 String?
+  supportEmail           String?
+  defaultQuoteTerms      String?
+  defaultInvoiceTerms    String?
+  /// When true, BCC platform copy address on business → customer emails (e.g. quote to client).
+  clientEmailCopyEnabled Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  /// BCC destination for client-facing emails sent by businesses (admin-configured).
+  clientEmailCopyTo      String?
+}
+
+model PlatformNotificationRule {
+  id                 String   @id @default(cuid())
+  /// Stable key for code (e.g. QUOTE_REJECTED_BY_CLIENT, JOB_COMPLETED).
+  eventKey           String   @unique
+  eventName          String
+  triggerDescription String
+  isActive           Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
 
 enum UserRole {
   SUPER_ADMIN
@@ -79,7 +742,6 @@ enum ItemType {
   PRODUCT
 }
 
-
 enum ReminderType {
   QUOTE_FOLLOW_UP_48H
   QUOTE_FOLLOW_UP_120H
@@ -108,7 +770,7 @@ enum TemplateType {
 enum LeadSource {
   Website
   SocialMedia
-  Referral      // common addition
+  Referral
   Other
 }
 
@@ -124,828 +786,4 @@ enum TaskStatus {
 enum RolePortalScope {
   BUSINESS_PORTAL
   ADMIN_PORTAL
-}
-
-// ─────────────────────────────────────────────
-// USER
-// ─────────────────────────────────────────────
-
-model User {
-  id                String    @id @default(cuid())
-  name              String
-  email             String    @unique
-  password          String?
-  emailVerified     Boolean   @default(false)
-  image             String?
-  banned            Boolean   @default(false)
-  banReason         String?
-  banExpiresAt      DateTime?
-  dob               DateTime?
-  gender            String?
-  phone_no          String?
-  rut               String?
-  onboarding_stage  String?
-  isOwner           Boolean   @default(false)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  role              UserRole  @default(BUSINESS_OWNER)
-  /// True when the user was invited via the admin portal team API (session exposes SUPER_ADMIN + isAdmin false; DB role stays BUSINESS_OWNER).
-  adminPortalTeamMember Boolean @default(false)
-  isActive          Boolean   @default(true)
-  lastLoginAt       DateTime?
-
-  sessions            Session[]
-  accounts            Account[]
-  businessesOwned     Business[]       @relation("BusinessOwner")
-  teamMemberships     Member[]         @relation("TeamMember")
-  teamInvitationsSent TeamInvitation[] @relation("InvitedBy")
-  auditLogs           AuditLog[]
-  notifications       Notification[]
-}
-
-// ─────────────────────────────────────────────
-// BUSINESS
-// ─────────────────────────────────────────────
-
-model Business {
-  id        String   @id @default(cuid())
-  name      String
-  legalName String?
-  /// IANA timezone from browser/locale (e.g. America/Edmonton); scheduling & reminders
-  timeZone  String   @default("UTC") @map("timezone")
-  /// ISO 3166-1 alpha-2 (e.g. US, CA, GB); from locale; phone/format requirements
-  country   String?
-  email     String
-  phone     String?
-  address   String?
-  street1   String?
-  street2   String?
-  city      String?
-  webpage   String?
-  logoUrl   String?
-  primaryColor   String?
-  secondaryColor String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  rutNumber String?
-  ownerId  String?
-  owner    User?   @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  countyId String?
-  state    String?
-  zipcode  String?
-
-  clients         Client[]
-  workOrders      WorkOrder[]
-  quotes          Quote[]
-  tasks           Task[]
-  expenses        Expense[]
-  priceListItems  PriceListItem[]
-  invoices        Invoice[]
-  teamMembers     Member[]
-  teamInvitations TeamInvitation[]
-  roles           Role[]
-  settings        BusinessSettings?
-  reminderConfigs ReminderConfig[]
-  reminderLogs    ReminderLog[]
-  auditLogs       AuditLog[]
-}
-
-// ─────────────────────────────────────────────
-// MEMBER
-// ─────────────────────────────────────────────
-
-model Member {
-  id                                 String   @id @default(cuid())
-  isActive                           Boolean  @default(true)
-  includeInNotificationsWhenAssigned Boolean  @default(true)
-  createdAt                          DateTime @default(now())
-  updatedAt                          DateTime @updatedAt
-  calendarColor String?
-  userId     String
-  user       User     @relation("TeamMember", fields: [userId], references: [id], onDelete: Cascade)
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  roleId     String
-  role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
-
-  assignedTasks         Task[]                @relation("TaskAssignee")
-  primaryAssignedWorkOrders WorkOrder[]       @relation("WorkOrderPrimaryAssignee")
-  workOrderAssignments  WorkOrderAssignment[]
-  taskAssignments       TaskAssignment[]
-  assignedQuotes        Quote[]               @relation("QuoteAssignee")
-  assignedInvoices      Invoice[]
-
-  @@unique([userId, businessId])
-  @@map("Member")
-}
-
-// ─────────────────────────────────────────────
-// TEAM INVITATION
-// ─────────────────────────────────────────────
-
-model TeamInvitation {
-  id        String   @id @default(cuid())
-  email     String
-  token     String   @unique
-  status    String   @default("pending")
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  businessId  String
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  roleId      String
-  role        Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  invitedById String?
-  invitedBy   User?    @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
-}
-
-// ─────────────────────────────────────────────
-// ROLE & PERMISSIONS
-// ─────────────────────────────────────────────
-
-model Role {
-  id          String   @id @default(cuid())
-  name        String
-  displayName String?
-  description String?
-  isSystem    Boolean  @default(false)
-  portalScope RolePortalScope @default(BUSINESS_PORTAL)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  businessId  String
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  permissions     RolePermission[]
-  members         Member[]
-  teamInvitations TeamInvitation[]
-
-  @@unique([businessId, name, portalScope])
-}
-
-model Permission {
-  id           String   @id @default(cuid())
-  resource     String
-  action       String
-  description  String?
-  /// UI grouping for admin “Roles & Permissions” matrix (e.g. Jobs, Invoices).
-  section                 String?
-  /// If true, business-created custom roles cannot include this permission (platform governance).
-  lockedForCustomRoles    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  roles RolePermission[]
-
-  @@unique([resource, action])
-  @@index([resource])
-  @@map("permission")
-}
-
-model RolePermission {
-  createdAt    DateTime @default(now())
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permissionId String
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-}
-
-// ─────────────────────────────────────────────
-// CLIENT
-// ─────────────────────────────────────────────
-
-model Client {
-  id             String       @id @default(cuid())
-  name           String
-  email          String?
-  phone          String
-  address        String?
-  documentNumber String?
-  leadSource     LeadSource   @default(Website)
-  notes          String?
-  status         ClientStatus @default(ACTIVE)
-  lastActivityAt DateTime?
-  reminderDate   DateTime?
-  reminderNote   String?      @db.Text
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  workOrders   WorkOrder[]
-  quotes       Quote[]
-  tasks        Task[]
-  invoices     Invoice[]
-  reminderLogs ReminderLog[]
-}
-
-// ─────────────────────────────────────────────
-// WORK ORDER
-// ─────────────────────────────────────────────
-
-model WorkOrder {
-  id              String   @id @default(cuid())
-  workOrderNumber String?
-  title           String
-  address         String
-  instructions    String?  @db.Text
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  isScheduleLater Boolean  @default(false)
-  isAnyTime       Boolean  @default(false)
-
-  // Schedule
-  scheduledAt DateTime?
-  startTime   String?
-  endTime     String?
-
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  businessId   String
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  primaryAssigneeId String? @map("assignedToId")
-  primaryAssignee   Member? @relation("WorkOrderPrimaryAssignee", fields: [primaryAssigneeId], references: [id], onDelete: SetNull)
-  assignees    WorkOrderAssignment[]
-  quotes       Quote[]
-
-  // Job workflow
-  jobStatus                 JobStatus @default(UNSCHEDULED)
-  bookingConfirmationSentAt DateTime?
-  confirmationReminderSentAt DateTime?
-  confirmedAt               DateTime?
-  onMyWayAt                 DateTime?
-  startedAt                 DateTime?
-  completedAt               DateTime?
-  cancelledAt               DateTime?
-
-  // Invoice workflow
-  invoiceStatus          InvoiceStatus @default(NOT_SENT)
-  invoiceSentAt          DateTime?
-  dueAt                  DateTime?
-  invoiceCancelledAt     DateTime?
-  badDebtAt              DateTime?
-  lastInvoicePdfUrl      String?
-  invoiceCorrelative     String?
-  invoiceWhatsappStatus  String?
-  invoiceObservations    String?       @db.Text
-  quoteTermsConditions   String?       @db.Text
-  invoiceTermsConditions String?       @db.Text
-
-  // Financial
-  subtotal     Decimal?      @db.Decimal(12, 2)
-  discount     Decimal?      @db.Decimal(12, 2)
-  discountType DiscountType?
-  tax          Decimal?      @db.Decimal(12, 2)
-  total        Decimal?      @db.Decimal(12, 2)
-  cost         Decimal?      @db.Decimal(12, 2)
-  amountPaid   Decimal?      @db.Decimal(12, 2) @default(0)
-  balance      Decimal?      @db.Decimal(12, 2)
-
-  lastJobReportPdfUrl String?
-
-  lineItems   LineItem[]
-  expenses    Expense[]
-  payments    Payment[]
-  attachments WorkOrderAttachment[]
-  linkedTasks Task[]
-  invoices    Invoice[]
-  reminderLogs ReminderLog[]
-  @@unique([businessId, workOrderNumber])
-}
-
-model WorkOrderAssignment {
-  id          String    @id @default(cuid())
-  workOrderId String
-  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  memberId    String
-  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-
-  @@unique([workOrderId, memberId])
-  @@index([memberId])
-}
-
-// ─────────────────────────────────────────────
-// QUOTE (separate from WorkOrder — jobs live on WorkOrder only)
-// ─────────────────────────────────────────────
-
-model Quote {
-  id              String   @id @default(cuid())
-  quoteNumber     String?
-  title           String
-  address         String
-  instructions    String?  @db.Text
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  isScheduleLater Boolean  @default(true)
-  isAnyTime       Boolean  @default(false)
-
-  scheduledAt DateTime?
-  startTime   String?
-  endTime     String?
-
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  businessId   String
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  assignedToId String?
-  assignedTo   Member?  @relation("QuoteAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  workOrderId  String?
-  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  quoteRequired Boolean @default(false)
-
-  quoteStatus                QuoteStatus @default(NOT_SENT)
-  quoteSentAt                DateTime?
-  quoteApprovedAt            DateTime?
-  quoteRejectedAt            DateTime?
-  quoteExpiredAt             DateTime?
-  quoteConvertedAt           DateTime?
-  quoteExpiresAt             DateTime?
-  lastQuotePdfUrl            String?
-  quoteCorrelative           String?
-  quoteClientActionToken     String?
-  quoteClientRespondedAt     DateTime?
-  quoteClientRejectionReason String?     @db.Text
-  quoteWhatsappStatus        String?
-  quoteObservations          String?     @db.Text
-  quoteTermsConditions       String?     @db.Text
-  quoteVersion               Int         @default(1)
-
-  subtotal     Decimal?      @db.Decimal(12, 2)
-  discount     Decimal?      @db.Decimal(12, 2)
-  discountType DiscountType?
-  tax          Decimal?      @db.Decimal(12, 2)
-  total        Decimal?      @db.Decimal(12, 2)
-  cost         Decimal?      @db.Decimal(12, 2)
-  amountPaid   Decimal?      @db.Decimal(12, 2) @default(0)
-  balance      Decimal?      @db.Decimal(12, 2)
-
-  lastJobReportPdfUrl String?
-
-  lineItems   LineItem[]
-  attachments QuoteAttachment[]
-
-  @@unique([businessId, quoteNumber])
-}
-
-model QuoteAttachment {
-  id        String   @id @default(cuid())
-  url       String
-  filename  String?
-  type      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  quoteId String
-  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-
-  @@index([quoteId])
-}
-
-// ─────────────────────────────────────────────
-// INVOICE
-// ─────────────────────────────────────────────
-
-model Invoice {
-  id            String        @id @default(cuid())
-  invoiceNumber String?
-  title         String
-  address       String?
-  version  Int  @default(1)
-  status      InvoiceStatus @default(NOT_SENT)
-  sentAt      DateTime?
-  dueAt       DateTime?
-  cancelledAt DateTime?
-  badDebtAt   DateTime?
-
-  subtotal     Decimal?      @db.Decimal(12, 2)
-  discount     Decimal?      @db.Decimal(12, 2)
-  discountType DiscountType?
-  tax          Decimal?      @db.Decimal(12, 2)
-  total        Decimal?      @db.Decimal(12, 2)
-  amountPaid   Decimal?      @db.Decimal(12, 2) @default(0)
-  balance      Decimal?      @db.Decimal(12, 2)
-
-  whatsappStatus  String?
-  observations    String?     @db.Text
-  termsConditions String?     @db.Text
-  pdfUrl          String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  businessId   String
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  workOrderId  String?
-  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  invoiceRequired Boolean @default(false)
-  assignedToId String?
-  assignedTo   Member?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  // ✅ Uses shared polymorphic models
-  lineItems LineItem[]
-  payments  Payment[]
-
-  @@unique([businessId, invoiceNumber])
-}
-
-
-// ─────────────────────────────────────────────
-// PAYMENT  (polymorphic: WorkOrder OR Invoice)
-// ─────────────────────────────────────────────
-
-model Payment {
-  id              String        @id @default(cuid())
-  amount          Decimal       @db.Decimal(12, 2)
-  paymentDate     DateTime      @db.Date
-  paymentMethod   PaymentMethod
-  referenceNumber String?
-  note            String?       @db.Text
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  // ✅ workOrderId now optional (was required before)
-  workOrderId String?
-  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  // ✅ NEW — can belong to an Invoice
-  invoiceId String?
-  invoice   Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
-  @@index([workOrderId])
-  @@index([invoiceId])
-}
-
-// ─────────────────────────────────────────────
-// LINE ITEM  (polymorphic: WorkOrder OR Invoice OR Quote)
-// ─────────────────────────────────────────────
-
-model LineItem {
-  id            String   @id @default(cuid())
-  name          String
-  itemType      ItemType @default(SERVICE)
-  description   String?  @db.Text
-  quantity      Int      @default(1)
-  cost          Decimal? @db.Decimal(12, 2)
-  markupPercent Decimal? @db.Decimal(5, 2)
-  price         Decimal  @db.Decimal(12, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  workOrderId String?
-  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  invoiceId String?
-  invoice   Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
-  quoteId String?
-  quote   Quote? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-
-  priceListItemId String?
-  priceListItem   PriceListItem? @relation(fields: [priceListItemId], references: [id], onDelete: SetNull)
-
-  @@index([workOrderId])
-  @@index([invoiceId])
-  @@index([quoteId])
-  @@index([priceListItemId])
-}
-
-// ─────────────────────────────────────────────
-// WORK ORDER ATTACHMENT
-// ─────────────────────────────────────────────
-
-model WorkOrderAttachment {
-  id        String   @id @default(cuid())
-  url       String
-  filename  String?
-  type      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  workOrderId String
-  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-}
-
-// ─────────────────────────────────────────────
-// TASK
-// ─────────────────────────────────────────────
-
-model Task {
-  id           String   @id @default(cuid())
-  title        String
-  address      String?
-  instructions String?  @db.Text
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isAnyTime    Boolean  @default(false)
-  taskStatus   TaskStatus @default(SCHEDULED)
-  isCompleted Boolean   @default(false)
-  completedAt DateTime?
-  startedAt   DateTime?
-  scheduledAt DateTime?
-  startTime   String?
-  endTime     String?
-
-  clientId     String?
-  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  businessId   String
-  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  workOrderId  String?
-  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  assignedToId String?
-  assignedTo   Member?   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  assignees    TaskAssignment[]
-}
-
-model TaskAssignment {
-  id        String   @id @default(cuid())
-  taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  memberId  String
-  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@unique([taskId, memberId])
-  @@index([memberId])
-}
-
-// ─────────────────────────────────────────────
-// PRICE LIST ITEM
-// ─────────────────────────────────────────────
-
-model PriceListItem {
-  id            String   @id @default(cuid())
-  itemType      ItemType @default(SERVICE)
-  name          String
-  description   String?  @db.Text
-  cost          Decimal? @db.Decimal(12, 2)
-  markupPercent Decimal? @db.Decimal(5, 2)
-  price         Decimal  @db.Decimal(12, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  businessId String
-  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  lineItems  LineItem[]
-}
-
-// ─────────────────────────────────────────────
-// EXPENSE
-// ─────────────────────────────────────────────
-
-model Expense {
-  id            String   @id @default(cuid())
-  date          DateTime @db.Date
-  itemName      String
-  details       String?  @db.Text
-  total         Decimal  @db.Decimal(12, 2)
-  invoiceNumber String?
-  attachmentUrl String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  businessId  String
-  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  workOrderId String?
-  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-}
-
-// ─────────────────────────────────────────────
-// BUSINESS SETTINGS
-// ─────────────────────────────────────────────
-
-model BusinessSettings {
-  id String @id @default(cuid())
-
-  // Company
-  invoiceDueDays         Int  @default(3)
-  quoteExpirationDays    Int  @default(7)
-  arrivalWindowMinutes   Int?
-  arrivalWindowHours     Int?  // 1–4 hours for UI; used for booking confirmation
-  defaultDurationMinutes Int?
-
-  // Bank & Payment
-  bankName          String?
-  accountType       String?
-  accountNumber     String?
-  paymentEmail      String?
-  onlinePaymentLink String?
-
-  quoteTermsConditions   String? @db.Text
-  invoiceTermsConditions String? @db.Text
-
-  whatsappSender           String?
-  whatsappEnabled          Boolean @default(false)
-  sendQuoteWhatsappDefault Boolean @default(false)
-  defaultTaxRate  Decimal?  @db.Decimal(5, 2)
-  rutNumber       String?
-  notificationEmail              String?
-  replyToEmail                   String?
-  sendTeamPhotosWithConfirmation Boolean @default(false)
-
-  quoteRemindersEnabled   Boolean @default(true)
-  bookingRemindersEnabled Boolean @default(true)
-  invoiceRemindersEnabled Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  businessId String   @unique
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  templates MessageTemplate[]
-}
-
-// ─────────────────────────────────────────────
-// MESSAGE TEMPLATE
-// ─────────────────────────────────────────────
-
-model MessageTemplate {
-  id           String              @id @default(cuid())
-  templateType TemplateType
-  channel      NotificationChannel @default(EMAIL)
-  subject      String?
-  message      String              @db.Text
-  isDefault    Boolean             @default(false)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  settingsId String
-  settings   BusinessSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
-}
-
-// ─────────────────────────────────────────────
-// REMINDER CONFIG & LOG
-// ─────────────────────────────────────────────
-
-model ReminderConfig {
-  id           String              @id @default(cuid())
-  reminderType ReminderType
-  timeValue    Int
-  timeUnit     String
-  timeOfDay    String?
-  channel      NotificationChannel @default(EMAIL)
-  subject      String?
-  message      String?             @db.Text
-  isEnabled    Boolean             @default(true)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-}
-
-model ReminderLog {
-  id           String              @id @default(cuid())
-  reminderType String
-  sentAt       DateTime
-  note         String?             @db.Text
-  channel      NotificationChannel
-  entityType   String
-  entityId     String
-  workOrderId String?
-  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  clientId   String?
-  client     Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
-}
-
-// ─────────────────────────────────────────────
-// NOTIFICATION
-// ─────────────────────────────────────────────
-
-model Notification {
-  id        String    @id @default(cuid())
-  type      String
-  title     String
-  message   String?   @db.Text
-  readAt    DateTime?
-  metadata  Json?
-  createdAt DateTime  @default(now())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// ─────────────────────────────────────────────
-// AUDIT LOG
-// ─────────────────────────────────────────────
-
-model AuditLog {
-  id         String   @id @default(cuid())
-  action     String
-  entityType String
-  entityId   String?
-  oldValues  Json?
-  newValues  Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
-
-  userId     String?
-  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  businessId String?
-  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
-}
-
-// ─────────────────────────────────────────────
-// AUTH MODELS (better-auth)
-// ─────────────────────────────────────────────
-
-model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id @default(cuid())
-  userId                String
-  accountId             String
-  providerId            String
-  accessToken           String?
-  refreshToken          String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  idToken               String?
-  password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("account")
-}
-
-model Verification {
-  id         String   @id @default(cuid())
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([identifier])
-  @@map("verification")
-}
-
-// ─────────────────────────────────────────────
-// PLATFORM SETTINGS (Super Admin)
-// ─────────────────────────────────────────────
-
-model PlatformSettings {
-  id String @id @default(cuid())
-
-  platformLogoUrl     String?
-  platformName        String?
-  primaryColor        String?
-  domain              String?
-  supportEmail        String?
-  defaultQuoteTerms   String?  @db.Text
-  defaultInvoiceTerms String?  @db.Text
-  /// When true, BCC platform copy address on business → customer emails (e.g. quote to client).
-  clientEmailCopyEnabled Boolean @default(false)
-  /// BCC destination for client-facing emails sent by businesses (admin-configured).
-  clientEmailCopyTo   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ─────────────────────────────────────────────
-// PLATFORM NOTIFICATION RULES (Admin portal)
-// ─────────────────────────────────────────────
-
-model PlatformNotificationRule {
-  id                 String   @id @default(cuid())
-  /// Stable key for code (e.g. QUOTE_REJECTED_BY_CLIENT, JOB_COMPLETED).
-  eventKey           String   @unique
-  eventName          String
-  triggerDescription String   @db.Text
-  isActive           Boolean  @default(true)
-  sortOrder          Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
 }

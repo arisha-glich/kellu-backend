@@ -18,7 +18,7 @@ const JobStatusEnum = z.enum([
   'CANCELLED',
 ])
 const QuoteStatusEnum = z.enum([
-  'NOT_SENT',
+  'NOT_APPLIED',
   'AWAITING_RESPONSE',
   'APPROVED',
   'CONVERTED',

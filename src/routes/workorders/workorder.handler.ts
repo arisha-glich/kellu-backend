@@ -308,6 +308,21 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
         discountType: body.discountType,
         taxPercent: body.taxPercent,
         lineItems: body.lineItems,
+        expenses: body.expenses?.map(exp => ({
+          date: exp.date,
+          itemName: exp.itemName,
+          details: exp.details ?? null,
+          total: exp.total,
+          invoiceNumber: exp.invoiceNumber ?? null,
+          attachmentUrl: exp.attachmentUrl ?? null,
+        })),
+        payments: body.payments?.map(payment => ({
+          amount: payment.amount,
+          paymentDate: payment.paymentDate ?? null,
+          paymentMethod: payment.paymentMethod,
+          referenceNumber: payment.referenceNumber ?? null,
+          note: payment.note ?? null,
+        })),
       })
       if (body.applyQuoteTermsToFuture) {
         await updateCurrentBusinessSettings(businessId, {

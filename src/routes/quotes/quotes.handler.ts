@@ -387,7 +387,7 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       }
       if (error instanceof QuoteTerminalStateError) {
         return c.json(
-          { message: 'Quote must be in NOT_SENT status to set awaiting response' },
+          { message: 'Quote must be in NOT_APPLIED status to set awaiting response' },
           HttpStatusCodes.BAD_REQUEST
         )
       }

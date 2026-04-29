@@ -239,6 +239,45 @@ async function recalculateFinancials(
   console.log('[recalc] update complete')
 }
 
+type WorkOrderFinancialsForTax = {
+  tax: Prisma.Decimal | null
+  subtotal: Prisma.Decimal | null
+  discount: Prisma.Decimal | null
+  discountType: DiscountType | null
+}
+
+/**
+ * If `taxPercent` is not explicitly provided, keep the *effective* tax rate
+ * that was already applied on the work order.
+ *
+ * This prevents overwriting stored taxes when business defaults change.
+ */
+function deriveTaxPercentFromFinancials(fin: WorkOrderFinancialsForTax): number | null {
+  if (fin.tax == null || fin.subtotal == null) {
+    return null
+  }
+
+  const subtotal = toNum(fin.subtotal)
+  const tax = toNum(fin.tax)
+  const discountVal = toNum(fin.discount)
+
+  let discountAmount = discountVal
+  if (fin.discountType === 'PERCENTAGE') {
+    discountAmount = (subtotal * discountVal) / 100
+  }
+
+  const afterDiscount = subtotal - discountAmount
+  if (afterDiscount <= 0) {
+    return null
+  }
+
+  const taxPercent = (tax / afterDiscount) * 100
+  if (!Number.isFinite(taxPercent)) {
+    return null
+  }
+  return taxPercent
+}
+
 async function ensureBusinessExists(businessId: string): Promise<void> {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true } })
   if (!b) {
@@ -374,7 +413,7 @@ export async function listWorkOrders(businessId: string, filters: WorkOrderListF
       const mapped = mapWorkOrderForApi(wo)
       return {
         ...mapped,
-        quoteStatus: wo.quotes[0]?.quoteStatus ?? 'NOT_SENT',
+        quoteStatus: wo.quotes[0]?.quoteStatus ?? 'NOT_APPLIED',
       }
     }),
     pagination: {
@@ -560,7 +599,7 @@ export async function createWorkOrderQuote(businessId: string, workOrderId: stri
         notes: workOrder.notes,
         assignedToId: workOrder.primaryAssigneeId,
         quoteNumber,
-        quoteStatus: 'NOT_SENT',
+        quoteStatus: 'NOT_APPLIED',
         quoteTermsConditions: resolvedQuoteTermsConditions,
         isScheduleLater: true,
         discount: new Prisma.Decimal(0),
@@ -921,6 +960,10 @@ export async function updateWorkOrder(
       startTime: true,
       primaryAssigneeId: true,
       isAnyTime: true,
+      subtotal: true,
+      discount: true,
+      discountType: true,
+      tax: true,
     },
   })
   if (!existing) {
@@ -986,7 +1029,17 @@ export async function updateWorkOrder(
       })
     : undefined
 
-  const taxPercent = input.taxPercent ?? (await getDefaultTaxPercent(businessId))
+  // If the caller doesn't provide `taxPercent`, keep the effective tax
+  // derived from the existing work order financials.
+  const taxPercent =
+    typeof input.taxPercent === 'number'
+      ? input.taxPercent
+      : (deriveTaxPercentFromFinancials({
+          tax: existing.tax,
+          subtotal: existing.subtotal,
+          discount: existing.discount,
+          discountType: existing.discountType,
+        }) ?? (await getDefaultTaxPercent(businessId)))
 
   const updateData: Parameters<typeof prisma.workOrder.update>[0]['data'] = {
     ...(input.title != null && { title: input.title }),
@@ -1266,11 +1319,19 @@ export async function addLineItemsToWorkOrder(
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
-    select: { id: true },
+    select: { id: true, subtotal: true, discount: true, discountType: true, tax: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
+
+  const derivedTaxPercent =
+    deriveTaxPercentFromFinancials({
+      tax: wo.tax,
+      subtotal: wo.subtotal,
+      discount: wo.discount,
+      discountType: wo.discountType,
+    }) ?? (await getDefaultTaxPercent(businessId))
 
   await prisma.$transaction(async tx => {
     for (const item of items) {
@@ -1309,7 +1370,7 @@ export async function addLineItemsToWorkOrder(
       }
     }
 
-    await recalculateFinancials(workOrderId, 0, tx)
+    await recalculateFinancials(workOrderId, derivedTaxPercent, tx)
   })
 
   return getWorkOrderById(businessId, workOrderId)
@@ -1386,11 +1447,19 @@ export async function registerPayment(
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
-    select: { id: true },
+    select: { id: true, subtotal: true, discount: true, discountType: true, tax: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
+
+  const taxPercent =
+    deriveTaxPercentFromFinancials({
+      tax: wo.tax,
+      subtotal: wo.subtotal,
+      discount: wo.discount,
+      discountType: wo.discountType,
+    }) ?? (await getDefaultTaxPercent(businessId))
 
   await prisma.$transaction(async tx => {
     await tx.payment.create({
@@ -1406,7 +1475,7 @@ export async function registerPayment(
       },
     })
 
-    await recalculateFinancials(workOrderId, 0, tx)
+    await recalculateFinancials(workOrderId, taxPercent, tx)
 
     const updated = await tx.workOrder.findUnique({
       where: { id: workOrderId },
@@ -1477,11 +1546,19 @@ export async function updateWorkOrderPayment(
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
-    select: { id: true },
+    select: { id: true, subtotal: true, discount: true, discountType: true, tax: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
+
+  const taxPercent =
+    deriveTaxPercentFromFinancials({
+      tax: wo.tax,
+      subtotal: wo.subtotal,
+      discount: wo.discount,
+      discountType: wo.discountType,
+    }) ?? (await getDefaultTaxPercent(businessId))
 
   const existing = await prisma.payment.findFirst({
     where: { id: paymentId, workOrderId },
@@ -1507,7 +1584,7 @@ export async function updateWorkOrderPayment(
       },
     })
 
-    await recalculateFinancials(workOrderId, 0, tx)
+    await recalculateFinancials(workOrderId, taxPercent, tx)
 
     const updated = await tx.workOrder.findUnique({
       where: { id: workOrderId },
@@ -1540,11 +1617,19 @@ export async function deleteWorkOrderPayment(
   await ensureBusinessExists(businessId)
   const wo = await prisma.workOrder.findFirst({
     where: { id: workOrderId, businessId },
-    select: { id: true },
+    select: { id: true, subtotal: true, discount: true, discountType: true, tax: true },
   })
   if (!wo) {
     throw new WorkOrderNotFoundError()
   }
+
+  const taxPercent =
+    deriveTaxPercentFromFinancials({
+      tax: wo.tax,
+      subtotal: wo.subtotal,
+      discount: wo.discount,
+      discountType: wo.discountType,
+    }) ?? (await getDefaultTaxPercent(businessId))
 
   const existing = await prisma.payment.findFirst({
     where: { id: paymentId, workOrderId },
@@ -1556,7 +1641,7 @@ export async function deleteWorkOrderPayment(
 
   await prisma.$transaction(async tx => {
     await tx.payment.delete({ where: { id: paymentId } })
-    await recalculateFinancials(workOrderId, 0, tx)
+    await recalculateFinancials(workOrderId, taxPercent, tx)
 
     const updated = await tx.workOrder.findUnique({
       where: { id: workOrderId },
