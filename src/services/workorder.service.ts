@@ -337,11 +337,26 @@ function mapAssigneesForApi(assignees: WorkOrderAssigneeRow[]) {
 function mapWorkOrderForApi<
   T extends Record<string, unknown> & { assignees?: WorkOrderAssigneeRow[] },
 >(wo: T) {
+  const taxPercent = deriveTaxPercentFromWorkOrderRecord(wo)
   const { primaryAssigneeId: _primaryId, primaryAssignee: _primary, assignees = [], ...rest } = wo
   return {
     ...rest,
+    taxPercent,
     assignees: mapAssigneesForApi(assignees),
   }
+}
+
+function deriveTaxPercentFromWorkOrderRecord(wo: Record<string, unknown>): number | null {
+  const taxPercent = deriveTaxPercentFromFinancials({
+    tax: (wo.tax as Prisma.Decimal | null | undefined) ?? null,
+    subtotal: (wo.subtotal as Prisma.Decimal | null | undefined) ?? null,
+    discount: (wo.discount as Prisma.Decimal | null | undefined) ?? null,
+    discountType: (wo.discountType as DiscountType | null | undefined) ?? null,
+  })
+  if (taxPercent == null || !Number.isFinite(taxPercent)) {
+    return null
+  }
+  return Math.max(0, taxPercent)
 }
 
 function normalizeAssigneeIds(input: {
