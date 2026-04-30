@@ -110,6 +110,29 @@ export interface CreateWorkOrderInput {
 
 export type UpdateWorkOrderInput = Partial<CreateWorkOrderInput>
 
+export async function updateWorkOrderJobStatus(
+  businessId: string,
+  workOrderId: string,
+  jobStatus: JobStatus
+) {
+  await ensureBusinessExists(businessId)
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, businessId },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  await prisma.workOrder.update({
+    where: { id: workOrderId },
+    data: { jobStatus },
+  })
+
+  return getWorkOrderById(businessId, workOrderId)
+}
+
 const CREATE_WORKORDER_TX_MAX_WAIT_MS = 20_000
 const CREATE_WORKORDER_TX_TIMEOUT_MS = 60_000
 

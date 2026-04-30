@@ -2,6 +2,7 @@ import type { ClientStatus, LeadSource, Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { BusinessNotFoundError } from '~/services/business.service'
 import { emailService } from '~/services/email.service'
+import { sendCustomerReminderEmail } from '~/services/email-helpers'
 
 export class ClientNotFoundError extends Error {
   constructor() {
@@ -790,7 +791,21 @@ async function triggerDueClientRemindersForBusiness(businessId: string): Promise
       businessId,
       reminderDate: { lte: now },
     },
-    select: { id: true, businessId: true, reminderDate: true, reminderNote: true },
+    select: {
+      id: true,
+      businessId: true,
+      name: true,
+      email: true,
+      reminderDate: true,
+      reminderNote: true,
+      business: {
+        select: {
+          name: true,
+          email: true,
+          settings: { select: { replyToEmail: true } },
+        },
+      },
+    },
   })
 
   let triggeredCount = 0
@@ -831,6 +846,24 @@ async function triggerDueClientRemindersForBusiness(businessId: string): Promise
     })
     if (triggered) {
       triggeredCount += 1
+      try {
+        const clientEmail = dueClient.email?.trim()
+        if (clientEmail) {
+          const companyReplyTo =
+            dueClient.business.settings?.replyToEmail?.trim() || dueClient.business.email
+          sendCustomerReminderEmail({
+            to: clientEmail,
+            clientName: dueClient.name,
+            businessName: dueClient.business.name,
+            companyReplyTo,
+            workOrderTitle: 'Customer follow-up',
+            reminderDateTime: dueDate,
+            note: dueClient.reminderNote ?? null,
+          })
+        }
+      } catch (error) {
+        console.error('[CLIENT] Failed to send triggered reminder email:', error)
+      }
     }
   }
 

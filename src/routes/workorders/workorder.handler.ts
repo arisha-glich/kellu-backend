@@ -3,6 +3,7 @@
  */
 
 import * as HttpStatusCodes from 'stoker/http-status-codes'
+import { UserRole } from '~/generated/prisma'
 import type { WORK_ORDER_ROUTES } from '~/routes/workorders/workorder.routes'
 import { createAuditLog } from '~/services/audit-log.service'
 import { BusinessNotFoundError, getBusinessIdByUserId } from '~/services/business.service'
@@ -41,6 +42,7 @@ import {
   sendBookingConfirmation,
   sendJobFollowUpEmail,
   updateWorkOrder,
+  updateWorkOrderJobStatus,
   updateWorkOrderPayment,
   WorkOrderAssigneeNotFoundError,
   WorkOrderNotFoundError,
@@ -464,6 +466,64 @@ export const WORK_ORDER_HANDLER: HandlerMapFromRoutes<typeof WORK_ORDER_ROUTES> 
       console.error('Error updating work order:', error)
       return c.json(
         { message: 'Failed to update work order' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
+
+  updateStatus: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    if (user.role !== UserRole.BUSINESS_OWNER) {
+      return c.json(
+        { message: 'Only business owners can change work order status' },
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found for this user' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'workorders', 'update'))) {
+        return c.json(
+          { message: 'You do not have permission to update work order status' },
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+
+      const { workOrderId } = c.req.valid('param')
+      const { jobStatus } = c.req.valid('json')
+      const workOrder = await updateWorkOrderJobStatus(businessId, workOrderId, jobStatus)
+
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'WORKORDER_STATUS_UPDATED',
+        module: 'workorder',
+        entityId: workOrder.id,
+        newValues: { jobStatus: workOrder.jobStatus },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
+
+      return c.json(
+        { message: 'Work order status updated successfully', success: true, data: workOrder },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof WorkOrderNotFoundError) {
+        return c.json({ message: 'Work order not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error updating work order status:', error)
+      return c.json(
+        { message: 'Failed to update work order status' },
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }

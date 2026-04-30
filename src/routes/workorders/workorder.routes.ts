@@ -240,6 +240,12 @@ export const UpdateWorkOrderBodySchema = CreateWorkOrderBodySchema.partial().ope
   description: 'Update work order – partial',
 })
 
+export const UpdateWorkOrderStatusBodySchema = z
+  .object({
+    jobStatus: z.enum(['UNSCHEDULED', 'SCHEDULED', 'NOT_APPLIED']),
+  })
+  .openapi({ description: 'Set work order job status directly (business owner only)' })
+
 export const RegisterPaymentBodySchema = z
   .object({
     amount: z.number().positive(),
@@ -631,6 +637,24 @@ export const WORK_ORDER_ROUTES = {
     request: {
       params: WorkOrderParamsSchema,
       body: jsonContentRequired(UpdateWorkOrderBodySchema, 'Update payload'),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Work order not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
+
+  updateStatus: createRoute({
+    method: 'patch',
+    tags: ['Workorders'],
+    path: '/{workOrderId}/status',
+    summary: 'Update work order job status (business owner only)',
+    request: {
+      params: WorkOrderParamsSchema,
+      body: jsonContentRequired(UpdateWorkOrderStatusBodySchema, 'Update work order status payload'),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),

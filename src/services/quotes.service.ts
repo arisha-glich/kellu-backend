@@ -1233,6 +1233,66 @@ export async function updateQuoteStatus(
   return getQuoteById(businessId, quoteId)
 }
 
+export async function sendQuoteStatusChangeEmail(
+  businessId: string,
+  quoteId: string,
+  quoteStatus: 'APPROVED' | 'REJECTED'
+) {
+  await ensureBusinessExists(businessId)
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, businessId },
+    select: {
+      id: true,
+      title: true,
+      quoteNumber: true,
+      quoteCorrelative: true,
+      client: { select: { name: true, email: true } },
+      business: {
+        select: {
+          name: true,
+          email: true,
+          settings: { select: { replyToEmail: true } },
+        },
+      },
+    },
+  })
+  if (!quote) {
+    throw new WorkOrderNotFoundError()
+  }
+
+  const toEmail = quote.client.email?.trim()
+  if (!toEmail) {
+    return
+  }
+
+  const businessName = quote.business.name?.trim() || 'Company'
+  const companyReplyTo = quote.business.settings?.replyToEmail?.trim() || quote.business.email
+  const fromHeader = clientToCustomerFrom(businessName)
+  const isApproved = quoteStatus === 'APPROVED'
+  const subject = isApproved
+    ? `Your quote was approved - ${quote.quoteNumber ?? quote.quoteCorrelative ?? quote.id}`
+    : `Your quote was rejected - ${quote.quoteNumber ?? quote.quoteCorrelative ?? quote.id}`
+  const html = `
+    <p>Hi ${quote.client.name},</p>
+    <p>
+      ${businessName} has ${isApproved ? 'approved' : 'rejected'} your quote
+      <strong>${quote.quoteNumber ?? quote.quoteCorrelative ?? quote.id}</strong>
+      for <strong>${quote.title}</strong>.
+    </p>
+    <p>If you have any questions, please reply to this email.</p>
+    <p>Thanks,<br/>${businessName}</p>
+  `
+
+  await emailService.send({
+    to: toEmail,
+    subject,
+    html,
+    from: fromHeader,
+    replyTo: companyReplyTo,
+  })
+}
+
 export async function deleteQuote(businessId: string, quoteId: string) {
   await ensureBusinessExists(businessId)
 

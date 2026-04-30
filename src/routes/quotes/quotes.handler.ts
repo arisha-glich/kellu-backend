@@ -23,6 +23,7 @@ import {
   resolveClientRejectFormQuote,
   sendQuote,
   sendQuoteEmail,
+  sendQuoteStatusChangeEmail,
   setQuoteAwaitingResponse,
   updateQuote,
   updateQuoteStatus,
@@ -294,6 +295,14 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
       const { quoteStatus } = c.req.valid('json')
       const quote = await updateQuoteStatus(businessId, quoteId, quoteStatus)
 
+      if (quoteStatus === 'APPROVED' || quoteStatus === 'REJECTED') {
+        try {
+          await sendQuoteStatusChangeEmail(businessId, quoteId, quoteStatus)
+        } catch (emailError) {
+          console.error('Quote status email to client failed:', emailError)
+        }
+      }
+
       const { ipAddress, userAgent } = getClientMeta(c)
       await createAuditLog({
         action: 'QUOTE_STATUS_UPDATED',
@@ -399,7 +408,6 @@ export const QUOTE_HANDLER: HandlerMapFromRoutes<typeof QUOTE_ROUTES> = {
     }
   },
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: auth, notifications, and error mapping
   send: async c => {
     const user = c.get('user')
     if (!user) {

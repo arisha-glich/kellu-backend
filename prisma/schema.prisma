@@ -706,12 +706,9 @@ enum QuoteStatus {
 
 enum JobStatus {
   UNSCHEDULED
-  UNASSIGNED
   SCHEDULED
-  ON_MY_WAY
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
+  NOT_APPLIED
+
 }
 
 enum InvoiceStatus {
