@@ -614,7 +614,6 @@ export async function createWorkOrderQuote(businessId: string, workOrderId: stri
         notes: workOrder.notes,
         assignedToId: workOrder.primaryAssigneeId,
         quoteNumber,
-        quoteStatus: 'NOT_APPLIED',
         quoteTermsConditions: resolvedQuoteTermsConditions,
         isScheduleLater: true,
         discount: new Prisma.Decimal(0),

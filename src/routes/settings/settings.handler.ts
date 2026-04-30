@@ -238,4 +238,50 @@ export const SETTINGS_HANDLER: HandlerMapFromRoutes<typeof SETTINGS_ROUTES> = {
       )
     }
   },
+
+  deleteScheduleColor: async c => {
+    const user = c.get('user')
+    if (!user) {
+      return c.json({ message: 'Unauthorized' }, HttpStatusCodes.UNAUTHORIZED)
+    }
+    try {
+      const businessId = await getBusinessIdByUserId(user.id)
+      if (!businessId) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (!(await hasPermission(user.id, businessId, 'settings', 'update'))) {
+        return c.json({ message: 'Forbidden' }, HttpStatusCodes.FORBIDDEN)
+      }
+
+      const { memberId } = c.req.valid('param')
+      const data = await updateScheduleColor(businessId, { memberId, color: null })
+      const { ipAddress, userAgent } = getClientMeta(c)
+      await createAuditLog({
+        action: 'SETTINGS_UPDATED',
+        module: 'settings',
+        entityId: memberId,
+        newValues: { scheduleColor: null },
+        userId: user.id,
+        businessId,
+        ipAddress,
+        userAgent,
+      })
+      return c.json(
+        { message: 'Schedule color deleted successfully', success: true, data },
+        HttpStatusCodes.OK
+      )
+    } catch (error) {
+      if (error instanceof BusinessNotFoundError) {
+        return c.json({ message: 'Business not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      if (error instanceof Error && error.message === 'MEMBER_NOT_FOUND') {
+        return c.json({ message: 'Team member not found' }, HttpStatusCodes.NOT_FOUND)
+      }
+      console.error('Error deleting schedule color:', error)
+      return c.json(
+        { message: 'Failed to delete schedule color' },
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+  },
 }

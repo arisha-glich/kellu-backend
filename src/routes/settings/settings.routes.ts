@@ -195,6 +195,25 @@ export const SETTINGS_ROUTES = {
       [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
     },
   }),
+
+  deleteScheduleColor: createRoute({
+    method: 'delete',
+    tags: ['Settings'],
+    path: '/schedule/colors/{memberId}',
+    summary: 'Delete assigned calendar color from team member',
+    request: {
+      params: z.object({
+        memberId: z.string().openapi({ param: { name: 'memberId', in: 'path' } }),
+      }),
+    },
+    responses: {
+      [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(ScheduleColorAssigneeSchema), 'OK'),
+      [HttpStatusCodes.NOT_FOUND]: jsonContent(zodResponseSchema(), 'Business or member not found'),
+      [HttpStatusCodes.FORBIDDEN]: jsonContent(zodResponseSchema(), 'Forbidden'),
+      [HttpStatusCodes.UNAUTHORIZED]: jsonContent(zodResponseSchema(), 'Unauthorized'),
+      [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(zodResponseSchema(), 'Server error'),
+    },
+  }),
 }
 
 export type SettingsRoutes = typeof SETTINGS_ROUTES

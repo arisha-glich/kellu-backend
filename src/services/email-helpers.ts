@@ -642,37 +642,6 @@ export async function sendTeamMemberInvitationEmail(
   })
 }
 
-export interface SendClientProfileUpdateParams {
-  to: string
-  clientName: string
-  businessName: string
-  /** Company email for Reply-To (Client → Their Customers). */
-  companyReplyTo: string
-  isUpdate: boolean
-  /** Company logo URL (Company Settings). Shown in email header. */
-  companyLogoUrl?: string | null
-}
-
-/**
- * Send email to client's customer when business creates/updates profile (Client → Their Customers).
- * From: {businessName} <noresponder@...>, Reply-To: companyReplyTo.
- */
-export function sendClientProfileUpdateEmail(params: SendClientProfileUpdateParams): void {
-  const { to, clientName, businessName, companyReplyTo, isUpdate, companyLogoUrl } = params
-  appEventEmitter.emit('mail:send-template', {
-    to,
-    template: 'client-profile-update' as EmailTemplate,
-    payload: {
-      clientName,
-      businessName,
-      isUpdate,
-      logoUrl: companyLogoUrl ?? undefined,
-    },
-    from: clientToCustomerFrom(businessName),
-    replyTo: companyReplyTo,
-  })
-}
-
 export interface SendBookingConfirmationParams {
   to: string
   clientName: string

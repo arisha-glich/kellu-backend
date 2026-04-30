@@ -4,7 +4,6 @@ import { render } from '@react-email/components'
 import { AddBusinessEmail } from '../emails/admin/add.business'
 import { AddTeamMemberEmail } from '../emails/admin/add.team-member'
 import { BookingConfirmationEmail } from '../emails/booking-confirmation'
-import { ClientProfileUpdateEmail } from '../emails/client-profile-update'
 import { EmailVerification } from '../emails/email.verification'
 import { InvoiceAssignedTeamEmail } from '../emails/invoice-assigned-team'
 import { InvoiceCreatedClientEmail } from '../emails/invoice-created-client'
@@ -31,7 +30,6 @@ export type EmailTemplate =
   | 'add-team-member'
   | 'welcome'
   | 'email-verification'
-  | 'client-profile-update'
   | 'booking-confirmation'
   | 'quote-created'
   | 'invoice-created-client'
@@ -50,7 +48,6 @@ export const emailSubjects: Record<EmailTemplate, string> = {
   'add-team-member': `${APP_NAME} - Your team member login for the portal`,
   welcome: `Welcome to ${APP_NAME}!`,
   'email-verification': 'Verify your email address',
-  'client-profile-update': `${APP_NAME} - your client profile has been created`,
   'booking-confirmation': 'Booking Confirmation',
   'quote-created': 'Your quote is ready',
   'invoice-created-client': 'New invoice',
@@ -116,17 +113,6 @@ export async function renderEmailTemplate(
     case 'email-verification': {
       const { verificationLink, userName } = data
       return render(<EmailVerification verificationLink={verificationLink} userName={userName} />)
-    }
-    case 'client-profile-update': {
-      const { clientName, businessName, isUpdate, logoUrl } = data
-      return render(
-        <ClientProfileUpdateEmail
-          clientName={clientName}
-          businessName={businessName}
-          isUpdate={isUpdate}
-          logoUrl={logoUrl}
-        />
-      )
     }
     case 'booking-confirmation': {
       const {

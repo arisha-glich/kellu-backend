@@ -289,7 +289,7 @@ model Quote {
   clientId                   String
   businessId                 String
   assignedToId               String?
-  quoteStatus                QuoteStatus       @default(NOT_SENT)
+  quoteStatus                QuoteStatus       @default(NOT_APPLIED)
   quoteSentAt                DateTime?
   quoteApprovedAt            DateTime?
   quoteRejectedAt            DateTime?
@@ -696,7 +696,7 @@ enum ClientStatus {
 }
 
 enum QuoteStatus {
-  NOT_SENT
+  NOT_APPLIED
   AWAITING_RESPONSE
   APPROVED
   CONVERTED
