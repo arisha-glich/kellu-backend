@@ -10,20 +10,18 @@ import { zodResponseSchema } from '~/lib/zod-helper'
 
 const JobStatusEnum = z.enum([
   'UNSCHEDULED',
-  'UNASSIGNED',
+  'NOT_APPLIED',
   'SCHEDULED',
   'ON_MY_WAY',
   'IN_PROGRESS',
   'COMPLETED',
-  'CANCELLED',
 ])
 const QuoteStatusEnum = z.enum([
   'NOT_APPLIED',
   'AWAITING_RESPONSE',
   'APPROVED',
-  'CONVERTED',
+
   'REJECTED',
-  'EXPIRED',
 ])
 const InvoiceStatusEnum = z.enum([
   'NOT_SENT',
@@ -242,7 +240,14 @@ export const UpdateWorkOrderBodySchema = CreateWorkOrderBodySchema.partial().ope
 
 export const UpdateWorkOrderStatusBodySchema = z
   .object({
-    jobStatus: z.enum(['UNSCHEDULED', 'SCHEDULED', 'NOT_APPLIED']),
+    jobStatus: z.enum([
+      'UNSCHEDULED',
+      'SCHEDULED',
+      'NOT_APPLIED',
+      'ON_MY_WAY',
+      'IN_PROGRESS',
+      'COMPLETED',
+    ]),
   })
   .openapi({ description: 'Set work order job status directly (business owner only)' })
 
@@ -654,7 +659,10 @@ export const WORK_ORDER_ROUTES = {
     summary: 'Update work order job status (business owner only)',
     request: {
       params: WorkOrderParamsSchema,
-      body: jsonContentRequired(UpdateWorkOrderStatusBodySchema, 'Update work order status payload'),
+      body: jsonContentRequired(
+        UpdateWorkOrderStatusBodySchema,
+        'Update work order status payload'
+      ),
     },
     responses: {
       [HttpStatusCodes.OK]: jsonContent(zodResponseSchema(WorkOrderDetailResponseSchema), 'OK'),

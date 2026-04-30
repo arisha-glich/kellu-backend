@@ -187,7 +187,7 @@ function deriveJobStatus(data: {
     return 'UNSCHEDULED'
   }
   if (!data.assignedToId) {
-    return 'UNASSIGNED'
+    return 'NOT_APPLIED'
   }
   return 'SCHEDULED'
 }
