@@ -1,5 +1,4 @@
 import * as HttpStatusCodes from 'stoker/http-status-codes'
-import { UserRole } from '~/generated/prisma'
 import { appEventEmitter } from '~/lib/event-emitter'
 import prisma from '~/lib/prisma'
 import type { BUSINESS_ROUTES } from '~/routes/business/business.routes'
@@ -10,10 +9,6 @@ import {
   EmailAlreadyUsedError,
 } from '~/services/business.service'
 import { createUserNotification } from '~/services/notifications.service'
-import {
-  isPlatformNotificationRuleActive,
-  PlatformNotificationEventKey,
-} from '~/services/platform-notification-rule.service'
 import type { HandlerMapFromRoutes } from '~/types'
 
 function getClientMeta(c: { req: { header: (k: string) => string | undefined } }) {
@@ -198,37 +193,6 @@ export const BUSINESS_HANDLER: HandlerMapFromRoutes<typeof BUSINESS_ROUTES> = {
         ipAddress,
         userAgent,
       })
-      try {
-        const isRuleActive = await isPlatformNotificationRuleActive(
-          PlatformNotificationEventKey.NEW_BUSINESS_REGISTRATION
-        )
-        if (isRuleActive) {
-          const adminUsers = await prisma.user.findMany({
-            where: { role: UserRole.SUPER_ADMIN, isActive: true },
-            select: { id: true },
-          })
-          await Promise.all(
-            adminUsers.map(adminUser =>
-              createUserNotification({
-                userId: adminUser.id,
-                type: 'NEW_BUSINESS_REGISTRATION',
-                title: 'New Business Registration',
-                message: `${business.companyName} was created successfully.`,
-                metadata: {
-                  businessId: business.id,
-                  businessName: business.companyName,
-                  createdByUserId: user.id,
-                },
-              })
-            )
-          )
-        }
-      } catch (notificationError) {
-        console.error(
-          'Failed to create admin notification for business registration:',
-          notificationError
-        )
-      }
       return c.json(
         { message: 'Business created successfully', success: true, data: business },
         HttpStatusCodes.CREATED

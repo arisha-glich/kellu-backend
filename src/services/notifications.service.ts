@@ -2,6 +2,15 @@ import type { Prisma } from '~/generated/prisma'
 import prisma from '~/lib/prisma'
 import { emailService } from '~/services/email.service'
 
+const HIDDEN_NOTIFICATION_TYPES = ['NEW_BUSINESS_REGISTRATION'] as const
+
+function buildNotificationVisibilityFilter(type?: string) {
+  if (type) {
+    return { type }
+  }
+  return { type: { notIn: [...HIDDEN_NOTIFICATION_TYPES] } as Prisma.StringFilter }
+}
+
 export interface NotificationFeedFilters {
   page?: number
   limit?: number
@@ -56,8 +65,8 @@ export async function listNotifications(
 
   const where = {
     userId,
+    ...buildNotificationVisibilityFilter(filters.type),
     ...(filters.unreadOnly ? { readAt: null } : {}),
-    ...(filters.type ? { type: filters.type } : {}),
     ...(filters.search?.trim()
       ? {
           OR: [
@@ -99,7 +108,13 @@ export async function listNotifications(
 
 /** Unread badge count for bell icon. */
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
-  return prisma.notification.count({ where: { userId, readAt: null } })
+  return prisma.notification.count({
+    where: {
+      userId,
+      readAt: null,
+      type: { notIn: [...HIDDEN_NOTIFICATION_TYPES] },
+    },
+  })
 }
 
 /** Mark one notification as read (idempotent). */
@@ -126,7 +141,10 @@ export async function getNotificationFeedOptions(userId: string): Promise<{
 }> {
   const grouped = await prisma.notification.groupBy({
     by: ['type'],
-    where: { userId },
+    where: {
+      userId,
+      type: { notIn: [...HIDDEN_NOTIFICATION_TYPES] },
+    },
     _count: { _all: true },
     orderBy: { type: 'asc' },
   })
