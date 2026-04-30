@@ -84,7 +84,9 @@ function toTeamMemberWorkOrderDetail(
     workOrderNumber: workOrder.workOrderNumber,
     title: workOrder.title,
     address: workOrder.address,
-    instructions: workOrder.instructions,
+    // Keep instructions visible for team members even if older records stored text in notes.
+    instructions: workOrder.instructions ?? workOrder.notes ?? null,
+    notes: workOrder.notes ?? null,
     isScheduleLater: workOrder.isScheduleLater,
     isAnyTime: workOrder.isAnyTime,
     scheduledAt: workOrder.scheduledAt,

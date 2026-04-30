@@ -16,15 +16,10 @@ const JobStatusEnum = z.enum([
   'IN_PROGRESS',
   'COMPLETED',
 ])
-const QuoteStatusEnum = z.enum([
-  'NOT_APPLIED',
-  'AWAITING_RESPONSE',
-  'APPROVED',
-
-  'REJECTED',
-])
+const QuoteStatusEnum = z.enum(['NOT_APPLIED', 'AWAITING_RESPONSE', 'APPROVED', 'REJECTED'])
 const InvoiceStatusEnum = z.enum([
-  'NOT_SENT',
+  'NOT_APPLIED',
+  'INVOICE_PENDING_TO_SEND',
   'AWAITING_PAYMENT',
   'OVERDUE',
   'PAID',

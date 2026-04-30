@@ -223,7 +223,7 @@ model WorkOrder {
   startedAt                  DateTime?
   completedAt                DateTime?
   cancelledAt                DateTime?
-  invoiceStatus              InvoiceStatus         @default(NOT_SENT)
+  invoiceStatus              InvoiceStatus         @default(INVOICE_PENDING_TO_SEND)
   invoiceSentAt              DateTime?
   dueAt                      DateTime?
   invoiceCancelledAt         DateTime?
@@ -344,7 +344,7 @@ model Invoice {
   invoiceNumber   String?
   title           String
   address         String?
-  status          InvoiceStatus @default(NOT_SENT)
+  status          InvoiceStatus @default(INVOICE_PENDING_TO_SEND)
   sentAt          DateTime?
   dueAt           DateTime?
   cancelledAt     DateTime?
@@ -715,7 +715,8 @@ enum JobStatus {
 }
 
 enum InvoiceStatus {
-  NOT_SENT
+  NOT_APPLIED
+  INVOICE_PENDING_TO_SEND
   AWAITING_PAYMENT
   OVERDUE
   PAID
